@@ -10,8 +10,8 @@ export function useAuth() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
       if (currentUser) {
+        setLoading(true);
         const docRef = doc(db, 'usuarios', currentUser.uid);
         const docSnap = await getDoc(docRef);
         
@@ -38,15 +38,25 @@ export function useAuth() {
             }),
           }).catch(() => {});
         }
+        setUser(currentUser);
+        setLoading(false);
+      } else {
+        setUser(null);
+        setRole(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  const loginConGoogle = () => {
+  const loginConGoogle = async () => {
+    setLoading(true);
     const provider = new GoogleAuthProvider();
-    return signInWithPopup(auth, provider);
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      setLoading(false);
+    }
   };
 
   const logout = () => signOut(auth);
