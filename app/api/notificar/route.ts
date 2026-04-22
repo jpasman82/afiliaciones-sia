@@ -17,7 +17,9 @@ export async function POST(request: Request) {
       from: process.env.EMAIL_USER,
       to: process.env.EMAIL_USER,
       subject: 'SIA AFILIACIONES- Nuevo usuario registrado',
-      text: `Se ha registrado un nuevo usuario en la plataforma de Afiliaciones: ${nombre}\nEmail: ${email}\n\nIngresa al panel de administrador para asignarle un rol.`
+      text: `Se ha registrado un nuevo usuario en la plataforma de Afiliaciones: ${nombre}\nEmail: ${email}\n\n
+      Ingresa al panel de administrador para asignarle un rol.
+      https://afiliaciones.sanisidroavanza.com.ar/`
     };
 
     await transporter.sendMail(mailOptions);
