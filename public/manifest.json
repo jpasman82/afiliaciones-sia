@@ -1,0 +1,17 @@
+{
+  "name": "Afiliaciones SIA",
+  "short_name": "SIA",
+  "description": "Sistema de gestión de afiliaciones",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4a148c",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
