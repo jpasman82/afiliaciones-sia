@@ -253,7 +253,33 @@ export default function Home() {
 
               <div>
                 <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Fecha Nacimiento</label>
-                <input type="date" name="fechaNacimiento" value={formData.fechaNacimiento} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
+                <div className="relative flex items-center">
+                  <input 
+                    type="text" 
+                    name="fechaNacimiento" 
+                    placeholder="DD/MM/AAAA"
+                    value={formData.fechaNacimiento} 
+                    onChange={handleChange} 
+                    className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base pr-12" 
+                    required 
+                  />
+                  <div className="absolute right-2 w-10 h-10 flex items-center justify-center bg-purple-100 text-purple-900 rounded-lg hover:bg-purple-200 transition overflow-hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 pointer-events-none">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+                    </svg>
+                    <input 
+                      type="date" 
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val) {
+                          const [year, month, day] = val.split('-');
+                          setFormData({ ...formData, fechaNacimiento: `${day}/${month}/${year}` });
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -266,7 +292,15 @@ export default function Home() {
                  </div>
                  <div>
                    <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Localidad</label>
-                   <input type="text" name="localidad" value={formData.localidad} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" required />
+                   <select name="localidad" value={formData.localidad} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" required>
+                     <option value="">Seleccionar...</option>
+                     <option value="Acassuso">Acassuso</option>
+                     <option value="Beccar">Beccar</option>
+                     <option value="Boulogne">Boulogne</option>
+                     <option value="Martínez">Martínez</option>
+                     <option value="San Isidro">San Isidro</option>
+                     <option value="Villa Adelina">Villa Adelina</option>
+                   </select>
                  </div>
                  <div className="md:col-span-2">
                    <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Calle</label>
@@ -279,7 +313,7 @@ export default function Home() {
                    </div>
                    <div className="w-24">
                      <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Piso</label>
-                     <input type="text" name="piso" value={formData.piso} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" />
+                     <input type="number" inputMode="numeric" pattern="[0-9]*" name="piso" value={formData.piso} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" />
                    </div>
                    <div className="w-24">
                      <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Dpto</label>
