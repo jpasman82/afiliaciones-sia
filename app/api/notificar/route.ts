@@ -16,8 +16,8 @@ export async function POST(request: Request) {
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: process.env.EMAIL_USER,
-      subject: 'SIA - Nuevo usuario registrado',
-      text: `Se ha registrado un nuevo usuario en la plataforma:\n\nNombre: ${nombre}\nEmail: ${email}\n\nIngresa al panel de administrador para asignarle un rol.`
+      subject: 'SIA AFILIACIONES- Nuevo usuario registrado',
+      text: `Se ha registrado un nuevo usuario en la plataforma de Afiliaciones: ${nombre}\nEmail: ${email}\n\nIngresa al panel de administrador para asignarle un rol.`
     };
 
     await transporter.sendMail(mailOptions);
