@@ -18,7 +18,6 @@ export function useAuth() {
         if (docSnap.exists()) {
           setRole(docSnap.data().rol);
         } else {
-          // Si es nuevo, lo registramos como pendiente
           const nuevoUsuario = {
             email: currentUser.email,
             nombre: currentUser.displayName,
@@ -27,6 +26,17 @@ export function useAuth() {
           };
           await setDoc(docRef, nuevoUsuario);
           setRole('pendiente');
+
+          fetch('/api/notificar', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: currentUser.email,
+              nombre: currentUser.displayName,
+            }),
+          }).catch(() => {});
         }
       }
       setLoading(false);
