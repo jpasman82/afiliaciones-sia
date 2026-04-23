@@ -1,15 +1,108 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadString, uploadBytes, getDownloadURL } from 'firebase/storage';
 import jsPDF from 'jspdf';
 
+// --- ICONOS ---
 const IconNueva = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
 const IconFichas = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75c.621 0 1.125.504 1.125 1.125v1.875c0 .621-.504 1.125-1.125 1.125H5.625a1.125 1.125 0 0 1-1.125-1.125V5.625c0-.621.504-1.125 1.125-1.125Z" /></svg>;
 const IconUsuarios = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>;
 
+// --- COMPONENTE DE CÁMARA INTEGRADA (ESCANER) ---
+const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCapture: (imgData: string) => void, titulo: string }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const marcoRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let currentStream: MediaStream;
+    const encenderCamara = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+        });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        currentStream = stream;
+      } catch (err) {
+        alert("No se pudo acceder a la cámara. Verifica los permisos de tu navegador.");
+        onClose();
+      }
+    };
+    encenderCamara();
+    return () => { if (currentStream) currentStream.getTracks().forEach(t => t.stop()); };
+  }, [onClose]);
+
+  const tomarFoto = () => {
+    const video = videoRef.current;
+    const marco = marcoRef.current;
+    if (!video || !marco) return;
+
+    const canvas = document.createElement('canvas');
+    const videoRect = video.getBoundingClientRect();
+    const marcoRect = marco.getBoundingClientRect();
+
+    // Factores de escala entre el tamaño real del video y el tamaño en pantalla
+    const scaleX = video.videoWidth / videoRect.width;
+    const scaleY = video.videoHeight / videoRect.height;
+
+    // Calcular coordenadas del recorte (con un 10% extra de margen)
+    const margenX = marcoRect.width * 0.1;
+    const margenY = marcoRect.height * 0.1;
+
+    const sx = Math.max(0, (marcoRect.left - videoRect.left - margenX) * scaleX);
+    const sy = Math.max(0, (marcoRect.top - videoRect.top - margenY) * scaleY);
+    const sWidth = Math.min(video.videoWidth - sx, (marcoRect.width + margenX * 2) * scaleX);
+    const sHeight = Math.min(video.videoHeight - sy, (marcoRect.height + margenY * 2) * scaleY);
+
+    canvas.width = sWidth;
+    canvas.height = sHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      onCapture(dataUrl);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+      <div className="p-4 bg-black text-white flex justify-between items-center z-10">
+        <h3 className="font-bold text-lg">{titulo}</h3>
+        <button onClick={onClose} className="text-white font-bold px-3 py-1 bg-red-600 rounded">Cerrar</button>
+      </div>
+      <div className="flex-1 relative overflow-hidden flex items-center justify-center">
+        {/* El video llena todo pero recorta lo que sobra para mantener proporción */}
+        <video ref={videoRef} autoPlay playsInline className="absolute w-full h-full object-cover" />
+        
+        {/* Capa de oscurecimiento con "agujero" simulado */}
+        <div className="absolute inset-0 bg-black/40 pointer-events-none"></div>
+        
+        {/* Marco guía (Relación de aspecto DNI aprox 1.58) */}
+        <div 
+          ref={marcoRef} 
+          className="relative w-[85%] aspect-[1.58] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none"
+        >
+          {/* Esquinas animadas para diseño */}
+          <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400"></div>
+          <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400"></div>
+          <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400"></div>
+          <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400"></div>
+          
+          <p className="absolute inset-0 flex items-center justify-center text-white/50 font-bold text-lg uppercase tracking-widest">Alinee el DNI aquí</p>
+        </div>
+      </div>
+      <div className="h-32 bg-black flex items-center justify-center pb-8 z-10">
+        <button onClick={tomarFoto} className="w-20 h-20 bg-white rounded-full border-4 border-gray-300 active:bg-gray-200 transition shadow-[0_0_15px_rgba(255,255,255,0.5)]"></button>
+      </div>
+    </div>
+  );
+};
+
+// --- APLICACIÓN PRINCIPAL ---
 export default function Home() {
   const { user, loading, role, isAdmin, loginConGoogle, logout } = useAuth();
   const [tab, setTab] = useState<'nueva' | 'registros' | 'usuarios'>('nueva');
@@ -23,10 +116,14 @@ export default function Home() {
   const [registros, setRegistros] = useState<any[]>([]);
   const [usuariosSistema, setUsuariosSistema] = useState<any[]>([]);
   const [editandoId, setEditandoId] = useState<string | null>(null);
-  const [modoArchivo, setModoArchivo] = useState<'separado' | 'unico'>('separado');
-  const [fotoFrente, setFotoFrente] = useState<File | null>(null);
-  const [fotoDorso, setFotoDorso] = useState<File | null>(null);
+  
+  // Estados para cámara y fotos
+  const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
+  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso'>(null);
+  const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
+  const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
+  
   const [subiendo, setSubiendo] = useState(false);
 
   useEffect(() => {
@@ -34,18 +131,13 @@ export default function Home() {
     const q = isAdmin 
       ? query(collection(db, 'afiliaciones'), orderBy('fecha', 'desc'))
       : query(collection(db, 'afiliaciones'), where('afiliadorUid', '==', (user as any).uid));
-
-    return onSnapshot(q, (snapshot) => {
-      setRegistros(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    return onSnapshot(q, (snapshot) => setRegistros(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
   }, [user, isAdmin, role]);
 
   useEffect(() => {
     if (!isAdmin) return;
     const q = query(collection(db, 'usuarios'), orderBy('fechaRegistro', 'desc'));
-    return onSnapshot(q, (snapshot) => {
-      setUsuariosSistema(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    return onSnapshot(q, (snapshot) => setUsuariosSistema(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
   }, [isAdmin]);
 
   if (loading) return <div className="p-10 text-center font-bold text-gray-900 text-lg">Iniciando SIA...</div>;
@@ -84,20 +176,46 @@ export default function Home() {
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'fechaNacimiento') {
+      if (value.length < formData.fechaNacimiento.length) {
+        setFormData({ ...formData, [name]: value }); return;
+      }
+      let val = value.replace(/\D/g, '');
+      if (val.length > 8) val = val.substring(0, 8);
+      let formatted = val;
+      if (val.length > 4) formatted = `${val.substring(0, 2)}/${val.substring(2, 4)}/${val.substring(4)}`;
+      else if (val.length > 2) formatted = `${val.substring(0, 2)}/${val.substring(2)}`;
+      setFormData({ ...formData, [name]: formatted });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
-  const procesarImagen = (file: File): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
+  const procesarDNIUnicoPdf = async () => {
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const anchoMax = pdf.internal.pageSize.getWidth() - 20;
+
+    // Helper para cargar base64 en Image object para calcular proporciones
+    const getImgObj = (b64: string): Promise<HTMLImageElement> => {
+      return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => resolve(img);
-        img.src = e.target?.result as string;
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+        img.src = b64;
+      });
+    };
+
+    const imgF = await getImgObj(fotoFrenteB64!);
+    const imgD = await getImgObj(fotoDorsoB64!);
+
+    const altoF = anchoMax * (imgF.height / imgF.width);
+    const altoD = anchoMax * (imgD.height / imgD.width);
+
+    // Agregamos frente arriba y dorso abajo
+    pdf.addImage(fotoFrenteB64!, 'JPEG', 10, 10, anchoMax, altoF);
+    pdf.addImage(fotoDorsoB64!, 'JPEG', 10, 20 + altoF, anchoMax, altoD);
+    
+    return pdf.output('blob');
   };
 
   const guardarFicha = async (e: React.FormEvent) => {
@@ -106,24 +224,19 @@ export default function Home() {
 
     try {
       let urlDni = '';
-      if (!editandoId || fotoFrente || archivoUnico) {
-        if (modoArchivo === 'separado' && fotoFrente && fotoDorso) {
-          const pdf = new jsPDF('p', 'mm', 'a4');
-          const imgF = await procesarImagen(fotoFrente);
-          const imgD = await procesarImagen(fotoDorso);
-          const anchoMax = pdf.internal.pageSize.getWidth() - 20;
-          const altoF = anchoMax * (imgF.height / imgF.width);
-          const altoD = anchoMax * (imgD.height / imgD.width);
-          pdf.addImage(imgF, 'JPEG', 10, 10, anchoMax, altoF);
-          pdf.addImage(imgD, 'JPEG', 10, 20 + altoF, anchoMax, altoD);
-          const blob = pdf.output('blob');
-          const storageRef = ref(storage, `dnis/${formData.dni}-${Date.now()}.pdf`);
+      if (!editandoId || fotoFrenteB64 || archivoUnico) {
+        const timestamp = Date.now();
+        const ruta = `dnis/${formData.dni}-${timestamp}.pdf`;
+        const storageRef = ref(storage, ruta);
+
+        if (modoArchivo === 'escaner' && fotoFrenteB64 && fotoDorsoB64) {
+          const blob = await procesarDNIUnicoPdf();
           await uploadBytes(storageRef, blob, { contentType: 'application/pdf' });
           urlDni = await getDownloadURL(storageRef);
-        } else if (archivoUnico) {
-          const storageRef = ref(storage, `dnis/${formData.dni}-${Date.now()}`);
-          await uploadBytes(storageRef, archivoUnico);
-          urlDni = await getDownloadURL(storageRef);
+        } else if (modoArchivo === 'unico' && archivoUnico) {
+          const storageRefUnico = ref(storage, `dnis/${formData.dni}-${timestamp}`);
+          await uploadBytes(storageRefUnico, archivoUnico);
+          urlDni = await getDownloadURL(storageRefUnico);
         }
       }
 
@@ -138,9 +251,9 @@ export default function Home() {
       setEditandoId(null);
       setTab('registros');
       setFormData({ apellidos: '', nombres: '', dni: '', sexo: '', nacionalidad: '', fechaNacimiento: '', distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
-      setFotoFrente(null); setFotoDorso(null); setArchivoUnico(null);
+      setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
     } catch (error) {
-      alert('Error en el envío');
+      alert('Error al guardar en la base de datos.');
     } finally {
       setSubiendo(false);
     }
@@ -154,6 +267,19 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+      {/* RENDERIZADO DEL MODAL DE LA CÁMARA */}
+      {camaraActiva && (
+        <EscanerDNI 
+          titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : "Escanear Dorso DNI"}
+          onClose={() => setCamaraActiva(null)} 
+          onCapture={(dataUrl) => {
+            if (camaraActiva === 'frente') setFotoFrenteB64(dataUrl);
+            else setFotoDorsoB64(dataUrl);
+            setCamaraActiva(null);
+          }} 
+        />
+      )}
+
       <header className="bg-white px-6 py-4 sticky top-0 z-40 flex justify-between items-center border-b border-gray-200 shadow-sm">
         <div className="flex items-center gap-3">
           <img src="/logo.png" alt="Logo" className="w-12 h-12 object-contain" />
@@ -254,30 +380,10 @@ export default function Home() {
               <div>
                 <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Fecha Nacimiento</label>
                 <div className="relative flex items-center">
-                  <input 
-                    type="text" 
-                    name="fechaNacimiento" 
-                    placeholder="DD/MM/AAAA"
-                    value={formData.fechaNacimiento} 
-                    onChange={handleChange} 
-                    className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base pr-12" 
-                    required 
-                  />
+                  <input type="text" inputMode="numeric" maxLength={10} name="fechaNacimiento" placeholder="DD/MM/AAAA" value={formData.fechaNacimiento} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base pr-12" required />
                   <div className="absolute right-2 w-10 h-10 flex items-center justify-center bg-purple-100 text-purple-900 rounded-lg hover:bg-purple-200 transition overflow-hidden">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 pointer-events-none">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
-                    </svg>
-                    <input 
-                      type="date" 
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val) {
-                          const [year, month, day] = val.split('-');
-                          setFormData({ ...formData, fechaNacimiento: `${day}/${month}/${year}` });
-                        }
-                      }}
-                    />
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 pointer-events-none"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
+                    <input type="date" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => { const val = e.target.value; if (val) { const [y, m, d] = val.split('-'); setFormData({ ...formData, fechaNacimiento: `${d}/${m}/${y}` }); } }} />
                   </div>
                 </div>
               </div>
@@ -328,33 +434,31 @@ export default function Home() {
               <textarea name="observaciones" value={formData.observaciones} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" rows={3}></textarea>
             </div>
 
+            {/* SECCIÓN DOCUMENTACIÓN ACTUALIZADA */}
             {!editandoId && (
               <div className="space-y-6 pt-6 border-t border-gray-200 mt-8">
                 <h4 className="text-base font-black text-gray-900 uppercase tracking-wide">Documentación DNI</h4>
                 <div className="flex bg-gray-100 p-2 rounded-xl max-w-sm">
-                  <button type="button" onClick={() => setModoArchivo('separado')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase ${modoArchivo === 'separado' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Frente/Dorso</button>
-                  <button type="button" onClick={() => setModoArchivo('unico')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase ${modoArchivo === 'unico' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Único</button>
+                  <button type="button" onClick={() => setModoArchivo('escaner')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase ${modoArchivo === 'escaner' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Cámara / Escaner</button>
+                  <button type="button" onClick={() => setModoArchivo('unico')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase ${modoArchivo === 'unico' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Archivo Local</button>
                 </div>
                 
-                {modoArchivo === 'separado' ? (
+                {modoArchivo === 'escaner' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
-                      <label className="cursor-pointer block">
-                        <span className="block text-sm font-bold text-gray-900 mb-4 uppercase">{fotoFrente ? 'FRENTE CARGADO' : 'SUBIR FRENTE'}</span>
-                        <input type="file" accept="image/*" capture="environment" onChange={(e) => setFotoFrente(e.target.files ? e.target.files[0] : null)} className="hidden" />
-                        <div className={`w-full h-14 rounded-xl flex items-center justify-center border border-gray-300 ${fotoFrente ? 'bg-green-500 border-green-500' : 'bg-white'}`}>
-                          {fotoFrente ? <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg> : <span className="text-gray-500 font-medium text-sm">Examinar...</span>}
-                        </div>
-                      </label>
+                      <span className="block text-sm font-bold text-gray-900 mb-4 uppercase">{fotoFrenteB64 ? 'FRENTE CAPTURADO' : 'TOMAR FRENTE'}</span>
+                      <button type="button" onClick={() => setCamaraActiva('frente')} className={`w-full h-24 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFrenteB64 ? { backgroundImage: `url(${fotoFrenteB64})`, borderColor: '#22c55e' } : {}}>
+                        {!fotoFrenteB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
+                      </button>
+                      {fotoFrenteB64 && <button type="button" onClick={() => setFotoFrenteB64(null)} className="text-red-500 text-xs font-bold mt-2 uppercase">Borrar</button>}
                     </div>
+
                     <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
-                      <label className="cursor-pointer block">
-                        <span className="block text-sm font-bold text-gray-900 mb-4 uppercase">{fotoDorso ? 'DORSO CARGADO' : 'SUBIR DORSO'}</span>
-                        <input type="file" accept="image/*" capture="environment" onChange={(e) => setFotoDorso(e.target.files ? e.target.files[0] : null)} className="hidden" />
-                        <div className={`w-full h-14 rounded-xl flex items-center justify-center border border-gray-300 ${fotoDorso ? 'bg-green-500 border-green-500' : 'bg-white'}`}>
-                          {fotoDorso ? <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg> : <span className="text-gray-500 font-medium text-sm">Examinar...</span>}
-                        </div>
-                      </label>
+                      <span className="block text-sm font-bold text-gray-900 mb-4 uppercase">{fotoDorsoB64 ? 'DORSO CAPTURADO' : 'TOMAR DORSO'}</span>
+                      <button type="button" onClick={() => setCamaraActiva('dorso')} className={`w-full h-24 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoDorsoB64 ? { backgroundImage: `url(${fotoDorsoB64})`, borderColor: '#22c55e' } : {}}>
+                        {!fotoDorsoB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
+                      </button>
+                      {fotoDorsoB64 && <button type="button" onClick={() => setFotoDorsoB64(null)} className="text-red-500 text-xs font-bold mt-2 uppercase">Borrar</button>}
                     </div>
                   </div>
                 ) : (
