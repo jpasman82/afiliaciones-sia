@@ -5,7 +5,6 @@ import { db, storage } from '../firebaseConfig';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import jsPDF from 'jspdf';
-import { PDFDocument } from 'pdf-lib';
 
 // --- ICONOS ---
 const IconNueva = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
@@ -118,9 +117,10 @@ export default function Home() {
   
   const [tab, setTab] = useState<'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar'>('registros');
   
+  // SE AGREGARON CELULAR Y MAIL AL ESTADO INICIAL
   const [formData, setFormData] = useState({
     apellidos: '', nombres: '', dni: '', sexo: '',
-    nacionalidad: '', fechaNacimiento: '',
+    nacionalidad: '', fechaNacimiento: '', celular: '', mail: '',
     distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '',
     localidad: '', observaciones: ''
   });
@@ -137,10 +137,11 @@ export default function Home() {
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
   
   const [subiendo, setSubiendo] = useState(false);
+  
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroAfiliador, setFiltroAfiliador] = useState('todas');
 
-  // MANEJO DEL BOTÓN VOLVER NATIVO
   useEffect(() => {
-    // Si no hay historial empujado, empujamos el estado inicial
     if (typeof window !== "undefined" && !window.history.state) {
       window.history.replaceState({ tab: 'registros' }, '', '');
     }
@@ -175,6 +176,25 @@ export default function Home() {
     const q = query(collection(db, 'usuarios'), orderBy('fechaRegistro', 'desc'));
     return onSnapshot(q, (snapshot) => setUsuariosSistema(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
   }, [isAdmin]);
+
+  const registrosFiltrados = registros.filter((reg) => {
+    if (isAdmin && filtroAfiliador !== 'todas' && reg.afiliadorUid !== filtroAfiliador) {
+      return false;
+    }
+    
+    if (busqueda.trim() !== '') {
+      const b = busqueda.toLowerCase().trim();
+      const coincideDni = reg.dni?.toLowerCase().includes(b);
+      const coincideNombres = reg.nombres?.toLowerCase().includes(b);
+      const coincideApellidos = reg.apellidos?.toLowerCase().includes(b);
+      
+      if (!coincideDni && !coincideNombres && !coincideApellidos) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
 
   if (loading) return <div className="p-10 text-center font-bold text-gray-900 text-lg">Iniciando SIA...</div>;
 
@@ -228,25 +248,27 @@ export default function Home() {
     }
   };
 
-  // --- FUNCIÓN DE EXPORTACIÓN CSV ---
   const exportarCSV = () => {
-    if (registros.length === 0) {
+    if (registrosFiltrados.length === 0) {
       alert("No hay registros para exportar.");
       return;
     }
 
+    // SE SUMARON CELULAR Y MAIL A LAS COLUMNAS
     const cabeceras = [
       "DNI", "Apellidos", "Nombres", "Sexo", "Nacionalidad", "Fecha Nacimiento",
-      "Localidad", "Calle", "Número", "Piso", "Dpto", "Observaciones", "Cargado Por", "Link DNI"
+      "Celular", "Mail", "Localidad", "Calle", "Número", "Piso", "Dpto", "Observaciones", "Cargado Por", "Link DNI"
     ];
 
-    const filas = registros.map(reg => [
+    const filas = registrosFiltrados.map(reg => [
       reg.dni,
       reg.apellidos,
       reg.nombres,
       reg.sexo,
       reg.nacionalidad,
       reg.fechaNacimiento,
+      reg.celular || '',
+      reg.mail || '',
       reg.localidad,
       reg.calle,
       reg.numero,
@@ -257,13 +279,11 @@ export default function Home() {
       reg.archivoDni || 'Sin archivo'
     ]);
 
-    // Combinamos y escapamos los datos para Excel
     const contenidoCSV = [
       cabeceras.join(","),
       ...filas.map(fila => fila.map(campo => `"${String(campo).replace(/"/g, '""')}"`).join(","))
     ].join("\n");
 
-    // Agregamos BOM para que Excel reconozca los acentos (UTF-8)
     const blob = new Blob(["\uFEFF" + contenidoCSV], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -272,55 +292,6 @@ export default function Home() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  // --- FUNCIÓN DE UNIÓN Y DESCARGA DE PDFs ---
-  const descargarTodosLosPDFs = async () => {
-    const listaConArchivos = registros.filter(r => r.archivoDni);
-    if (listaConArchivos.length === 0) {
-      alert("No hay archivos PDF para unir.");
-      return;
-    }
-    
-    setSubiendo(true);
-    
-    try {
-      const mergedPdf = await PDFDocument.create();
-      
-      for (const reg of listaConArchivos) {
-        try {
-          // Descargar el PDF original desde Firebase Storage
-          const res = await fetch(reg.archivoDni);
-          const bytes = await res.arrayBuffer();
-          
-          // Cargar el PDF
-          const pdf = await PDFDocument.load(bytes);
-          
-          // Copiar sus páginas y añadirlas al nuevo documento
-          const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-          copiedPages.forEach((page) => mergedPdf.addPage(page));
-        } catch (e) {
-          console.error("Error cargando PDF de " + reg.dni, e);
-        }
-      }
-      
-      // Guardar el documento combinado
-      const pdfBytes = await mergedPdf.save();
-      
-      // Descargar en el navegador
-      const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `TODOS_LOS_DNI_SIA_${new Date().toLocaleDateString()}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-    } catch (error) {
-      alert("Error al generar el PDF unificado.");
-    } finally {
-      setSubiendo(false);
-    }
   };
 
   const procesarDNIUnicoPdf = async () => {
@@ -378,7 +349,7 @@ export default function Home() {
       }
 
       setEditandoId(null);
-      setFormData({ apellidos: '', nombres: '', dni: '', sexo: '', nacionalidad: '', fechaNacimiento: '', distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
+      setFormData({ apellidos: '', nombres: '', dni: '', sexo: '', nacionalidad: '', fechaNacimiento: '', celular: '', mail: '', distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
       cambiarTab('registros');
       
@@ -390,14 +361,19 @@ export default function Home() {
   };
 
   const prepararEdicion = (reg: any) => {
-    setFormData({ ...reg });
+    // Si la ficha vieja no tenía celular/mail, evitamos que sea undefined
+    setFormData({
+      ...reg,
+      celular: reg.celular || '',
+      mail: reg.mail || ''
+    });
     setEditandoId(reg.id);
     cambiarTab('editar');
   };
 
   const prepararNueva = () => {
     setEditandoId(null);
-    setFormData({ apellidos: '', nombres: '', dni: '', sexo: '', nacionalidad: '', fechaNacimiento: '', distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
+    setFormData({ apellidos: '', nombres: '', dni: '', sexo: '', nacionalidad: '', fechaNacimiento: '', celular: '', mail: '', distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
     setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
     cambiarTab('nueva');
   }
@@ -491,7 +467,7 @@ export default function Home() {
                 <h3 className="text-3xl font-black text-gray-900 leading-tight">{fichaSeleccionada.apellidos}, {fichaSeleccionada.nombres}</h3>
                 <p className="text-gray-500 font-bold tracking-widest uppercase mt-1">DNI: {fichaSeleccionada.dni}</p>
               </div>
-              {/* BOTÓN ROJO DE PDF */}
+              
               {fichaSeleccionada.archivoDni && (
                 <a href={fichaSeleccionada.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-red-50 text-red-700 border-2 border-red-200 px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-sm hover:bg-red-100 active:scale-95 transition">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
@@ -505,6 +481,11 @@ export default function Home() {
               <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Sexo</p><p className="font-bold text-gray-900">{fichaSeleccionada.sexo}</p></div>
               <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Nacionalidad</p><p className="font-bold text-gray-900">{fichaSeleccionada.nacionalidad}</p></div>
               <div className="col-span-2 md:col-span-1"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Localidad</p><p className="font-bold text-gray-900">{fichaSeleccionada.localidad}</p></div>
+              
+              {/* AGREGADOS AL DETALLE */}
+              <div className="col-span-2 md:col-span-2"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Celular</p><p className="font-bold text-gray-900">{fichaSeleccionada.celular || '-'}</p></div>
+              <div className="col-span-2 md:col-span-2"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Email</p><p className="font-bold text-gray-900">{fichaSeleccionada.mail || '-'}</p></div>
+
               <div className="col-span-2 md:col-span-4"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Dirección</p><p className="font-bold text-gray-900">{fichaSeleccionada.calle} {fichaSeleccionada.numero} {fichaSeleccionada.piso ? `Piso ${fichaSeleccionada.piso}` : ''} {fichaSeleccionada.dpto ? `Dpto ${fichaSeleccionada.dpto}` : ''}</p></div>
               {fichaSeleccionada.observaciones && (
                 <div className="col-span-2 md:col-span-4"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Observaciones</p><p className="font-medium text-gray-800 bg-gray-50 p-3 rounded-lg mt-1 border border-gray-100">{fichaSeleccionada.observaciones}</p></div>
@@ -565,6 +546,17 @@ export default function Home() {
                     <input type="date" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => { const val = e.target.value; if (val) { const [y, m, d] = val.split('-'); setFormData({ ...formData, fechaNacimiento: `${d}/${m}/${y}` }); } }} />
                   </div>
                 </div>
+              </div>
+
+              {/* NUEVOS CAMPOS EN EL FORMULARIO */}
+              <div>
+                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Celular</label>
+                <input type="tel" inputMode="numeric" name="celular" value={formData.celular} onChange={handleChange} placeholder="Ej: 1123456789" className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Email</label>
+                <input type="email" name="mail" value={formData.mail} onChange={handleChange} placeholder="Ej: correo@gmail.com" className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" />
               </div>
             </div>
 
@@ -662,29 +654,56 @@ export default function Home() {
         {/* PESTAÑA: LISTADO DE REGISTROS (MÁS COMPACTO) */}
         {tab === 'registros' && (
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4 mb-6 border-b border-gray-200 pb-4">
-              <h3 className="text-2xl font-black text-gray-900 tracking-tight">Afiliados</h3>
+            
+            {/* CONTROLES DE FILTRO Y BÚSQUEDA */}
+            <div className="flex flex-col md:flex-row gap-4 mb-6 border-b border-gray-200 pb-6">
+              
+              <div className="flex-1 relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+                </div>
+                <input 
+                  type="text" 
+                  placeholder="Buscar por DNI, Nombre o Apellido..." 
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  className="w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 focus:ring-1 focus:ring-purple-900 font-medium text-gray-900"
+                />
+              </div>
+
+              {isAdmin && (
+                <div className="w-full md:w-64">
+                  <select 
+                    value={filtroAfiliador} 
+                    onChange={(e) => setFiltroAfiliador(e.target.value)}
+                    className="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 font-bold text-gray-900 cursor-pointer"
+                  >
+                    <option value="todas">Todos los afiliadores</option>
+                    {usuariosSistema.filter(u => u.rol !== 'pendiente').map(u => (
+                      <option key={u.id} value={u.id}>{u.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4 mb-4">
+              <h3 className="text-xl font-black text-gray-900 tracking-tight">Listado</h3>
               <div className="flex flex-wrap items-center gap-3">
                 <div className="bg-purple-100 text-purple-900 px-4 py-2 rounded-lg font-black text-sm border border-purple-200">
-                  Fichas: {registros.length}
+                  Resultados: {registrosFiltrados.length}
                 </div>
-                {/* BOTONES DE EXPORTACIÓN (SOLO ADMIN) */}
                 {isAdmin && (
-                  <>
-                    <button onClick={exportarCSV} className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-lg font-black text-sm border border-green-200 hover:bg-green-100 transition active:scale-95">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                      Exportar CSV
-                    </button>
-                    <button onClick={descargarTodosLosPDFs} disabled={subiendo} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-black text-sm border transition active:scale-95 ${subiendo ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'}`}>
-                      {subiendo ? '⏳ Procesando...' : '⬇️ Unir PDFs'}
-                    </button>
-                  </>
+                  <button onClick={exportarCSV} className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-lg font-black text-sm border border-green-200 hover:bg-green-100 transition active:scale-95">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                    Exportar CSV
+                  </button>
                 )}
               </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {registros.map((reg) => (
+              {registrosFiltrados.map((reg) => (
                 <div 
                   key={reg.id} 
                   onClick={() => { setFichaSeleccionada(reg); cambiarTab('detalle'); }} 
@@ -700,12 +719,13 @@ export default function Home() {
                 </div>
               ))}
             </div>
-            {registros.length === 0 && <p className="py-20 text-center font-bold text-gray-400 text-lg">No hay registros cargados aún.</p>}
+            {registrosFiltrados.length === 0 && (
+              <p className="py-20 text-center font-bold text-gray-400 text-lg">No se encontraron fichas.</p>
+            )}
           </div>
         )}
       </main>
 
-      {/* Menú Flotante Inferior (Se oculta si la cámara está activa) */}
       {!camaraActiva && (
         <div className="md:hidden fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4">
           <nav className="bg-white/80 backdrop-blur-xl border border-gray-200 shadow-xl flex gap-2 p-2 rounded-[2rem] w-full max-w-sm">
