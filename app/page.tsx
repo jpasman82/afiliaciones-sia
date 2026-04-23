@@ -5,6 +5,7 @@ import { db, storage } from '../firebaseConfig';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import jsPDF from 'jspdf';
+import { PDFDocument } from 'pdf-lib';
 
 // --- ICONOS ---
 const IconNueva = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
@@ -137,7 +138,9 @@ export default function Home() {
   
   const [subiendo, setSubiendo] = useState(false);
 
+  // MANEJO DEL BOTÓN VOLVER NATIVO
   useEffect(() => {
+    // Si no hay historial empujado, empujamos el estado inicial
     if (typeof window !== "undefined" && !window.history.state) {
       window.history.replaceState({ tab: 'registros' }, '', '');
     }
@@ -222,6 +225,101 @@ export default function Home() {
       setFormData({ ...formData, [name]: formatted });
     } else {
       setFormData({ ...formData, [name]: value });
+    }
+  };
+
+  // --- FUNCIÓN DE EXPORTACIÓN CSV ---
+  const exportarCSV = () => {
+    if (registros.length === 0) {
+      alert("No hay registros para exportar.");
+      return;
+    }
+
+    const cabeceras = [
+      "DNI", "Apellidos", "Nombres", "Sexo", "Nacionalidad", "Fecha Nacimiento",
+      "Localidad", "Calle", "Número", "Piso", "Dpto", "Observaciones", "Cargado Por", "Link DNI"
+    ];
+
+    const filas = registros.map(reg => [
+      reg.dni,
+      reg.apellidos,
+      reg.nombres,
+      reg.sexo,
+      reg.nacionalidad,
+      reg.fechaNacimiento,
+      reg.localidad,
+      reg.calle,
+      reg.numero,
+      reg.piso || '',
+      reg.dpto || '',
+      reg.observaciones || '',
+      reg.afiliadorNombre || reg.afiliadorEmail || '',
+      reg.archivoDni || 'Sin archivo'
+    ]);
+
+    // Combinamos y escapamos los datos para Excel
+    const contenidoCSV = [
+      cabeceras.join(","),
+      ...filas.map(fila => fila.map(campo => `"${String(campo).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    // Agregamos BOM para que Excel reconozca los acentos (UTF-8)
+    const blob = new Blob(["\uFEFF" + contenidoCSV], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Afiliados_SIA_${new Date().toLocaleDateString()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // --- FUNCIÓN DE UNIÓN Y DESCARGA DE PDFs ---
+  const descargarTodosLosPDFs = async () => {
+    const listaConArchivos = registros.filter(r => r.archivoDni);
+    if (listaConArchivos.length === 0) {
+      alert("No hay archivos PDF para unir.");
+      return;
+    }
+    
+    setSubiendo(true);
+    
+    try {
+      const mergedPdf = await PDFDocument.create();
+      
+      for (const reg of listaConArchivos) {
+        try {
+          // Descargar el PDF original desde Firebase Storage
+          const res = await fetch(reg.archivoDni);
+          const bytes = await res.arrayBuffer();
+          
+          // Cargar el PDF
+          const pdf = await PDFDocument.load(bytes);
+          
+          // Copiar sus páginas y añadirlas al nuevo documento
+          const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+          copiedPages.forEach((page) => mergedPdf.addPage(page));
+        } catch (e) {
+          console.error("Error cargando PDF de " + reg.dni, e);
+        }
+      }
+      
+      // Guardar el documento combinado
+      const pdfBytes = await mergedPdf.save();
+      
+      // Descargar en el navegador
+      const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute('download', `TODOS_LOS_DNI_SIA_${new Date().toLocaleDateString()}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+    } catch (error) {
+      alert("Error al generar el PDF unificado.");
+    } finally {
+      setSubiendo(false);
     }
   };
 
@@ -393,7 +491,7 @@ export default function Home() {
                 <h3 className="text-3xl font-black text-gray-900 leading-tight">{fichaSeleccionada.apellidos}, {fichaSeleccionada.nombres}</h3>
                 <p className="text-gray-500 font-bold tracking-widest uppercase mt-1">DNI: {fichaSeleccionada.dni}</p>
               </div>
-              
+              {/* BOTÓN ROJO DE PDF */}
               {fichaSeleccionada.archivoDni && (
                 <a href={fichaSeleccionada.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-red-50 text-red-700 border-2 border-red-200 px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-sm hover:bg-red-100 active:scale-95 transition">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
@@ -564,10 +662,24 @@ export default function Home() {
         {/* PESTAÑA: LISTADO DE REGISTROS (MÁS COMPACTO) */}
         {tab === 'registros' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-end mb-6 border-b border-gray-200 pb-3">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4 mb-6 border-b border-gray-200 pb-4">
               <h3 className="text-2xl font-black text-gray-900 tracking-tight">Afiliados</h3>
-              <div className="bg-purple-100 text-purple-900 px-4 py-1.5 rounded-lg font-black text-sm border border-purple-200">
-                Fichas Cargadas: {registros.length}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="bg-purple-100 text-purple-900 px-4 py-2 rounded-lg font-black text-sm border border-purple-200">
+                  Fichas: {registros.length}
+                </div>
+                {/* BOTONES DE EXPORTACIÓN (SOLO ADMIN) */}
+                {isAdmin && (
+                  <>
+                    <button onClick={exportarCSV} className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-lg font-black text-sm border border-green-200 hover:bg-green-100 transition active:scale-95">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                      Exportar CSV
+                    </button>
+                    <button onClick={descargarTodosLosPDFs} disabled={subiendo} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-black text-sm border transition active:scale-95 ${subiendo ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'}`}>
+                      {subiendo ? '⏳ Procesando...' : '⬇️ Unir PDFs'}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             

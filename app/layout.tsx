@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "SIA",
+    title: "SIA - Afiliaciones",
   },
 };
 
