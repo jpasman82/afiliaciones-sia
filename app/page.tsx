@@ -165,9 +165,9 @@ export default function Home() {
 
   useEffect(() => {
     if (!user || role === 'pendiente') return;
-    // HACKEO SIMULADO: Pedimos todas las fichas sin importar quién esté logueado
-    const q = query(collection(db, 'afiliaciones'), orderBy('fecha', 'desc'));
-    
+    const q = isAdmin 
+      ? query(collection(db, 'afiliaciones'), orderBy('fecha', 'desc'))
+      : query(collection(db, 'afiliaciones'), where('afiliadorUid', '==', (user as any).uid));
     return onSnapshot(q, (snapshot) => setRegistros(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
   }, [user, isAdmin, role]);
 
