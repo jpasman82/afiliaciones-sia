@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy } from 'firebase/firestore';
-import { ref, uploadString, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import jsPDF from 'jspdf';
 
 // --- ICONOS ---
@@ -15,6 +15,7 @@ const IconUsuarios = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" v
 const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCapture: (imgData: string) => void, titulo: string }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const marcoRef = useRef<HTMLDivElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
 
   useEffect(() => {
     let currentStream: MediaStream;
@@ -45,11 +46,9 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
     const videoRect = video.getBoundingClientRect();
     const marcoRect = marco.getBoundingClientRect();
 
-    // Factores de escala entre el tamaño real del video y el tamaño en pantalla
     const scaleX = video.videoWidth / videoRect.width;
     const scaleY = video.videoHeight / videoRect.height;
 
-    // Calcular coordenadas del recorte (con un 10% extra de margen)
     const margenX = marcoRect.width * 0.1;
     const margenY = marcoRect.height * 0.1;
 
@@ -64,40 +63,50 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
     if (ctx) {
       ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      onCapture(dataUrl);
+      setPreview(dataUrl);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <div className="fixed inset-0 z-[100] bg-black flex flex-col">
       <div className="p-4 bg-black text-white flex justify-between items-center z-10">
         <h3 className="font-bold text-lg">{titulo}</h3>
         <button onClick={onClose} className="text-white font-bold px-3 py-1 bg-red-600 rounded">Cerrar</button>
       </div>
-      <div className="flex-1 relative overflow-hidden flex items-center justify-center">
-        {/* El video llena todo pero recorta lo que sobra para mantener proporción */}
+      
+      <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${preview ? 'hidden' : ''}`}>
         <video ref={videoRef} autoPlay playsInline className="absolute w-full h-full object-cover" />
-        
-        {/* Capa de oscurecimiento con "agujero" simulado */}
         <div className="absolute inset-0 bg-black/40 pointer-events-none"></div>
-        
-        {/* Marco guía (Relación de aspecto DNI aprox 1.58) */}
-        <div 
-          ref={marcoRef} 
-          className="relative w-[85%] aspect-[1.58] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none"
-        >
-          {/* Esquinas animadas para diseño */}
+        <div ref={marcoRef} className="relative w-[85%] aspect-[1.58] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none">
           <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400"></div>
           <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400"></div>
           <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400"></div>
           <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400"></div>
-          
-          <p className="absolute inset-0 flex items-center justify-center text-white/50 font-bold text-lg uppercase tracking-widest">Alinee el DNI aquí</p>
+          <p className="absolute inset-0 flex items-center justify-center text-white/50 font-bold text-lg uppercase tracking-widest text-center">Alinee el DNI<br/>y tome la foto</p>
         </div>
       </div>
-      <div className="h-32 bg-black flex items-center justify-center pb-8 z-10">
-        <button onClick={tomarFoto} className="w-20 h-20 bg-white rounded-full border-4 border-gray-300 active:bg-gray-200 transition shadow-[0_0_15px_rgba(255,255,255,0.5)]"></button>
-      </div>
+      
+      {!preview && (
+        <div className="h-32 bg-black flex items-center justify-center pb-8 z-10">
+          <button onClick={tomarFoto} className="w-20 h-20 bg-white rounded-full border-4 border-gray-300 active:bg-gray-200 transition shadow-[0_0_15px_rgba(255,255,255,0.5)]"></button>
+        </div>
+      )}
+
+      {preview && (
+        <div className="flex-1 flex flex-col bg-black">
+          <div className="flex-1 flex items-center justify-center p-4">
+            <img src={preview} alt="Vista previa" className="max-w-full max-h-full rounded-xl border-2 border-gray-500 shadow-2xl" />
+          </div>
+          <div className="h-32 bg-black flex items-center justify-center gap-4 pb-8 z-10 px-4">
+            <button onClick={() => setPreview(null)} className="flex-1 py-4 bg-gray-800 text-white font-black uppercase tracking-wide rounded-xl active:bg-gray-700 transition">
+              Reintentar
+            </button>
+            <button onClick={() => onCapture(preview)} className="flex-1 py-4 bg-green-600 text-white font-black uppercase tracking-wide rounded-xl active:bg-green-500 transition">
+              Usar Foto
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -105,7 +114,10 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
 // --- APLICACIÓN PRINCIPAL ---
 export default function Home() {
   const { user, loading, role, isAdmin, loginConGoogle, logout } = useAuth();
-  const [tab, setTab] = useState<'nueva' | 'registros' | 'usuarios'>('nueva');
+  
+  // Ahora la pantalla principal por defecto es "registros"
+  const [tab, setTab] = useState<'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar'>('registros');
+  
   const [formData, setFormData] = useState({
     apellidos: '', nombres: '', dni: '', sexo: '',
     nacionalidad: '', fechaNacimiento: '',
@@ -116,8 +128,8 @@ export default function Home() {
   const [registros, setRegistros] = useState<any[]>([]);
   const [usuariosSistema, setUsuariosSistema] = useState<any[]>([]);
   const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [fichaSeleccionada, setFichaSeleccionada] = useState<any>(null);
   
-  // Estados para cámara y fotos
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
   const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso'>(null);
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
@@ -125,6 +137,30 @@ export default function Home() {
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
   
   const [subiendo, setSubiendo] = useState(false);
+
+  // MANEJO DEL BOTÓN VOLVER NATIVO
+  useEffect(() => {
+    // Si no hay historial empujado, empujamos el estado inicial
+    if (typeof window !== "undefined" && !window.history.state) {
+      window.history.replaceState({ tab: 'registros' }, '', '');
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state && e.state.tab) {
+        setTab(e.state.tab);
+      } else {
+        setTab('registros');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const cambiarTab = (nuevoTab: 'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar') => {
+    setTab(nuevoTab);
+    window.history.pushState({ tab: nuevoTab }, '', '');
+  };
 
   useEffect(() => {
     if (!user || role === 'pendiente') return;
@@ -196,7 +232,6 @@ export default function Home() {
     const pdf = new jsPDF('p', 'mm', 'a4');
     const anchoMax = pdf.internal.pageSize.getWidth() - 20;
 
-    // Helper para cargar base64 en Image object para calcular proporciones
     const getImgObj = (b64: string): Promise<HTMLImageElement> => {
       return new Promise((resolve) => {
         const img = new Image();
@@ -211,7 +246,6 @@ export default function Home() {
     const altoF = anchoMax * (imgF.height / imgF.width);
     const altoD = anchoMax * (imgD.height / imgD.width);
 
-    // Agregamos frente arriba y dorso abajo
     pdf.addImage(fotoFrenteB64!, 'JPEG', 10, 10, anchoMax, altoF);
     pdf.addImage(fotoDorsoB64!, 'JPEG', 10, 20 + altoF, anchoMax, altoD);
     
@@ -249,9 +283,10 @@ export default function Home() {
       }
 
       setEditandoId(null);
-      setTab('registros');
       setFormData({ apellidos: '', nombres: '', dni: '', sexo: '', nacionalidad: '', fechaNacimiento: '', distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
+      cambiarTab('registros');
+      
     } catch (error) {
       alert('Error al guardar en la base de datos.');
     } finally {
@@ -262,12 +297,19 @@ export default function Home() {
   const prepararEdicion = (reg: any) => {
     setFormData({ ...reg });
     setEditandoId(reg.id);
-    setTab('nueva');
+    cambiarTab('editar');
   };
+
+  const prepararNueva = () => {
+    setEditandoId(null);
+    setFormData({ apellidos: '', nombres: '', dni: '', sexo: '', nacionalidad: '', fechaNacimiento: '', distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
+    setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
+    cambiarTab('nueva');
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      {/* RENDERIZADO DEL MODAL DE LA CÁMARA */}
+      
       {camaraActiva && (
         <EscanerDNI 
           titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : "Escanear Dorso DNI"}
@@ -282,28 +324,29 @@ export default function Home() {
 
       <header className="bg-white px-6 py-4 sticky top-0 z-40 flex justify-between items-center border-b border-gray-200 shadow-sm">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Logo" className="w-12 h-12 object-contain" />
+          <img src="/logo.png" alt="Logo" className="w-10 h-10 md:w-12 md:h-12 object-contain" />
           <div>
-            <h2 className="font-black text-xl md:text-2xl text-purple-950 leading-none">SIA GESTIÓN</h2>
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">{isAdmin ? 'ADMINISTRADOR' : 'AFILIADOR'}</p>
+            <h2 className="font-black text-lg md:text-2xl text-purple-950 leading-none">SIA GESTIÓN</h2>
+            <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">{isAdmin ? 'ADMINISTRADOR' : 'AFILIADOR'}</p>
           </div>
         </div>
         
         <div className="hidden md:flex items-center gap-4">
-          <button onClick={() => { setTab('nueva'); setEditandoId(null); }} className={`px-4 py-2 rounded-lg font-bold transition ${tab === 'nueva' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Nueva Ficha</button>
-          <button onClick={() => setTab('registros')} className={`px-4 py-2 rounded-lg font-bold transition ${tab === 'registros' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Registros</button>
-          {isAdmin && <button onClick={() => setTab('usuarios')} className={`px-4 py-2 rounded-lg font-bold transition ${tab === 'usuarios' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Usuarios</button>}
+          <button onClick={prepararNueva} className={`px-4 py-2 rounded-lg font-bold transition ${tab === 'nueva' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Nueva Ficha</button>
+          <button onClick={() => cambiarTab('registros')} className={`px-4 py-2 rounded-lg font-bold transition ${tab === 'registros' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Registros</button>
+          {isAdmin && <button onClick={() => cambiarTab('usuarios')} className={`px-4 py-2 rounded-lg font-bold transition ${tab === 'usuarios' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Usuarios</button>}
           <div className="w-px h-6 bg-gray-300 mx-2"></div>
           <button onClick={logout} className="text-red-600 font-bold hover:bg-red-50 px-4 py-2 rounded-lg transition">Salir</button>
         </div>
         
-        <button onClick={logout} className="md:hidden bg-gray-100 text-gray-900 px-4 py-2 rounded-xl text-xs font-black">
+        <button onClick={logout} className="md:hidden bg-gray-100 text-gray-900 px-3 py-2 rounded-xl text-[10px] font-black">
           SALIR
         </button>
       </header>
 
       <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-8 pb-32 md:pb-8">
         
+        {/* PESTAÑA: USUARIOS */}
         {tab === 'usuarios' && isAdmin && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gray-50"><h3 className="font-black text-xl text-gray-900">Control de Accesos</h3></div>
@@ -340,10 +383,49 @@ export default function Home() {
           </div>
         )}
 
-        {tab === 'nueva' && (
+        {/* PESTAÑA: DETALLE (VISTA LIMPIA ANTES DE EDITAR) */}
+        {tab === 'detalle' && fichaSeleccionada && (
+          <div className="bg-white p-6 md:p-10 rounded-2xl shadow-md border border-gray-200">
+            <button onClick={() => cambiarTab('registros')} className="text-purple-900 mb-6 font-bold text-sm flex items-center gap-2 hover:underline">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+              Volver a Fichas
+            </button>
+            
+            <div className="flex justify-between items-start mb-8 border-b border-gray-100 pb-6">
+              <div>
+                <h3 className="text-3xl font-black text-gray-900 leading-tight">{fichaSeleccionada.apellidos}, {fichaSeleccionada.nombres}</h3>
+                <p className="text-gray-500 font-bold tracking-widest uppercase mt-1">DNI: {fichaSeleccionada.dni}</p>
+              </div>
+              {fichaSeleccionada.archivoDni && (
+                <a href={fichaSeleccionada.archivoDni} target="_blank" rel="noopener noreferrer" className="bg-black text-white px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-md hover:bg-gray-800 transition">
+                  Ver DNI PDF
+                </a>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+              <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Nacimiento</p><p className="font-bold text-gray-900">{fichaSeleccionada.fechaNacimiento}</p></div>
+              <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Sexo</p><p className="font-bold text-gray-900">{fichaSeleccionada.sexo}</p></div>
+              <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Nacionalidad</p><p className="font-bold text-gray-900">{fichaSeleccionada.nacionalidad}</p></div>
+              <div className="col-span-2 md:col-span-1"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Localidad</p><p className="font-bold text-gray-900">{fichaSeleccionada.localidad}</p></div>
+              <div className="col-span-2 md:col-span-4"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Dirección</p><p className="font-bold text-gray-900">{fichaSeleccionada.calle} {fichaSeleccionada.numero} {fichaSeleccionada.piso ? `Piso ${fichaSeleccionada.piso}` : ''} {fichaSeleccionada.dpto ? `Dpto ${fichaSeleccionada.dpto}` : ''}</p></div>
+              {fichaSeleccionada.observaciones && (
+                <div className="col-span-2 md:col-span-4"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Observaciones</p><p className="font-medium text-gray-800 bg-gray-50 p-3 rounded-lg mt-1 border border-gray-100">{fichaSeleccionada.observaciones}</p></div>
+              )}
+            </div>
+
+            <button onClick={() => prepararEdicion(fichaSeleccionada)} className="w-full py-5 bg-purple-100 text-purple-900 border-2 border-purple-200 rounded-2xl font-black uppercase tracking-widest hover:bg-purple-200 transition flex justify-center items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+              Editar Datos
+            </button>
+          </div>
+        )}
+
+        {/* PESTAÑA: FORMULARIO (NUEVA O EDITAR) */}
+        {(tab === 'nueva' || tab === 'editar') && (
           <form onSubmit={guardarFicha} className="space-y-6 bg-white p-6 md:p-10 rounded-2xl shadow-md border border-gray-200">
             <h3 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight border-b border-gray-100 pb-4">
-              {editandoId ? 'Editando Registro' : 'Nueva Ficha de Afiliación'}
+              {tab === 'editar' ? '✏️ Editando Ficha' : '📝 Nueva Ficha'}
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -434,13 +516,12 @@ export default function Home() {
               <textarea name="observaciones" value={formData.observaciones} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" rows={3}></textarea>
             </div>
 
-            {/* SECCIÓN DOCUMENTACIÓN ACTUALIZADA */}
             {!editandoId && (
               <div className="space-y-6 pt-6 border-t border-gray-200 mt-8">
                 <h4 className="text-base font-black text-gray-900 uppercase tracking-wide">Documentación DNI</h4>
                 <div className="flex bg-gray-100 p-2 rounded-xl max-w-sm">
-                  <button type="button" onClick={() => setModoArchivo('escaner')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase ${modoArchivo === 'escaner' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Cámara / Escaner</button>
-                  <button type="button" onClick={() => setModoArchivo('unico')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase ${modoArchivo === 'unico' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Archivo Local</button>
+                  <button type="button" onClick={() => setModoArchivo('escaner')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase tracking-wider ${modoArchivo === 'escaner' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Escaner</button>
+                  <button type="button" onClick={() => setModoArchivo('unico')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase tracking-wider ${modoArchivo === 'unico' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Archivo Local</button>
                 </div>
                 
                 {modoArchivo === 'escaner' ? (
@@ -450,7 +531,7 @@ export default function Home() {
                       <button type="button" onClick={() => setCamaraActiva('frente')} className={`w-full h-24 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFrenteB64 ? { backgroundImage: `url(${fotoFrenteB64})`, borderColor: '#22c55e' } : {}}>
                         {!fotoFrenteB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
                       </button>
-                      {fotoFrenteB64 && <button type="button" onClick={() => setFotoFrenteB64(null)} className="text-red-500 text-xs font-bold mt-2 uppercase">Borrar</button>}
+                      {fotoFrenteB64 && <button type="button" onClick={() => setFotoFrenteB64(null)} className="text-red-500 text-xs font-bold mt-2 uppercase hover:underline">Borrar</button>}
                     </div>
 
                     <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
@@ -458,7 +539,7 @@ export default function Home() {
                       <button type="button" onClick={() => setCamaraActiva('dorso')} className={`w-full h-24 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoDorsoB64 ? { backgroundImage: `url(${fotoDorsoB64})`, borderColor: '#22c55e' } : {}}>
                         {!fotoDorsoB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
                       </button>
-                      {fotoDorsoB64 && <button type="button" onClick={() => setFotoDorsoB64(null)} className="text-red-500 text-xs font-bold mt-2 uppercase">Borrar</button>}
+                      {fotoDorsoB64 && <button type="button" onClick={() => setFotoDorsoB64(null)} className="text-red-500 text-xs font-bold mt-2 uppercase hover:underline">Borrar</button>}
                     </div>
                   </div>
                 ) : (
@@ -481,26 +562,29 @@ export default function Home() {
           </form>
         )}
 
+        {/* PESTAÑA: LISTADO DE REGISTROS (MÁS COMPACTO) */}
         {tab === 'registros' && (
-          <div className="space-y-6">
-            <h3 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Afiliados Registrados</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            <div className="flex justify-between items-end mb-6 border-b border-gray-200 pb-3">
+              <h3 className="text-2xl font-black text-gray-900 tracking-tight">Afiliados</h3>
+              <div className="bg-purple-100 text-purple-900 px-4 py-1.5 rounded-lg font-black text-sm border border-purple-200">
+                Fichas Cargadas: {registros.length}
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {registros.map((reg) => (
-                <div key={reg.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center hover:shadow-md transition gap-4">
+                <div 
+                  key={reg.id} 
+                  onClick={() => { setFichaSeleccionada(reg); cambiarTab('detalle'); }} 
+                  className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-purple-300 hover:bg-purple-50 active:scale-[0.98] transition cursor-pointer"
+                >
                   <div>
-                    <div className="text-xl font-black text-gray-900">{reg.dni}</div>
-                    <div className="text-sm font-bold text-gray-500 uppercase mt-1">{reg.apellidos}, {reg.nombres}</div>
-                    <button onClick={() => prepararEdicion(reg)} className="mt-4 text-purple-900 font-bold text-sm uppercase tracking-wide hover:underline flex items-center gap-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
-                      Editar Datos
-                    </button>
+                    <div className="text-lg font-black text-gray-900 leading-tight">{reg.dni}</div>
+                    <div className="text-xs font-bold text-gray-500 uppercase mt-0.5">{reg.apellidos}, {reg.nombres}</div>
                   </div>
-                  <div className="sm:text-right">
-                    {reg.archivoDni && (
-                      <a href={reg.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-block bg-gray-900 text-white font-bold px-6 py-3 rounded-xl text-sm uppercase tracking-wider hover:bg-black transition">
-                        VER DNI
-                      </a>
-                    )}
+                  <div className="text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
                   </div>
                 </div>
               ))}
@@ -510,26 +594,29 @@ export default function Home() {
         )}
       </main>
 
-      <div className="md:hidden fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4">
-        <nav className="bg-white/80 backdrop-blur-xl border border-gray-200 shadow-xl flex gap-2 p-2 rounded-[2rem] w-full max-w-sm">
-          <button onClick={() => { setTab('nueva'); setEditandoId(null); }} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'nueva' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
-            <IconNueva />
-            <span className="text-[10px] font-black uppercase tracking-widest mt-1">Nueva</span>
-          </button>
-          
-          <button onClick={() => setTab('registros')} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'registros' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
-            <IconFichas />
-            <span className="text-[10px] font-black uppercase tracking-widest mt-1">Fichas</span>
-          </button>
-
-          {isAdmin && (
-            <button onClick={() => setTab('usuarios')} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'usuarios' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
-              <IconUsuarios />
-              <span className="text-[10px] font-black uppercase tracking-widest mt-1">Usuarios</span>
+      {/* Menú Flotante Inferior (Se oculta si la cámara está activa) */}
+      {!camaraActiva && (
+        <div className="md:hidden fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4">
+          <nav className="bg-white/80 backdrop-blur-xl border border-gray-200 shadow-xl flex gap-2 p-2 rounded-[2rem] w-full max-w-sm">
+            <button onClick={prepararNueva} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'nueva' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
+              <IconNueva />
+              <span className="text-[10px] font-black uppercase tracking-widest mt-1">Nueva</span>
             </button>
-          )}
-        </nav>
-      </div>
+            
+            <button onClick={() => cambiarTab('registros')} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'registros' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
+              <IconFichas />
+              <span className="text-[10px] font-black uppercase tracking-widest mt-1">Fichas</span>
+            </button>
+
+            {isAdmin && (
+              <button onClick={() => cambiarTab('usuarios')} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'usuarios' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
+                <IconUsuarios />
+                <span className="text-[10px] font-black uppercase tracking-widest mt-1">Usuarios</span>
+              </button>
+            )}
+          </nav>
+        </div>
+      )}
     </div>
   );
 }
