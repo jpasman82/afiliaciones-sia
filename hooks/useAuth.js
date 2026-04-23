@@ -31,6 +31,9 @@ export function useAuth() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              // --- LLAVE DE SEGURIDAD ---
+              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_API_SECRET_TOKEN}`
+              // --------------------------
             },
             body: JSON.stringify({
               email: currentUser.email,
