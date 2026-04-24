@@ -5,6 +5,7 @@ import { db, storage } from '../firebaseConfig';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import jsPDF from 'jspdf';
+import JSZip from 'jszip';
 
 // --- ICONOS ---
 const IconNueva = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
@@ -246,6 +247,43 @@ export default function Home() {
     } else {
       setFormData({ ...formData, [name]: value });
     }
+  };
+
+  const [descargandoZip, setDescargandoZip] = useState(false);
+
+  const descargarZip = async () => {
+    const conArchivo = registrosFiltrados.filter(r => r.archivoDni);
+    if (conArchivo.length === 0) {
+      alert('No hay archivos DNI para descargar.');
+      return;
+    }
+    setDescargandoZip(true);
+    const zip = new JSZip();
+    const CONCURRENCIA = 10;
+    for (let i = 0; i < conArchivo.length; i += CONCURRENCIA) {
+      const lote = conArchivo.slice(i, i + CONCURRENCIA);
+      await Promise.all(lote.map(async (reg) => {
+        try {
+          const res = await fetch(reg.archivoDni);
+          const blob = await res.blob();
+          const ext = blob.type === 'application/pdf' ? 'pdf' : 'jpg';
+          const nombre = `${reg.apellidos}_${reg.nombres}_${reg.dni}.${ext}`.replace(/\s+/g, '_');
+          zip.file(nombre, blob);
+        } catch {
+          // Si un archivo falla, continúa con los demás
+        }
+      }));
+    }
+    const contenido = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(contenido);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `DNIs_SIA_${new Date().toLocaleDateString('es-AR').replace(/\//g, '-')}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setDescargandoZip(false);
   };
 
   const exportarCSV = () => {
@@ -694,10 +732,16 @@ export default function Home() {
                   Resultados: {registrosFiltrados.length}
                 </div>
                 {isAdmin && (
-                  <button onClick={exportarCSV} className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-lg font-black text-sm border border-green-200 hover:bg-green-100 transition active:scale-95">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                    Exportar CSV
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={exportarCSV} className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-lg font-black text-sm border border-green-200 hover:bg-green-100 transition active:scale-95">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                      Exportar CSV
+                    </button>
+                    <button onClick={descargarZip} disabled={descargandoZip} className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-black text-sm border border-blue-200 hover:bg-blue-100 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                      {descargandoZip ? 'Generando ZIP...' : 'Descargar DNIs (ZIP)'}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
