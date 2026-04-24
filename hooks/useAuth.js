@@ -27,18 +27,18 @@ export function useAuth() {
           await setDoc(docRef, nuevoUsuario);
           setRole('pendiente');
 
-          fetch('/api/notificar', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              // --- LLAVE DE SEGURIDAD ---
-              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_API_SECRET_TOKEN}`
-              // --------------------------
-            },
-            body: JSON.stringify({
-              email: currentUser.email,
-              nombre: currentUser.displayName,
-            }),
+          currentUser.getIdToken().then((idToken) => {
+            fetch('/api/notificar-nuevo-usuario', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`,
+              },
+              body: JSON.stringify({
+                email: currentUser.email,
+                nombre: currentUser.displayName,
+              }),
+            });
           }).catch(() => {});
         }
         setUser(currentUser);

@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function esAdmin(uid) {
+      return get(/databases/$(database)/documents/usuarios/$(uid)).data.rol == 'admin';
+    }
+
+    function rolActivo(uid) {
+      let rol = get(/databases/$(database)/documents/usuarios/$(uid)).data.rol;
+      return rol == 'admin' || rol == 'afiliador';
+    }
+
+    match /usuarios/{uid} {
+      // Cada usuario solo puede leer su propio perfil; admins pueden leer todos
+      allow read: if request.auth != null &&
+        (request.auth.uid == uid || esAdmin(request.auth.uid));
+      // Un usuario puede crear su propio documento al registrarse por primera vez
+      allow create: if request.auth != null && request.auth.uid == uid;
+      // Solo admins pueden cambiar roles
+      allow update, delete: if request.auth != null && esAdmin(request.auth.uid);
+    }
+
+    match /afiliaciones/{docId} {
+      // Cada afiliador solo ve sus propios registros; admins ven todo
+      allow read: if request.auth != null &&
+        (resource.data.afiliadorUid == request.auth.uid || esAdmin(request.auth.uid));
+      // Solo usuarios activos (afiliador o admin) pueden crear fichas, y solo con su propio uid
+      allow create: if request.auth != null &&
+        rolActivo(request.auth.uid) &&
+        request.resource.data.afiliadorUid == request.auth.uid;
+      // El dueño del registro o un admin pueden editarlo
+      allow update: if request.auth != null &&
+        (resource.data.afiliadorUid == request.auth.uid || esAdmin(request.auth.uid));
+      // Solo admins pueden eliminar
+      allow delete: if request.auth != null && esAdmin(request.auth.uid);
+    }
+  }
+}
