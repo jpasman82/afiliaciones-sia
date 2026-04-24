@@ -138,6 +138,7 @@ export default function Home() {
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
   
   const [subiendo, setSubiendo] = useState(false);
+  const [descargandoZip, setDescargandoZip] = useState(false);
   
   const [busqueda, setBusqueda] = useState('');
   const [filtroAfiliador, setFiltroAfiliador] = useState('todas');
@@ -248,8 +249,6 @@ export default function Home() {
       setFormData({ ...formData, [name]: value });
     }
   };
-
-  const [descargandoZip, setDescargandoZip] = useState(false);
 
   const descargarZip = async () => {
     const conArchivo = registrosFiltrados.filter(r => r.archivoDni);
