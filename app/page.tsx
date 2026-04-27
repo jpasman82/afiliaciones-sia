@@ -4,15 +4,12 @@ import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import jsPDF from 'jspdf';
 import JSZip from 'jszip';
 
-// --- ICONOS ---
 const IconNueva = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
 const IconFichas = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75c.621 0 1.125.504 1.125 1.125v1.875c0 .621-.504 1.125-1.125 1.125H5.625a1.125 1.125 0 0 1-1.125-1.125V5.625c0-.621.504-1.125 1.125-1.125Z" /></svg>;
 const IconUsuarios = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>;
 
-// --- COMPONENTE DE CÁMARA INTEGRADA (ESCANER) ---
 const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCapture: (imgData: string) => void, titulo: string }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const marcoRef = useRef<HTMLDivElement>(null);
@@ -112,13 +109,11 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
   );
 };
 
-// --- APLICACIÓN PRINCIPAL ---
 export default function Home() {
   const { user, loading, role, isAdmin, loginConGoogle, logout } = useAuth();
   
   const [tab, setTab] = useState<'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar'>('registros');
   
-  // ESTADO INICIAL ACTUALIZADO CON TODOS LOS CAMPOS NUEVOS
   const [formData, setFormData] = useState({
     tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', 
     sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', 
@@ -248,7 +243,6 @@ export default function Home() {
       else if (val.length > 2) formatted = `${val.substring(0, 2)}/${val.substring(2)}`;
       setFormData({ ...formData, [name]: formatted });
     } else if (name === 'clase') {
-      // Limitar la clase a 4 dígitos numéricos
       let val = value.replace(/\D/g, '');
       if (val.length > 4) val = val.substring(0, 4);
       setFormData({ ...formData, [name]: val });
@@ -276,7 +270,6 @@ export default function Home() {
           const nombre = `${reg.apellidos}_${reg.nombres}_${reg.dni}.${ext}`.replace(/\s+/g, '_');
           zip.file(nombre, blob);
         } catch {
-          // Si un archivo falla, continúa con los demás
         }
       }));
     }
@@ -298,7 +291,6 @@ export default function Home() {
       return;
     }
 
-    // CABECERAS ACTUALIZADAS
     const cabeceras = [
       "Tipo Doc", "NRO Documento", "Apellidos", "Nombres", "Sexo", "Clase", 
       "Fecha Nacimiento", "Lugar Nacimiento", "Nacionalidad", "Profesión", "Estado Civil",
@@ -346,10 +338,7 @@ export default function Home() {
     document.body.removeChild(link);
   };
 
-  const procesarDNIUnicoPdf = async () => {
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const anchoMax = pdf.internal.pageSize.getWidth() - 20;
-
+  const procesarDNIUnicoImagen = async (): Promise<Blob> => {
     const getImgObj = (b64: string): Promise<HTMLImageElement> => {
       return new Promise((resolve) => {
         const img = new Image();
@@ -361,13 +350,31 @@ export default function Home() {
     const imgF = await getImgObj(fotoFrenteB64!);
     const imgD = await getImgObj(fotoDorsoB64!);
 
-    const altoF = anchoMax * (imgF.height / imgF.width);
-    const altoD = anchoMax * (imgD.height / imgD.width);
+    const targetWidth = 1200;
+    const scaleF = targetWidth / imgF.width;
+    const targetHeightF = imgF.height * scaleF;
 
-    pdf.addImage(fotoFrenteB64!, 'JPEG', 10, 10, anchoMax, altoF);
-    pdf.addImage(fotoDorsoB64!, 'JPEG', 10, 20 + altoF, anchoMax, altoD);
-    
-    return pdf.output('blob');
+    const scaleD = targetWidth / imgD.width;
+    const targetHeightD = imgD.height * scaleD;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeightF + targetHeightD + 20;
+
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(imgF, 0, 0, targetWidth, targetHeightF);
+      ctx.drawImage(imgD, 0, targetHeightF + 20, targetWidth, targetHeightD);
+    }
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Error'));
+      }, 'image/jpeg', 0.85);
+    });
   };
 
   const guardarFicha = async (e: React.FormEvent) => {
@@ -378,12 +385,12 @@ export default function Home() {
       let urlDni = '';
       if (!editandoId || fotoFrenteB64 || archivoUnico) {
         const timestamp = Date.now();
-        const ruta = `dnis/${formData.dni}-${timestamp}.pdf`;
+        const ruta = `dnis/${formData.dni}-${timestamp}.jpg`;
         const storageRef = ref(storage, ruta);
 
         if (modoArchivo === 'escaner' && fotoFrenteB64 && fotoDorsoB64) {
-          const blob = await procesarDNIUnicoPdf();
-          await uploadBytes(storageRef, blob, { contentType: 'application/pdf' });
+          const blob = await procesarDNIUnicoImagen();
+          await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
           urlDni = await getDownloadURL(storageRef);
         } else if (modoArchivo === 'unico' && archivoUnico) {
           const storageRefUnico = ref(storage, `dnis/${formData.dni}-${timestamp}`);
@@ -401,7 +408,6 @@ export default function Home() {
       }
 
       setEditandoId(null);
-      // REINICIAR CON ESTADO ACTUALIZADO
       setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
       cambiarTab('registros');
@@ -414,7 +420,6 @@ export default function Home() {
   };
 
   const prepararEdicion = (reg: any) => {
-    // Protección para fichas viejas que no tengan los campos nuevos
     setFormData({
       ...reg,
       tipoDocumento: reg.tipoDocumento || 'DNI',
@@ -476,7 +481,6 @@ export default function Home() {
 
       <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-8 pb-32 md:pb-8">
         
-        {/* PESTAÑA: USUARIOS */}
         {tab === 'usuarios' && isAdmin && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gray-50"><h3 className="font-black text-xl text-gray-900">Control de Accesos</h3></div>
@@ -513,7 +517,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* PESTAÑA: DETALLE (VISTA LIMPIA ANTES DE EDITAR) */}
         {tab === 'detalle' && fichaSeleccionada && (
           <div className="bg-white p-6 md:p-10 rounded-2xl shadow-md border border-gray-200">
             <button onClick={() => cambiarTab('registros')} className="text-purple-900 mb-6 font-bold text-sm flex items-center gap-2 hover:underline">
@@ -563,7 +566,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* PESTAÑA: FORMULARIO (NUEVA O EDITAR) */}
         {(tab === 'nueva' || tab === 'editar') && (
           <form onSubmit={guardarFicha} className="space-y-6 bg-white p-6 md:p-10 rounded-2xl shadow-md border border-gray-200">
             <h3 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight border-b border-gray-100 pb-4">
@@ -749,11 +751,9 @@ export default function Home() {
           </form>
         )}
 
-        {/* PESTAÑA: LISTADO DE REGISTROS (MÁS COMPACTO) */}
         {tab === 'registros' && (
           <div className="space-y-4">
             
-            {/* CONTROLES DE FILTRO Y BÚSQUEDA */}
             <div className="flex flex-col md:flex-row gap-4 mb-6 border-b border-gray-200 pb-6">
               
               <div className="flex-1 relative">
@@ -830,7 +830,6 @@ export default function Home() {
         )}
       </main>
 
-      {/* Menú Flotante Inferior (Se oculta si la cámara está activa) */}
       {!camaraActiva && (
         <div className="md:hidden fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4">
           <nav className="bg-white/80 backdrop-blur-xl border border-gray-200 shadow-xl flex gap-2 p-2 rounded-[2rem] w-full max-w-sm">
