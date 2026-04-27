@@ -118,11 +118,13 @@ export default function Home() {
   
   const [tab, setTab] = useState<'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar'>('registros');
   
-  // SE AGREGARON CELULAR Y MAIL AL ESTADO INICIAL
+  // ESTADO INICIAL ACTUALIZADO CON TODOS LOS CAMPOS NUEVOS
   const [formData, setFormData] = useState({
-    apellidos: '', nombres: '', dni: '', sexo: '',
-    nacionalidad: '', fechaNacimiento: '', celular: '', mail: '',
-    distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '',
+    tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', 
+    sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', 
+    nacionalidad: '', profesion: '', estadoCivil: '', 
+    celular: '', mail: '',
+    distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '',
     localidad: '', observaciones: ''
   });
   
@@ -245,6 +247,11 @@ export default function Home() {
       if (val.length > 4) formatted = `${val.substring(0, 2)}/${val.substring(2, 4)}/${val.substring(4)}`;
       else if (val.length > 2) formatted = `${val.substring(0, 2)}/${val.substring(2)}`;
       setFormData({ ...formData, [name]: formatted });
+    } else if (name === 'clase') {
+      // Limitar la clase a 4 dígitos numéricos
+      let val = value.replace(/\D/g, '');
+      if (val.length > 4) val = val.substring(0, 4);
+      setFormData({ ...formData, [name]: val });
     } else {
       setFormData({ ...formData, [name]: value });
     }
@@ -291,21 +298,29 @@ export default function Home() {
       return;
     }
 
-    // SE SUMARON CELULAR Y MAIL A LAS COLUMNAS
+    // CABECERAS ACTUALIZADAS
     const cabeceras = [
-      "DNI", "Apellidos", "Nombres", "Sexo", "Nacionalidad", "Fecha Nacimiento",
-      "Celular", "Mail", "Localidad", "Calle", "Número", "Piso", "Dpto", "Observaciones", "Cargado Por", "Link DNI"
+      "Tipo Doc", "NRO Documento", "Apellidos", "Nombres", "Sexo", "Clase", 
+      "Fecha Nacimiento", "Lugar Nacimiento", "Nacionalidad", "Profesión", "Estado Civil",
+      "Celular", "Mail", "Distrito", "Localidad", "Calle", "Número", "Piso", "Dpto", 
+      "Observaciones", "Cargado Por", "Link DNI"
     ];
 
     const filas = registrosFiltrados.map(reg => [
+      reg.tipoDocumento || 'DNI',
       reg.dni,
       reg.apellidos,
       reg.nombres,
       reg.sexo,
-      reg.nacionalidad,
+      reg.clase || '',
       reg.fechaNacimiento,
+      reg.lugarNacimiento || '',
+      reg.nacionalidad,
+      reg.profesion || '',
+      reg.estadoCivil || '',
       reg.celular || '',
       reg.mail || '',
+      reg.distrito || 'Buenos Aires',
       reg.localidad,
       reg.calle,
       reg.numero,
@@ -386,7 +401,8 @@ export default function Home() {
       }
 
       setEditandoId(null);
-      setFormData({ apellidos: '', nombres: '', dni: '', sexo: '', nacionalidad: '', fechaNacimiento: '', celular: '', mail: '', distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
+      // REINICIAR CON ESTADO ACTUALIZADO
+      setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
       cambiarTab('registros');
       
@@ -398,11 +414,17 @@ export default function Home() {
   };
 
   const prepararEdicion = (reg: any) => {
-    // Si la ficha vieja no tenía celular/mail, evitamos que sea undefined
+    // Protección para fichas viejas que no tengan los campos nuevos
     setFormData({
       ...reg,
+      tipoDocumento: reg.tipoDocumento || 'DNI',
+      clase: reg.clase || '',
+      lugarNacimiento: reg.lugarNacimiento || '',
+      profesion: reg.profesion || '',
+      estadoCivil: reg.estadoCivil || '',
       celular: reg.celular || '',
-      mail: reg.mail || ''
+      mail: reg.mail || '',
+      distrito: reg.distrito || 'Buenos Aires'
     });
     setEditandoId(reg.id);
     cambiarTab('editar');
@@ -410,7 +432,7 @@ export default function Home() {
 
   const prepararNueva = () => {
     setEditandoId(null);
-    setFormData({ apellidos: '', nombres: '', dni: '', sexo: '', nacionalidad: '', fechaNacimiento: '', celular: '', mail: '', distrito: 'San Isidro', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
+    setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
     setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
     cambiarTab('nueva');
   }
@@ -502,7 +524,7 @@ export default function Home() {
             <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 mb-8 border-b border-gray-100 pb-6">
               <div>
                 <h3 className="text-3xl font-black text-gray-900 leading-tight">{fichaSeleccionada.apellidos}, {fichaSeleccionada.nombres}</h3>
-                <p className="text-gray-500 font-bold tracking-widest uppercase mt-1">DNI: {fichaSeleccionada.dni}</p>
+                <p className="text-gray-500 font-bold tracking-widest uppercase mt-1">{fichaSeleccionada.tipoDocumento || 'DNI'}: {fichaSeleccionada.dni}</p>
               </div>
               
               {fichaSeleccionada.archivoDni && (
@@ -515,15 +537,20 @@ export default function Home() {
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
               <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Nacimiento</p><p className="font-bold text-gray-900">{fichaSeleccionada.fechaNacimiento}</p></div>
+              <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Lugar Nac.</p><p className="font-bold text-gray-900">{fichaSeleccionada.lugarNacimiento || '-'}</p></div>
+              <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Clase (Año)</p><p className="font-bold text-gray-900">{fichaSeleccionada.clase || '-'}</p></div>
               <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Sexo</p><p className="font-bold text-gray-900">{fichaSeleccionada.sexo}</p></div>
-              <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Nacionalidad</p><p className="font-bold text-gray-900">{fichaSeleccionada.nacionalidad}</p></div>
-              <div className="col-span-2 md:col-span-1"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Localidad</p><p className="font-bold text-gray-900">{fichaSeleccionada.localidad}</p></div>
               
-              {/* AGREGADOS AL DETALLE */}
-              <div className="col-span-2 md:col-span-2"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Celular</p><p className="font-bold text-gray-900">{fichaSeleccionada.celular || '-'}</p></div>
-              <div className="col-span-2 md:col-span-2"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Email</p><p className="font-bold text-gray-900">{fichaSeleccionada.mail || '-'}</p></div>
+              <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Nacionalidad</p><p className="font-bold text-gray-900">{fichaSeleccionada.nacionalidad}</p></div>
+              <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Profesión</p><p className="font-bold text-gray-900">{fichaSeleccionada.profesion || '-'}</p></div>
+              <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Estado Civil</p><p className="font-bold text-gray-900">{fichaSeleccionada.estadoCivil || '-'}</p></div>
+              <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Localidad</p><p className="font-bold text-gray-900">{fichaSeleccionada.localidad}</p></div>
+              
+              <div className="col-span-2"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Celular</p><p className="font-bold text-gray-900">{fichaSeleccionada.celular || '-'}</p></div>
+              <div className="col-span-2"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Email</p><p className="font-bold text-gray-900">{fichaSeleccionada.mail || '-'}</p></div>
 
-              <div className="col-span-2 md:col-span-4"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Dirección</p><p className="font-bold text-gray-900">{fichaSeleccionada.calle} {fichaSeleccionada.numero} {fichaSeleccionada.piso ? `Piso ${fichaSeleccionada.piso}` : ''} {fichaSeleccionada.dpto ? `Dpto ${fichaSeleccionada.dpto}` : ''}</p></div>
+              <div className="col-span-2 md:col-span-4"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Dirección ({fichaSeleccionada.distrito || 'Buenos Aires'})</p><p className="font-bold text-gray-900">{fichaSeleccionada.calle} {fichaSeleccionada.numero} {fichaSeleccionada.piso ? `Piso ${fichaSeleccionada.piso}` : ''} {fichaSeleccionada.dpto ? `Dpto ${fichaSeleccionada.dpto}` : ''}</p></div>
+              
               {fichaSeleccionada.observaciones && (
                 <div className="col-span-2 md:col-span-4"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Observaciones</p><p className="font-medium text-gray-800 bg-gray-50 p-3 rounded-lg mt-1 border border-gray-100">{fichaSeleccionada.observaciones}</p></div>
               )}
@@ -554,9 +581,19 @@ export default function Home() {
                 <input type="text" name="nombres" value={formData.nombres} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
               </div>
               
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">DNI (Matrícula)</label>
-                <input type="number" inputMode="numeric" pattern="[0-9]*" name="dni" value={formData.dni} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-bold focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
+              <div className="flex gap-2">
+                <div className="w-1/3">
+                  <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Tipo</label>
+                  <select name="tipoDocumento" value={formData.tipoDocumento} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-bold focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required>
+                    <option value="DNI">DNI</option>
+                    <option value="LE">LE</option>
+                    <option value="LC">LC</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">NRO</label>
+                  <input type="number" inputMode="numeric" pattern="[0-9]*" name="dni" value={formData.dni} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-bold focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
+                </div>
               </div>
               
               <div>
@@ -565,13 +602,18 @@ export default function Home() {
                   <option value="">Seleccionar...</option>
                   <option value="Masculino">Masculino</option>
                   <option value="Femenino">Femenino</option>
-                  <option value="Otro">Otro</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Nacionalidad</label>
-                <input type="text" name="nacionalidad" value={formData.nacionalidad} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
+                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Estado Civil</label>
+                <select name="estadoCivil" value={formData.estadoCivil} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required>
+                  <option value="">Seleccionar...</option>
+                  <option value="Soltero/a">Soltero/a</option>
+                  <option value="Casado/a">Casado/a</option>
+                  <option value="Divorciado/a">Divorciado/a</option>
+                  <option value="Viudo/a">Viudo/a</option>
+                </select>
               </div>
 
               <div>
@@ -585,7 +627,26 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* NUEVOS CAMPOS EN EL FORMULARIO */}
+              <div>
+                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Clase (Año)</label>
+                <input type="text" inputMode="numeric" maxLength={4} name="clase" value={formData.clase} onChange={handleChange} placeholder="Ej: 1985" className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
+              </div>
+
+              <div>
+                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Lugar de Nacim.</label>
+                <input type="text" name="lugarNacimiento" value={formData.lugarNacimiento} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
+              </div>
+
+              <div>
+                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Nacionalidad</label>
+                <input type="text" name="nacionalidad" value={formData.nacionalidad} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
+              </div>
+
+              <div>
+                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Profesión</label>
+                <input type="text" name="profesion" value={formData.profesion} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
+              </div>
+
               <div>
                 <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Celular</label>
                 <input type="tel" inputMode="numeric" name="celular" value={formData.celular} onChange={handleChange} placeholder="Ej: 1123456789" className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" />
@@ -602,7 +663,7 @@ export default function Home() {
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                  <div>
                    <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Distrito</label>
-                   <input type="text" value="San Isidro" readOnly className="w-full p-3 md:p-4 bg-purple-900/50 border border-purple-700 rounded-xl text-white font-bold cursor-not-allowed outline-none text-base" />
+                   <input type="text" value="Buenos Aires" readOnly className="w-full p-3 md:p-4 bg-purple-900/50 border border-purple-700 rounded-xl text-white font-bold cursor-not-allowed outline-none text-base" />
                  </div>
                  <div>
                    <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Localidad</label>
@@ -627,7 +688,7 @@ export default function Home() {
                    </div>
                    <div className="w-24">
                      <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Piso</label>
-                     <input type="number" inputMode="numeric" pattern="[0-9]*" name="piso" value={formData.piso} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" />
+                     <input type="text" name="piso" value={formData.piso} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" />
                    </div>
                    <div className="w-24">
                      <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Dpto</label>
@@ -769,6 +830,7 @@ export default function Home() {
         )}
       </main>
 
+      {/* Menú Flotante Inferior (Se oculta si la cámara está activa) */}
       {!camaraActiva && (
         <div className="md:hidden fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4">
           <nav className="bg-white/80 backdrop-blur-xl border border-gray-200 shadow-xl flex gap-2 p-2 rounded-[2rem] w-full max-w-sm">
