@@ -10,24 +10,25 @@ const IconNueva = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" view
 const IconFichas = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75c.621 0 1.125.504 1.125 1.125v1.875c0 .621-.504 1.125-1.125 1.125H5.625a1.125 1.125 0 0 1-1.125-1.125V5.625c0-.621.504-1.125 1.125-1.125Z" /></svg>;
 const IconUsuarios = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>;
 
-const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCapture: (imgData: string) => void, titulo: string }) => {
+const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClose: () => void, onCapture: (imgData: string) => void, titulo: string, tipo?: 'dni' | 'ficha' }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const marcoRef = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const proporcionMarco = tipo === 'ficha' ? 'aspect-[1.85]' : 'aspect-[1.58]';
 
   useEffect(() => {
     let currentStream: MediaStream;
     const encenderCamara = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+          video: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } }
         });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
         currentStream = stream;
       } catch (err) {
-        alert("No se pudo acceder a la cámara. Verifica los permisos de tu navegador.");
+        alert("Verifica los permisos de tu navegador.");
         onClose();
       }
     };
@@ -47,8 +48,8 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
     const scaleX = video.videoWidth / videoRect.width;
     const scaleY = video.videoHeight / videoRect.height;
 
-    const margenX = marcoRect.width * 0.1;
-    const margenY = marcoRect.height * 0.1;
+    const margenX = marcoRect.width * 0.05;
+    const margenY = marcoRect.height * 0.05;
 
     const sx = Math.max(0, (marcoRect.left - videoRect.left - margenX) * scaleX);
     const sy = Math.max(0, (marcoRect.top - videoRect.top - margenY) * scaleY);
@@ -59,6 +60,11 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
     canvas.height = sHeight;
     const ctx = canvas.getContext('2d');
     if (ctx) {
+      if (tipo === 'ficha') {
+        ctx.filter = 'contrast(1.5) grayscale(100%)';
+      } else {
+        ctx.filter = 'contrast(1.1)';
+      }
       ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
       setPreview(dataUrl);
@@ -75,12 +81,11 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
       <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${preview ? 'hidden' : ''}`}>
         <video ref={videoRef} autoPlay playsInline className="absolute w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black/40 pointer-events-none"></div>
-        <div ref={marcoRef} className="relative w-[85%] aspect-[1.58] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none">
+        <div ref={marcoRef} className={`relative w-[90%] ${proporcionMarco} border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] pointer-events-none`}>
           <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400"></div>
           <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400"></div>
           <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400"></div>
           <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400"></div>
-          <p className="absolute inset-0 flex items-center justify-center text-white/50 font-bold text-lg uppercase tracking-widest text-center">Alinee el DNI<br/>y tome la foto</p>
         </div>
       </div>
       
@@ -120,7 +125,7 @@ export default function Home() {
     nacionalidad: '', profesion: '', estadoCivil: '', 
     celular: '', mail: '',
     distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '',
-    localidad: '', observaciones: ''
+    localidad: '', observaciones: '', estado: 'pendiente', comentarioError: ''
   });
   
   const [registros, setRegistros] = useState<any[]>([]);
@@ -129,7 +134,7 @@ export default function Home() {
   const [fichaSeleccionada, setFichaSeleccionada] = useState<any>(null);
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
-  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso'>(null);
+  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaExtra'>(null);
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
@@ -139,12 +144,12 @@ export default function Home() {
   
   const [busqueda, setBusqueda] = useState('');
   const [filtroAfiliador, setFiltroAfiliador] = useState('todas');
+  const [filtroEstado, setFiltroEstado] = useState('todas');
 
   useEffect(() => {
     if (typeof window !== "undefined" && !window.history.state) {
       window.history.replaceState({ tab: 'registros' }, '', '');
     }
-
     const handlePopState = (e: PopStateEvent) => {
       if (e.state && e.state.tab) {
         setTab(e.state.tab);
@@ -152,7 +157,6 @@ export default function Home() {
         setTab('registros');
       }
     };
-
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
@@ -180,20 +184,91 @@ export default function Home() {
     if (isAdmin && filtroAfiliador !== 'todas' && reg.afiliadorUid !== filtroAfiliador) {
       return false;
     }
-    
+    if (filtroEstado !== 'todas' && reg.estado !== filtroEstado) {
+      return false;
+    }
     if (busqueda.trim() !== '') {
       const b = busqueda.toLowerCase().trim();
       const coincideDni = reg.dni?.toLowerCase().includes(b);
       const coincideNombres = reg.nombres?.toLowerCase().includes(b);
       const coincideApellidos = reg.apellidos?.toLowerCase().includes(b);
-      
       if (!coincideDni && !coincideNombres && !coincideApellidos) {
         return false;
       }
     }
-    
     return true;
   });
+
+  const cambiarEstado = async (id: string, nuevoEstado: string, comentarioError: string = '') => {
+    try {
+      await updateDoc(doc(db, 'afiliaciones', id), { estado: nuevoEstado, comentarioError });
+      setFichaSeleccionada({ ...fichaSeleccionada, estado: nuevoEstado, comentarioError });
+    } catch (e) {
+      alert('Error de red.');
+    }
+  };
+
+  const procesarFichaAdicional = async (existingUrl: string, fichaB64: string): Promise<Blob> => {
+    const getImg = (src: string, isCors: boolean): Promise<HTMLImageElement> => {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        if (isCors) img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+      });
+    };
+
+    const imgExisting = await getImg(existingUrl, true);
+    const imgFicha = await getImg(fichaB64, false);
+
+    const targetWidth = 1200;
+    const scaleE = targetWidth / imgExisting.width;
+    const heightE = imgExisting.height * scaleE;
+
+    const scaleF = targetWidth / imgFicha.width;
+    const heightF = imgFicha.height * scaleF;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = heightE + heightF + 20;
+
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(imgExisting, 0, 0, targetWidth, heightE);
+      ctx.drawImage(imgFicha, 0, heightE + 20, targetWidth, heightF);
+    }
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Error'));
+      }, 'image/jpeg', 0.85);
+    });
+  };
+
+  const adjuntarFichaFisica = async (fichaB64: string) => {
+    if (!fichaSeleccionada || !fichaSeleccionada.archivoDni) {
+      alert("No hay documento previo cargado.");
+      return;
+    }
+    setSubiendo(true);
+    try {
+      const blob = await procesarFichaAdicional(fichaSeleccionada.archivoDni, fichaB64);
+      const ruta = `dnis/${fichaSeleccionada.dni}-${Date.now()}-completo.jpg`;
+      const storageRef = ref(storage, ruta);
+      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+      const urlDni = await getDownloadURL(storageRef);
+      await updateDoc(doc(db, 'afiliaciones', fichaSeleccionada.id), { archivoDni: urlDni });
+      setFichaSeleccionada({ ...fichaSeleccionada, archivoDni: urlDni });
+    } catch (error) {
+      alert('Error de conexión cruzada con el almacenamiento.');
+    } finally {
+      setSubiendo(false);
+    }
+  };
 
   if (loading) return <div className="p-10 text-center font-bold text-gray-900 text-lg">Iniciando SIA...</div>;
 
@@ -224,7 +299,6 @@ export default function Home() {
   const actualizarRol = async (uid: string, nuevoRol: string) => {
     try {
       await updateDoc(doc(db, 'usuarios', uid), { rol: nuevoRol });
-      alert('Permisos actualizados');
     } catch (e) {
       alert('Error de red');
     }
@@ -254,7 +328,6 @@ export default function Home() {
   const descargarZip = async () => {
     const conArchivo = registrosFiltrados.filter(r => r.archivoDni);
     if (conArchivo.length === 0) {
-      alert('No hay archivos DNI para descargar.');
       return;
     }
     setDescargandoZip(true);
@@ -287,18 +360,18 @@ export default function Home() {
 
   const exportarCSV = () => {
     if (registrosFiltrados.length === 0) {
-      alert("No hay registros para exportar.");
       return;
     }
 
     const cabeceras = [
-      "Tipo Doc", "NRO Documento", "Apellidos", "Nombres", "Sexo", "Clase", 
+      "Estado", "Tipo Doc", "NRO Documento", "Apellidos", "Nombres", "Sexo", "Clase", 
       "Fecha Nacimiento", "Lugar Nacimiento", "Nacionalidad", "Profesión", "Estado Civil",
       "Celular", "Mail", "Distrito", "Localidad", "Calle", "Número", "Piso", "Dpto", 
-      "Observaciones", "Cargado Por", "Link DNI"
+      "Observaciones", "Comentario Error", "Cargado Por", "Link DNI"
     ];
 
     const filas = registrosFiltrados.map(reg => [
+      reg.estado || 'pendiente',
       reg.tipoDocumento || 'DNI',
       reg.dni,
       reg.apellidos,
@@ -319,6 +392,7 @@ export default function Home() {
       reg.piso || '',
       reg.dpto || '',
       reg.observaciones || '',
+      reg.comentarioError || '',
       reg.afiliadorNombre || reg.afiliadorEmail || '',
       reg.archivoDni || 'Sin archivo'
     ]);
@@ -401,19 +475,17 @@ export default function Home() {
 
       if (editandoId) {
         await updateDoc(doc(db, 'afiliaciones', editandoId), { ...formData, últimaModificación: serverTimestamp(), ...(urlDni && { archivoDni: urlDni }) });
-        alert('Datos actualizados');
       } else {
         await addDoc(collection(db, 'afiliaciones'), { ...formData, archivoDni: urlDni, afiliadorNombre: (user as any).displayName || '', afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
-        alert('Registro exitoso');
       }
 
       setEditandoId(null);
-      setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
+      setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estado: 'pendiente', comentarioError: '' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
       cambiarTab('registros');
       
     } catch (error) {
-      alert('Error al guardar en la base de datos.');
+      alert('Error de base de datos.');
     } finally {
       setSubiendo(false);
     }
@@ -429,7 +501,9 @@ export default function Home() {
       estadoCivil: reg.estadoCivil || '',
       celular: reg.celular || '',
       mail: reg.mail || '',
-      distrito: reg.distrito || 'Buenos Aires'
+      distrito: reg.distrito || 'Buenos Aires',
+      estado: reg.estado || 'pendiente',
+      comentarioError: reg.comentarioError || ''
     });
     setEditandoId(reg.id);
     cambiarTab('editar');
@@ -437,7 +511,7 @@ export default function Home() {
 
   const prepararNueva = () => {
     setEditandoId(null);
-    setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
+    setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estado: 'pendiente', comentarioError: '' });
     setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
     cambiarTab('nueva');
   }
@@ -446,13 +520,21 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       
       {camaraActiva && (
-        <EscanerDNI 
-          titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : "Escanear Dorso DNI"}
+        <EscanerDocumento 
+          titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : camaraActiva === 'dorso' ? "Escanear Dorso DNI" : "Escanear Ficha Física"}
+          tipo={camaraActiva === 'fichaExtra' ? 'ficha' : 'dni'}
           onClose={() => setCamaraActiva(null)} 
           onCapture={(dataUrl) => {
-            if (camaraActiva === 'frente') setFotoFrenteB64(dataUrl);
-            else setFotoDorsoB64(dataUrl);
-            setCamaraActiva(null);
+            if (camaraActiva === 'frente') {
+              setFotoFrenteB64(dataUrl);
+              setCamaraActiva(null);
+            } else if (camaraActiva === 'dorso') {
+              setFotoDorsoB64(dataUrl);
+              setCamaraActiva(null);
+            } else if (camaraActiva === 'fichaExtra') {
+              adjuntarFichaFisica(dataUrl);
+              setCamaraActiva(null);
+            }
           }} 
         />
       )}
@@ -527,16 +609,36 @@ export default function Home() {
             <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 mb-8 border-b border-gray-100 pb-6">
               <div>
                 <h3 className="text-3xl font-black text-gray-900 leading-tight">{fichaSeleccionada.apellidos}, {fichaSeleccionada.nombres}</h3>
-                <p className="text-gray-500 font-bold tracking-widest uppercase mt-1">{fichaSeleccionada.tipoDocumento || 'DNI'}: {fichaSeleccionada.dni}</p>
+                <p className="text-gray-500 font-bold tracking-widest uppercase mt-1">
+                  {fichaSeleccionada.tipoDocumento || 'DNI'}: {fichaSeleccionada.dni} - ESTADO: <span className="text-purple-900">{(fichaSeleccionada.estado || 'pendiente').toUpperCase()}</span>
+                </p>
+                {fichaSeleccionada.estado === 'error' && (
+                  <p className="text-red-600 font-bold text-xs mt-1 uppercase">Error: {fichaSeleccionada.comentarioError}</p>
+                )}
               </div>
               
               {fichaSeleccionada.archivoDni && (
                 <a href={fichaSeleccionada.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-red-50 text-red-700 border-2 border-red-200 px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-sm hover:bg-red-100 active:scale-95 transition">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                  Ver DNI
+                  Ver Documento
                 </a>
               )}
             </div>
+
+            {isAdmin && (
+              <div className="bg-gray-100 p-4 rounded-xl mb-8 flex flex-col gap-3">
+                <span className="font-black uppercase text-xs text-gray-500">Panel de Control de Ficha</span>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => cambiarEstado(fichaSeleccionada.id, 'subida', '')} className="bg-blue-600 text-white px-4 py-2 rounded font-bold text-xs uppercase tracking-widest hover:bg-blue-700">Subida a JE</button>
+                  <button onClick={() => cambiarEstado(fichaSeleccionada.id, 'aprobada', '')} className="bg-green-600 text-white px-4 py-2 rounded font-bold text-xs uppercase tracking-widest hover:bg-green-700">Aprobada</button>
+                  <button onClick={() => {
+                    const motivo = prompt('Ingrese el motivo del error:');
+                    if (motivo) cambiarEstado(fichaSeleccionada.id, 'error', motivo);
+                  }} className="bg-red-600 text-white px-4 py-2 rounded font-bold text-xs uppercase tracking-widest hover:bg-red-700">Marcar Error</button>
+                  <button onClick={() => setCamaraActiva('fichaExtra')} className="bg-purple-900 text-white px-4 py-2 rounded font-bold text-xs uppercase tracking-widest hover:bg-purple-800">Escanear Ficha Física</button>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
               <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Nacimiento</p><p className="font-bold text-gray-900">{fichaSeleccionada.fechaNacimiento}</p></div>
@@ -770,16 +872,27 @@ export default function Home() {
               </div>
 
               {isAdmin && (
-                <div className="w-full md:w-64">
+                <div className="flex gap-4 w-full md:w-auto">
                   <select 
                     value={filtroAfiliador} 
                     onChange={(e) => setFiltroAfiliador(e.target.value)}
-                    className="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 font-bold text-gray-900 cursor-pointer"
+                    className="flex-1 md:w-48 p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 font-bold text-gray-900 cursor-pointer"
                   >
                     <option value="todas">Todos los afiliadores</option>
                     {usuariosSistema.filter(u => u.rol !== 'pendiente').map(u => (
                       <option key={u.id} value={u.id}>{u.nombre}</option>
                     ))}
+                  </select>
+                  <select 
+                    value={filtroEstado} 
+                    onChange={(e) => setFiltroEstado(e.target.value)}
+                    className="flex-1 md:w-40 p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 font-bold text-gray-900 cursor-pointer"
+                  >
+                    <option value="todas">Todos los Estados</option>
+                    <option value="pendiente">Pendientes</option>
+                    <option value="subida">Subidas a JE</option>
+                    <option value="aprobada">Aprobadas</option>
+                    <option value="error">Con Error</option>
                   </select>
                 </div>
               )}
@@ -811,11 +924,15 @@ export default function Home() {
                 <div 
                   key={reg.id} 
                   onClick={() => { setFichaSeleccionada(reg); cambiarTab('detalle'); }} 
-                  className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-purple-300 hover:bg-purple-50 active:scale-[0.98] transition cursor-pointer"
+                  className={`bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-purple-300 hover:bg-purple-50 active:scale-[0.98] transition cursor-pointer 
+                    ${reg.estado === 'error' ? 'border-l-4 border-l-red-500' : reg.estado === 'subida' ? 'border-l-4 border-l-blue-500' : reg.estado === 'aprobada' ? 'border-l-4 border-l-green-500' : ''}`}
                 >
                   <div>
                     <div className="text-lg font-black text-gray-900 leading-tight">{reg.dni}</div>
                     <div className="text-xs font-bold text-gray-500 uppercase mt-0.5">{reg.apellidos}, {reg.nombres}</div>
+                    <div className={`text-[10px] font-black uppercase mt-1 ${reg.estado === 'aprobada' ? 'text-green-600' : reg.estado === 'subida' ? 'text-blue-600' : reg.estado === 'error' ? 'text-red-600' : 'text-gray-400'}`}>
+                      {reg.estado || 'pendiente'}
+                    </div>
                   </div>
                   <div className="text-gray-400">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
