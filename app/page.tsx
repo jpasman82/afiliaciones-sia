@@ -142,10 +142,12 @@ export default function Home() {
   const [filtroAfiliador, setFiltroAfiliador] = useState('todas');
 
   const [filtroControl, setFiltroControl] = useState('todas');
+  const [filtroControlAfiliador, setFiltroControlAfiliador] = useState('todas');
   const [busquedaControl, setBusquedaControl] = useState('');
-  const [fichaControlId, setFichaControlId] = useState<string | null>(null);
+  const [fichaControlDetalleId, setFichaControlDetalleId] = useState<string | null>(null);
   const [archivoFichaEscaneada, setArchivoFichaEscaneada] = useState<File | null>(null);
   const [textoErrorJE, setTextoErrorJE] = useState('');
+  const [textoSuspension, setTextoSuspension] = useState('');
   const [subiendoControl, setSubiendoControl] = useState(false);
 
   useEffect(() => {
@@ -185,12 +187,21 @@ export default function Home() {
   }, [isAdmin]);
 
   const estadoControlCfg: Record<string, { label: string; cls: string }> = {
-    pendiente:  { label: 'Pendiente',     cls: 'bg-gray-100 text-gray-600 border-gray-200' },
-    firmado:    { label: 'Firmada',       cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-    escaneado:  { label: 'Escaneada',     cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-    cargado_je: { label: 'En JE',         cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-    aprobado:   { label: 'Aprobada',      cls: 'bg-green-100 text-green-700 border-green-200' },
-    error:      { label: 'Con Error',     cls: 'bg-red-50 text-red-700 border-red-200' },
+    pendiente:  { label: 'Pendiente',   cls: 'bg-gray-100 text-gray-600 border-gray-200' },
+    firmado:    { label: 'Firmada',     cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+    escaneado:  { label: 'Escaneada',   cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+    cargado_je: { label: 'En JE',       cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+    aprobado:   { label: 'Aprobada',    cls: 'bg-green-100 text-green-700 border-green-200' },
+    error:      { label: 'Con Error',   cls: 'bg-red-50 text-red-700 border-red-200' },
+    suspendido: { label: 'Suspendido',  cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  };
+
+  const fmtTs = (ts: any): string => {
+    if (!ts) return '';
+    try {
+      const d = ts.toDate ? ts.toDate() : new Date(ts);
+      return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch { return ''; }
   };
 
   const registrosFiltrados = registros.filter((reg) => {
@@ -215,12 +226,15 @@ export default function Home() {
   const registrosControl = isAdmin ? registros.filter((reg) => {
     const estado = reg.estadoControl || 'pendiente';
     if (filtroControl !== 'todas' && estado !== filtroControl) return false;
+    if (filtroControlAfiliador !== 'todas' && reg.afiliadorUid !== filtroControlAfiliador) return false;
     if (busquedaControl.trim()) {
       const b = busquedaControl.toLowerCase();
       return reg.dni?.toLowerCase().includes(b) || reg.nombres?.toLowerCase().includes(b) || reg.apellidos?.toLowerCase().includes(b);
     }
     return true;
   }) : [];
+
+  const fichaControlDetalle = fichaControlDetalleId ? (registros.find(r => r.id === fichaControlDetalleId) || null) : null;
 
   if (loading) return <div className="p-10 text-center font-bold text-gray-900 text-lg">Iniciando SIA...</div>;
 
@@ -480,11 +494,17 @@ export default function Home() {
   const subirFichaEscaneada = async (id: string) => {
     if (!archivoFichaEscaneada) { alert('Seleccioná un archivo primero.'); return; }
     setSubiendoControl(true);
+    const u = user as any;
     try {
       const storageRef = ref(storage, `fichas/${id}-${Date.now()}`);
       await uploadBytes(storageRef, archivoFichaEscaneada);
       const url = await getDownloadURL(storageRef);
-      await actualizarControl(id, 'escaneado', { archivoFicha: url, fechaEscaneado: serverTimestamp() });
+      await actualizarControl(id, 'escaneado', {
+        archivoFicha: url,
+        fechaEscaneado: serverTimestamp(),
+        escaneadoPor: u.displayName || u.email,
+        escaneadoPorUid: u.uid,
+      });
       setArchivoFichaEscaneada(null);
     } catch {
       alert('Error al subir el archivo.');
@@ -533,210 +553,69 @@ export default function Home() {
 
       <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-8 pb-32 md:pb-8">
         
-        {tab === 'control' && isAdmin && (
+        {tab === 'control' && isAdmin && !fichaControlDetalle && (
           <div className="space-y-6">
             <div>
               <h3 className="text-2xl font-black text-gray-900 tracking-tight">Módulo de Control</h3>
               <p className="text-sm text-gray-500 font-medium mt-1">Seguimiento del proceso de afiliación ante la JE</p>
             </div>
 
-            <div className="grid grid-cols-3 md:grid-cols-7 gap-2">
+            <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
               {([
-                { k: 'todas',      label: 'Total',     cls: 'bg-gray-900 text-white border-transparent' },
-                { k: 'pendiente',  label: 'Pendiente', cls: 'bg-gray-100 text-gray-700 border-gray-200' },
-                { k: 'firmado',    label: 'Firmada',   cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-                { k: 'escaneado',  label: 'Escaneada', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-                { k: 'cargado_je', label: 'En JE',     cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-                { k: 'aprobado',   label: 'Aprobada',  cls: 'bg-green-100 text-green-700 border-green-200' },
-                { k: 'error',      label: 'Con Error', cls: 'bg-red-50 text-red-700 border-red-200' },
+                { k: 'todas',      label: 'Total',      cls: 'bg-gray-900 text-white' },
+                { k: 'pendiente',  label: 'Pendiente',  cls: 'bg-gray-100 text-gray-700' },
+                { k: 'firmado',    label: 'Firmada',    cls: 'bg-blue-50 text-blue-700' },
+                { k: 'escaneado',  label: 'Escaneada',  cls: 'bg-indigo-50 text-indigo-700' },
+                { k: 'cargado_je', label: 'En JE',      cls: 'bg-amber-50 text-amber-700' },
+                { k: 'aprobado',   label: 'Aprobada',   cls: 'bg-green-100 text-green-700' },
+                { k: 'error',      label: 'Con Error',  cls: 'bg-red-50 text-red-700' },
+                { k: 'suspendido', label: 'Suspendido', cls: 'bg-orange-50 text-orange-700' },
               ] as { k: string; label: string; cls: string }[]).map(({ k, label, cls }) => (
-                <button
-                  key={k}
-                  onClick={() => setFiltroControl(k)}
-                  className={`p-3 rounded-xl border-2 text-center transition ${cls} ${filtroControl === k ? 'border-current ring-2 ring-offset-1 ring-current' : 'border-transparent'}`}
-                >
-                  <div className="text-xl font-black">
-                    {k === 'todas' ? registros.length : registros.filter(r => (r.estadoControl || 'pendiente') === k).length}
-                  </div>
-                  <div className="text-[9px] font-black uppercase tracking-widest mt-1 leading-tight">{label}</div>
+                <button key={k} onClick={() => setFiltroControl(k)}
+                  className={`p-2 rounded-xl text-center transition ${cls} ${filtroControl === k ? 'ring-2 ring-current ring-offset-1' : 'opacity-70 hover:opacity-100'}`}>
+                  <div className="text-lg font-black">{k === 'todas' ? registros.length : registros.filter(r => (r.estadoControl || 'pendiente') === k).length}</div>
+                  <div className="text-[9px] font-black uppercase tracking-widest mt-0.5 leading-tight">{label}</div>
                 </button>
               ))}
             </div>
 
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex-1 relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+                </div>
+                <input type="text" placeholder="Buscar por DNI, Nombre o Apellido..." value={busquedaControl}
+                  onChange={(e) => setBusquedaControl(e.target.value)}
+                  className="w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 focus:ring-1 focus:ring-purple-900 font-medium text-gray-900" />
               </div>
-              <input
-                type="text"
-                placeholder="Buscar por DNI, Nombre o Apellido..."
-                value={busquedaControl}
-                onChange={(e) => setBusquedaControl(e.target.value)}
-                className="w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 focus:ring-1 focus:ring-purple-900 font-medium text-gray-900"
-              />
+              <div className="w-full md:w-64">
+                <select value={filtroControlAfiliador} onChange={(e) => setFiltroControlAfiliador(e.target.value)}
+                  className="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 font-bold text-gray-900 cursor-pointer">
+                  <option value="todas">Todos los afiliadores</option>
+                  {usuariosSistema.filter(u => u.rol !== 'pendiente').map(u => (
+                    <option key={u.id} value={u.id}>{u.nombre}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-bold text-gray-500">{registrosControl.length} resultado{registrosControl.length !== 1 ? 's' : ''}</span>
-            </div>
+            <span className="text-sm font-bold text-gray-500">{registrosControl.length} resultado{registrosControl.length !== 1 ? 's' : ''}</span>
 
             <div className="space-y-2">
               {registrosControl.map((reg) => {
                 const estado = reg.estadoControl || 'pendiente';
                 const cfg = estadoControlCfg[estado] || estadoControlCfg.pendiente;
-                const isOpen = fichaControlId === reg.id;
                 return (
-                  <div key={reg.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                    <div
-                      onClick={() => {
-                        if (fichaControlId === reg.id) { setFichaControlId(null); }
-                        else { setFichaControlId(reg.id); setArchivoFichaEscaneada(null); setTextoErrorJE(reg.errorJE || ''); }
-                      }}
-                      className="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 transition select-none"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="font-black text-gray-900 truncate">{reg.apellidos}, {reg.nombres}</div>
-                        <div className="text-sm text-gray-500 font-medium">{reg.tipoDocumento || 'DNI'} {reg.dni} · {reg.localidad}</div>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className={`px-3 py-1 rounded-full text-xs font-black tracking-wide border ${cfg.cls}`}>{cfg.label}</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-90' : ''}`}><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-                      </div>
+                  <div key={reg.id} onClick={() => { setFichaControlDetalleId(reg.id); setArchivoFichaEscaneada(null); setTextoErrorJE(reg.errorJE || ''); setTextoSuspension(''); }}
+                    className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4 hover:border-purple-300 hover:bg-purple-50 active:scale-[0.99] transition cursor-pointer">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-black text-gray-900 truncate">{reg.apellidos}, {reg.nombres}</div>
+                      <div className="text-sm text-gray-500 font-medium">{reg.tipoDocumento || 'DNI'} {reg.dni} · {reg.localidad} · <span className="text-gray-400">{reg.afiliadorNombre || reg.afiliadorEmail}</span></div>
                     </div>
-
-                    {isOpen && (
-                      <div className="border-t border-gray-100 bg-gray-50 p-5 space-y-4">
-                        <p className="text-xs text-gray-500 font-medium">Cargado por: <span className="font-bold text-gray-700">{reg.afiliadorNombre || reg.afiliadorEmail}</span></p>
-
-                        {estado === 'pendiente' && (
-                          <button
-                            onClick={() => actualizarControl(reg.id, 'firmado', { fechaFirma: serverTimestamp() })}
-                            className="w-full py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition uppercase tracking-wide text-sm"
-                          >
-                            Marcar como Firmada
-                          </button>
-                        )}
-
-                        {estado === 'firmado' && (
-                          <div className="space-y-3">
-                            <p className="text-sm font-bold text-gray-700">Subir ficha firmada escaneada:</p>
-                            <label className="block cursor-pointer">
-                              <div className={`w-full p-4 border-2 border-dashed rounded-xl text-center transition ${archivoFichaEscaneada ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-white hover:bg-gray-50'}`}>
-                                {archivoFichaEscaneada
-                                  ? <span className="font-bold text-green-700 text-sm">{archivoFichaEscaneada.name}</span>
-                                  : <span className="text-gray-500 text-sm font-medium">Seleccionar archivo (PDF o imagen)...</span>
-                                }
-                                <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => setArchivoFichaEscaneada(e.target.files?.[0] || null)} />
-                              </div>
-                            </label>
-                            <button
-                              onClick={() => subirFichaEscaneada(reg.id)}
-                              disabled={subiendoControl || !archivoFichaEscaneada}
-                              className="w-full py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition uppercase tracking-wide text-sm"
-                            >
-                              {subiendoControl ? 'Subiendo...' : 'Subir y Marcar como Escaneada'}
-                            </button>
-                          </div>
-                        )}
-
-                        {estado === 'escaneado' && (
-                          <div className="space-y-3">
-                            {reg.archivoFicha && (
-                              <a href={reg.archivoFicha} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-indigo-700 font-bold text-sm hover:underline">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                                Ver ficha escaneada
-                              </a>
-                            )}
-                            <button
-                              onClick={() => actualizarControl(reg.id, 'cargado_je', { fechaCargadoJE: serverTimestamp() })}
-                              className="w-full py-3 bg-amber-500 text-white font-black rounded-xl hover:bg-amber-600 transition uppercase tracking-wide text-sm"
-                            >
-                              Marcar como Cargada en JE
-                            </button>
-                          </div>
-                        )}
-
-                        {estado === 'cargado_je' && (
-                          <div className="space-y-4">
-                            {reg.archivoFicha && (
-                              <a href={reg.archivoFicha} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-amber-700 font-bold text-sm hover:underline">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                                Ver ficha escaneada
-                              </a>
-                            )}
-                            <button
-                              onClick={() => actualizarControl(reg.id, 'aprobado', { fechaAprobacion: serverTimestamp() })}
-                              className="w-full py-3 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 transition uppercase tracking-wide text-sm"
-                            >
-                              Marcar como Aprobada por JE
-                            </button>
-                            <div className="space-y-2 pt-2 border-t border-gray-200">
-                              <p className="text-sm font-bold text-gray-700">Registrar error de la JE:</p>
-                              <textarea
-                                placeholder="Describir el error..."
-                                value={textoErrorJE}
-                                onChange={(e) => setTextoErrorJE(e.target.value)}
-                                className="w-full p-3 border border-gray-300 rounded-xl text-sm text-gray-900 font-medium focus:border-red-400 outline-none resize-none"
-                                rows={2}
-                              />
-                              <button
-                                onClick={() => { if (!textoErrorJE.trim()) { alert('Describí el error antes de confirmar.'); return; } actualizarControl(reg.id, 'error', { errorJE: textoErrorJE.trim(), fechaError: serverTimestamp() }); }}
-                                className="w-full py-3 bg-red-600 text-white font-black rounded-xl hover:bg-red-700 transition uppercase tracking-wide text-sm"
-                              >
-                                Registrar Error JE
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {estado === 'aprobado' && (
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-2 text-green-700">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-                              <span className="font-black text-sm">Afiliación aprobada por la JE</span>
-                            </div>
-                            {reg.archivoFicha && (
-                              <a href={reg.archivoFicha} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-green-700 font-bold text-sm hover:underline">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                                Ver ficha escaneada
-                              </a>
-                            )}
-                          </div>
-                        )}
-
-                        {estado === 'error' && (
-                          <div className="space-y-3">
-                            {reg.errorJE && (
-                              <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                                <p className="text-xs font-black text-red-700 uppercase tracking-wide mb-1">Error registrado:</p>
-                                <p className="text-sm text-red-800 font-medium">{reg.errorJE}</p>
-                              </div>
-                            )}
-                            <div className="space-y-2">
-                              <p className="text-sm font-bold text-gray-700">Actualizar descripción del error:</p>
-                              <textarea
-                                value={textoErrorJE}
-                                onChange={(e) => setTextoErrorJE(e.target.value)}
-                                className="w-full p-3 border border-gray-300 rounded-xl text-sm text-gray-900 font-medium focus:border-red-400 outline-none resize-none"
-                                rows={2}
-                              />
-                              <button
-                                onClick={() => { if (!textoErrorJE.trim()) return; actualizarControl(reg.id, 'error', { errorJE: textoErrorJE.trim() }); }}
-                                className="w-full py-2 bg-gray-800 text-white font-black rounded-xl hover:bg-black transition text-sm"
-                              >
-                                Actualizar Error
-                              </button>
-                            </div>
-                            <button
-                              onClick={() => actualizarControl(reg.id, 'cargado_je', {})}
-                              className="w-full py-3 bg-amber-500 text-white font-black rounded-xl hover:bg-amber-600 transition uppercase tracking-wide text-sm"
-                            >
-                              Volver a "En JE" (reintentar)
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className={`px-3 py-1 rounded-full text-xs font-black tracking-wide border ${cfg.cls}`}>{cfg.label}</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                    </div>
                   </div>
                 );
               })}
@@ -746,6 +625,185 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {tab === 'control' && isAdmin && fichaControlDetalle && (() => {
+          const reg = fichaControlDetalle;
+          const estado = reg.estadoControl || 'pendiente';
+          const cfg = estadoControlCfg[estado] || estadoControlCfg.pendiente;
+          const u = user as any;
+          const userInfo = { por: u.displayName || u.email, uid: u.uid };
+          return (
+            <div className="space-y-6">
+              <button onClick={() => setFichaControlDetalleId(null)} className="text-purple-900 font-bold text-sm flex items-center gap-2 hover:underline">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+                Volver al listado
+              </button>
+
+              <div className="bg-white p-6 md:p-8 rounded-2xl shadow-md border border-gray-200">
+                <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 mb-6 pb-6 border-b border-gray-100">
+                  <div>
+                    <h3 className="text-2xl md:text-3xl font-black text-gray-900 leading-tight">{reg.apellidos}, {reg.nombres}</h3>
+                    <p className="text-gray-500 font-bold tracking-widest uppercase mt-1">{reg.tipoDocumento || 'DNI'}: {reg.dni}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className={`px-4 py-2 rounded-full text-sm font-black tracking-wide border-2 ${cfg.cls}`}>{cfg.label}</span>
+                    {reg.archivoDni && (
+                      <a href={reg.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-100 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        Ver DNI
+                      </a>
+                    )}
+                    {reg.archivoFicha && (
+                      <a href={reg.archivoFicha} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-100 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        Ver ficha escaneada
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
+                  <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Nacimiento</p><p className="font-bold text-gray-900">{reg.fechaNacimiento}</p></div>
+                  <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Lugar Nac.</p><p className="font-bold text-gray-900">{reg.lugarNacimiento || '-'}</p></div>
+                  <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Clase</p><p className="font-bold text-gray-900">{reg.clase || '-'}</p></div>
+                  <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Sexo</p><p className="font-bold text-gray-900">{reg.sexo}</p></div>
+                  <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Nacionalidad</p><p className="font-bold text-gray-900">{reg.nacionalidad}</p></div>
+                  <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Profesión</p><p className="font-bold text-gray-900">{reg.profesion || '-'}</p></div>
+                  <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Estado Civil</p><p className="font-bold text-gray-900">{reg.estadoCivil || '-'}</p></div>
+                  <div><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Localidad</p><p className="font-bold text-gray-900">{reg.localidad}</p></div>
+                  <div className="col-span-2"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Celular</p><p className="font-bold text-gray-900">{reg.celular || '-'}</p></div>
+                  <div className="col-span-2"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Email</p><p className="font-bold text-gray-900">{reg.mail || '-'}</p></div>
+                  <div className="col-span-2 md:col-span-4"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Dirección</p><p className="font-bold text-gray-900">{reg.calle} {reg.numero}{reg.piso ? `, Piso ${reg.piso}` : ''}{reg.dpto ? ` Dpto ${reg.dpto}` : ''}, {reg.localidad}</p></div>
+                  {reg.observaciones && <div className="col-span-2 md:col-span-4"><p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Observaciones</p><p className="font-medium text-gray-800 bg-gray-50 p-3 rounded-lg mt-1 border border-gray-100">{reg.observaciones}</p></div>}
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-200">
+                <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm mb-4">Historial</h4>
+                <div className="space-y-3">
+                  {[
+                    { check: true, label: 'Cargado', por: reg.afiliadorNombre || reg.afiliadorEmail, ts: reg.fecha },
+                    { check: !!reg.firmadoPor, label: 'Firmada', por: reg.firmadoPor, ts: reg.fechaFirma },
+                    { check: !!reg.escaneadoPor, label: 'Escaneada', por: reg.escaneadoPor, ts: reg.fechaEscaneado },
+                    { check: !!reg.cargadoJEPor, label: 'Cargada en JE', por: reg.cargadoJEPor, ts: reg.fechaCargadoJE },
+                    { check: !!reg.resueltoJEPor && estado === 'aprobado', label: 'Aprobada por JE', por: reg.resueltoJEPor, ts: reg.fechaAprobacion },
+                    { check: !!reg.resueltoJEPor && estado === 'error', label: 'Error JE', por: reg.resueltoJEPor, ts: reg.fechaError, extra: reg.errorJE },
+                    { check: !!reg.suspendidoPor, label: reg.estadoControl === 'suspendido' ? 'Suspendido/Dado de baja' : 'Suspendido (inactivo)', por: reg.suspendidoPor, ts: reg.fechaSuspension, extra: reg.suspendidoComentario },
+                  ].map((item, i) => item.check ? (
+                    <div key={i} className="flex gap-3 items-start">
+                      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${item.label.includes('Error') || item.label.includes('Suspendido') ? 'bg-red-400' : 'bg-green-500'}`}></div>
+                      <div>
+                        <span className="font-black text-gray-900 text-sm">{item.label}</span>
+                        <span className="text-gray-500 text-sm font-medium"> — {item.por}{item.ts ? ` · ${fmtTs(item.ts)}` : ''}</span>
+                        {item.extra && <p className="text-xs text-gray-500 font-medium mt-0.5 italic">"{item.extra}"</p>}
+                      </div>
+                    </div>
+                  ) : null)}
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-200 space-y-4">
+                <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm">Acciones de Control</h4>
+
+                {estado === 'pendiente' && (
+                  <button onClick={() => actualizarControl(reg.id, 'firmado', { fechaFirma: serverTimestamp(), firmadoPor: userInfo.por, firmadoPorUid: userInfo.uid })}
+                    className="w-full py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition uppercase tracking-wide text-sm">
+                    Marcar como Firmada
+                  </button>
+                )}
+
+                {estado === 'firmado' && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-bold text-gray-700">Subir ficha firmada escaneada:</p>
+                    <label className="block cursor-pointer">
+                      <div className={`w-full p-4 border-2 border-dashed rounded-xl text-center transition ${archivoFichaEscaneada ? 'border-green-400 bg-green-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                        {archivoFichaEscaneada ? <span className="font-bold text-green-700 text-sm">{archivoFichaEscaneada.name}</span> : <span className="text-gray-500 text-sm font-medium">Seleccionar archivo (PDF o imagen)...</span>}
+                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => setArchivoFichaEscaneada(e.target.files?.[0] || null)} />
+                      </div>
+                    </label>
+                    <button onClick={() => subirFichaEscaneada(reg.id)} disabled={subiendoControl || !archivoFichaEscaneada}
+                      className="w-full py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition uppercase tracking-wide text-sm">
+                      {subiendoControl ? 'Subiendo...' : 'Subir y Marcar como Escaneada'}
+                    </button>
+                  </div>
+                )}
+
+                {estado === 'escaneado' && (
+                  <button onClick={() => actualizarControl(reg.id, 'cargado_je', { fechaCargadoJE: serverTimestamp(), cargadoJEPor: userInfo.por, cargadoJEPorUid: userInfo.uid })}
+                    className="w-full py-3 bg-amber-500 text-white font-black rounded-xl hover:bg-amber-600 transition uppercase tracking-wide text-sm">
+                    Marcar como Cargada en JE
+                  </button>
+                )}
+
+                {estado === 'cargado_je' && (
+                  <div className="space-y-4">
+                    <button onClick={() => actualizarControl(reg.id, 'aprobado', { fechaAprobacion: serverTimestamp(), resueltoJEPor: userInfo.por, resueltoJEPorUid: userInfo.uid })}
+                      className="w-full py-3 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 transition uppercase tracking-wide text-sm">
+                      Marcar como Aprobada por JE
+                    </button>
+                    <div className="space-y-2 pt-3 border-t border-gray-200">
+                      <p className="text-sm font-bold text-gray-700">Registrar error de la JE:</p>
+                      <textarea placeholder="Describir el error..." value={textoErrorJE} onChange={(e) => setTextoErrorJE(e.target.value)}
+                        className="w-full p-3 border border-gray-300 rounded-xl text-sm text-gray-900 font-medium focus:border-red-400 outline-none resize-none" rows={2} />
+                      <button onClick={() => { if (!textoErrorJE.trim()) { alert('Describí el error antes de confirmar.'); return; } actualizarControl(reg.id, 'error', { errorJE: textoErrorJE.trim(), fechaError: serverTimestamp(), resueltoJEPor: userInfo.por, resueltoJEPorUid: userInfo.uid }); }}
+                        className="w-full py-3 bg-red-600 text-white font-black rounded-xl hover:bg-red-700 transition uppercase tracking-wide text-sm">
+                        Registrar Error JE
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {estado === 'aprobado' && (
+                  <div className="flex items-center gap-2 text-green-700 p-3 bg-green-50 rounded-xl border border-green-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 shrink-0"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                    <span className="font-black text-sm">Afiliación aprobada por la JE</span>
+                  </div>
+                )}
+
+                {estado === 'error' && (
+                  <div className="space-y-3">
+                    {reg.errorJE && <div className="bg-red-50 border border-red-200 rounded-xl p-3"><p className="text-xs font-black text-red-700 uppercase tracking-wide mb-1">Error registrado:</p><p className="text-sm text-red-800 font-medium">{reg.errorJE}</p></div>}
+                    <div className="space-y-2">
+                      <p className="text-sm font-bold text-gray-700">Actualizar descripción del error:</p>
+                      <textarea value={textoErrorJE} onChange={(e) => setTextoErrorJE(e.target.value)}
+                        className="w-full p-3 border border-gray-300 rounded-xl text-sm text-gray-900 font-medium focus:border-red-400 outline-none resize-none" rows={2} />
+                      <button onClick={() => { if (!textoErrorJE.trim()) return; actualizarControl(reg.id, 'error', { errorJE: textoErrorJE.trim() }); }}
+                        className="w-full py-2 bg-gray-800 text-white font-black rounded-xl hover:bg-black transition text-sm">
+                        Actualizar Error
+                      </button>
+                    </div>
+                    <button onClick={() => actualizarControl(reg.id, 'cargado_je', {})}
+                      className="w-full py-3 bg-amber-500 text-white font-black rounded-xl hover:bg-amber-600 transition uppercase tracking-wide text-sm">
+                      Volver a "En JE" (reintentar)
+                    </button>
+                  </div>
+                )}
+
+                {estado === 'suspendido' && (
+                  <div className="space-y-3">
+                    {reg.suspendidoComentario && <div className="bg-orange-50 border border-orange-200 rounded-xl p-3"><p className="text-xs font-black text-orange-700 uppercase tracking-wide mb-1">Motivo de suspensión:</p><p className="text-sm text-orange-800 font-medium">{reg.suspendidoComentario}</p></div>}
+                    <button onClick={() => actualizarControl(reg.id, reg.estadoAnterior || 'pendiente', { fechaReactivacion: serverTimestamp(), reactivadoPor: userInfo.por, reactivadoPorUid: userInfo.uid, suspendidoPor: null, fechaSuspension: null, suspendidoComentario: null, estadoAnterior: null })}
+                      className="w-full py-3 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 transition uppercase tracking-wide text-sm">
+                      Reactivar afiliado
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {estado !== 'suspendido' && (
+                <div className="bg-white p-6 rounded-2xl shadow-md border border-orange-200 space-y-3">
+                  <h4 className="font-black text-orange-700 uppercase tracking-widest text-sm">Suspender / Dar de baja</h4>
+                  <textarea placeholder="Motivo (opcional)..." value={textoSuspension} onChange={(e) => setTextoSuspension(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-xl text-sm text-gray-900 font-medium outline-none resize-none focus:border-orange-400" rows={2} />
+                  <button onClick={() => { if (!window.confirm('¿Confirmar suspensión de este afiliado?')) return; actualizarControl(reg.id, 'suspendido', { estadoAnterior: estado, fechaSuspension: serverTimestamp(), suspendidoPor: userInfo.por, suspendidoPorUid: userInfo.uid, suspendidoComentario: textoSuspension.trim() || null }); setTextoSuspension(''); }}
+                    className="w-full py-3 bg-orange-600 text-white font-black rounded-xl hover:bg-orange-700 transition uppercase tracking-wide text-sm">
+                    Suspender / Dar de baja
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {tab === 'usuarios' && isAdmin && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
