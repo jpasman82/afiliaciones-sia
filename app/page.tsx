@@ -134,15 +134,17 @@ export default function Home() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [fichaSeleccionada, setFichaSeleccionada] = useState<any>(null);
   
-  const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
-  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'ficha' | 'fichaExtra'>(null);
+  // ESTADOS APP AFILIADOR (SOLO DNI)
+  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso'>(null);
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
-  const [fotoFichaB64, setFotoFichaB64] = useState<string | null>(null);
-  const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
+  
+  // ESTADOS ADMIN SEDE (SOLO FICHA)
+  const [camaraAdminActiva, setCamaraAdminActiva] = useState<boolean>(false);
+  const [modalAdminReg, setModalAdminReg] = useState<any>(null);
   
   const [subiendo, setSubiendo] = useState(false);
-  const [descargandoZip, setDescargandoZip] = useState(false);
+  const [descargandoZip, setDescargandoZip] = useState<string | null>(null);
   
   const [busqueda, setBusqueda] = useState('');
   const [filtroAfiliador, setFiltroAfiliador] = useState('todas');
@@ -206,16 +208,23 @@ export default function Home() {
     }
   };
 
-  const adjuntarFichaFisica = async (id: string, dni: string, fichaB64: string) => {
+  const handleSubirFichaAdmin = async (fileOrB64: File | string) => {
+    if (!modalAdminReg) return;
     setSubiendo(true);
     try {
-      const res = await fetch(fichaB64);
-      const blob = await res.blob();
-      const ruta = `fichas/${dni}-${Date.now()}.jpg`;
+      let blob: Blob;
+      if (typeof fileOrB64 === 'string') {
+        const res = await fetch(fileOrB64);
+        blob = await res.blob();
+      } else {
+        blob = fileOrB64;
+      }
+      const ruta = `fichas/${modalAdminReg.dni}-${Date.now()}.jpg`;
       const storageRef = ref(storage, ruta);
       await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
       const urlFicha = await getDownloadURL(storageRef);
-      await updateDoc(doc(db, 'afiliaciones', id), { archivoFicha: urlFicha });
+      await updateDoc(doc(db, 'afiliaciones', modalAdminReg.id), { archivoFicha: urlFicha });
+      setModalAdminReg(null);
     } catch (error) {
       alert('Error al subir la ficha.');
     } finally {
@@ -225,8 +234,11 @@ export default function Home() {
 
   const descargarZip = async (tipo: 'dni' | 'ficha') => {
     const conArchivo = registrosFiltrados.filter(r => tipo === 'dni' ? r.archivoDni : r.archivoFicha);
-    if (conArchivo.length === 0) return;
-    setDescargandoZip(true);
+    if (conArchivo.length === 0) {
+      alert(`No hay archivos de ${tipo.toUpperCase()} para descargar.`);
+      return;
+    }
+    setDescargandoZip(tipo);
     const zip = new JSZip();
     const CONCURRENCIA = 10;
     for (let i = 0; i < conArchivo.length; i += CONCURRENCIA) {
@@ -252,7 +264,7 @@ export default function Home() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    setDescargandoZip(false);
+    setDescargandoZip(null);
   };
 
   const exportarCSV = () => {
@@ -313,45 +325,33 @@ export default function Home() {
 
   const guardarFicha = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editandoId && (!fotoFrenteB64 || !fotoDorsoB64)) {
+      alert("Es obligatorio escanear el Frente y Dorso del DNI para cargar una afiliación.");
+      return;
+    }
     setSubiendo(true);
     try {
       let urlDni = '';
-      let urlFicha = '';
       const ts = Date.now();
 
-      if (!editandoId || (fotoFrenteB64 && fotoDorsoB64) || archivoUnico) {
-        if (modoArchivo === 'escaner' && fotoFrenteB64 && fotoDorsoB64) {
-          const blob = await procesarDNIUnicoImagen();
-          const refDni = ref(storage, `dnis/${formData.dni}-${ts}.jpg`);
-          await uploadBytes(refDni, blob, { contentType: 'image/jpeg' });
-          urlDni = await getDownloadURL(refDni);
-        } else if (modoArchivo === 'unico' && archivoUnico) {
-          const refDni = ref(storage, `dnis/${formData.dni}-${ts}`);
-          await uploadBytes(refDni, archivoUnico);
-          urlDni = await getDownloadURL(refDni);
-        }
-      }
-
-      if (fotoFichaB64) {
-        const resF = await fetch(fotoFichaB64);
-        const blobF = await resF.blob();
-        const refFicha = ref(storage, `fichas/${formData.dni}-${ts}.jpg`);
-        await uploadBytes(refFicha, blobF, { contentType: 'image/jpeg' });
-        urlFicha = await getDownloadURL(refFicha);
+      if (!editandoId || (fotoFrenteB64 && fotoDorsoB64)) {
+        const blob = await procesarDNIUnicoImagen();
+        const refDni = ref(storage, `dnis/${formData.dni}-${ts}.jpg`);
+        await uploadBytes(refDni, blob, { contentType: 'image/jpeg' });
+        urlDni = await getDownloadURL(refDni);
       }
 
       if (editandoId) {
         const payload: any = { ...formData, últimaModificación: serverTimestamp() };
         if (urlDni) payload.archivoDni = urlDni;
-        if (urlFicha) payload.archivoFicha = urlFicha;
         await updateDoc(doc(db, 'afiliaciones', editandoId), payload);
       } else {
-        await addDoc(collection(db, 'afiliaciones'), { ...formData, archivoDni: urlDni, archivoFicha: urlFicha, afiliadorNombre: (user as any).displayName || '', afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
+        await addDoc(collection(db, 'afiliaciones'), { ...formData, archivoDni: urlDni, archivoFicha: null, afiliadorNombre: (user as any).displayName || '', afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
       }
 
       setEditandoId(null);
       setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estado: 'pendiente', comentarioError: '', subidoPor: '', aprobadoPor: '' });
-      setFotoFrenteB64(null); setFotoDorsoB64(null); setFotoFichaB64(null); setArchivoUnico(null);
+      setFotoFrenteB64(null); setFotoDorsoB64(null);
       cambiarTab('registros');
     } catch (error) {
       alert('Error de base de datos.');
@@ -383,7 +383,7 @@ export default function Home() {
   const prepararNueva = () => {
     setEditandoId(null);
     setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estado: 'pendiente', comentarioError: '', subidoPor: '', aprobadoPor: '' });
-    setFotoFrenteB64(null); setFotoDorsoB64(null); setFotoFichaB64(null); setArchivoUnico(null);
+    setFotoFrenteB64(null); setFotoDorsoB64(null);
     cambiarTab('nueva');
   };
 
@@ -421,19 +421,60 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-900">
       
+      {/* CAMARA AFILIADORES (CALLE) */}
       {camaraActiva && (
         <EscanerDocumento 
-          titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : camaraActiva === 'dorso' ? "Escanear Dorso DNI" : "Escanear Ficha Física"}
-          tipo={camaraActiva === 'fichaExtra' || camaraActiva === 'ficha' ? 'ficha' : 'dni'}
+          titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : "Escanear Dorso DNI"}
+          tipo="dni"
           onClose={() => setCamaraActiva(null)} 
           onCapture={(dataUrl) => {
             if (camaraActiva === 'frente') setFotoFrenteB64(dataUrl);
             else if (camaraActiva === 'dorso') setFotoDorsoB64(dataUrl);
-            else if (camaraActiva === 'ficha') setFotoFichaB64(dataUrl);
-            else if (camaraActiva === 'fichaExtra' && fichaSeleccionada) adjuntarFichaFisica(fichaSeleccionada.id, fichaSeleccionada.dni, dataUrl);
             setCamaraActiva(null);
           }} 
         />
+      )}
+
+      {/* CAMARA ADMIN (SEDE) */}
+      {camaraAdminActiva && (
+        <EscanerDocumento 
+          titulo="Escanear Ficha Física"
+          tipo="ficha"
+          onClose={() => setCamaraAdminActiva(false)} 
+          onCapture={(dataUrl) => {
+            handleSubirFichaAdmin(dataUrl);
+            setCamaraAdminActiva(false);
+          }} 
+        />
+      )}
+
+      {/* MODAL ADMIN ADJUNTAR FICHA */}
+      {modalAdminReg && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
+            <h3 className="font-black text-xl mb-2 text-center text-purple-950">Adjuntar Ficha Física</h3>
+            <p className="text-xs text-center text-gray-500 mb-6 font-bold">{modalAdminReg.apellidos}, {modalAdminReg.nombres} ({modalAdminReg.dni})</p>
+            
+            <div className="space-y-3">
+              <button onClick={() => setCamaraAdminActiva(true)} className="w-full py-4 bg-purple-900 text-white font-black rounded-xl uppercase tracking-wide hover:bg-purple-800 transition">
+                Escanear con Cámara
+              </button>
+              
+              <label className="w-full py-4 bg-purple-50 text-purple-900 border border-purple-200 font-black rounded-xl flex items-center justify-center cursor-pointer uppercase tracking-wide hover:bg-purple-100 transition">
+                Subir Archivo (PDF/IMG)
+                <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleSubirFichaAdmin(e.target.files[0]);
+                  }
+                }} />
+              </label>
+            </div>
+            
+            <button disabled={subiendo} onClick={() => setModalAdminReg(null)} className="w-full mt-4 py-3 text-red-600 font-bold text-sm text-center disabled:opacity-50">
+              Cancelar
+            </button>
+          </div>
+        </div>
       )}
 
       <header className="bg-white px-6 py-4 sticky top-0 z-40 flex justify-between items-center border-b border-gray-200 shadow-sm">
@@ -446,9 +487,9 @@ export default function Home() {
         </div>
         
         <div className="hidden md:flex items-center gap-2">
-          <button onClick={prepararNueva} className={`px-4 py-2 rounded-lg font-bold text-sm transition ${tab === 'nueva' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Nueva</button>
+          <button onClick={prepararNueva} className={`px-4 py-2 rounded-lg font-bold text-sm transition ${tab === 'nueva' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Cargar App</button>
           <button onClick={() => cambiarTab('registros')} className={`px-4 py-2 rounded-lg font-bold text-sm transition ${tab === 'registros' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Fichas</button>
-          {isAdmin && <button onClick={() => cambiarTab('control')} className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition ${tab === 'control' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}><IconPC /> Panel Control</button>}
+          {isAdmin && <button onClick={() => cambiarTab('control')} className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition ${tab === 'control' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}><IconPC /> Panel Sede</button>}
           {isAdmin && <button onClick={() => cambiarTab('usuarios')} className={`px-4 py-2 rounded-lg font-bold text-sm transition ${tab === 'usuarios' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Usuarios</button>}
           <div className="w-px h-6 bg-gray-300 mx-2"></div>
           <button onClick={logout} className="text-red-600 font-bold hover:bg-red-50 px-4 py-2 rounded-lg transition">Salir</button>
@@ -459,22 +500,23 @@ export default function Home() {
 
       <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-8 pb-32 md:pb-8">
         
+        {/* PANEL SEDE (ADMIN) */}
         {tab === 'control' && isAdmin && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col min-h-[70vh]">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
               <div>
-                <h3 className="text-2xl font-black">Panel de Control de Fichas</h3>
-                <p className="text-xs font-bold text-gray-500 uppercase mt-1">Gestión Centralizada y Auditoría</p>
+                <h3 className="text-2xl font-black">Panel Sede</h3>
+                <p className="text-xs font-bold text-gray-500 uppercase mt-1">Recepción, Auditoría y Envío a JE</p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <button onClick={() => descargarZip('dni')} disabled={descargandoZip === 'dni'} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black disabled:opacity-50 transition hover:bg-blue-700">ZIP DNIs</button>
+                <button onClick={() => descargarZip('ficha')} disabled={descargandoZip === 'ficha'} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-black disabled:opacity-50 transition hover:bg-purple-700">ZIP FICHAS</button>
                 <button onClick={exportarCSV} className="bg-green-600 text-white px-4 py-2 rounded-xl text-xs font-black hover:bg-green-700 transition">EXCEL</button>
-                <button onClick={() => descargarZip('dni')} disabled={descargandoZip} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-black disabled:opacity-50 transition hover:bg-blue-700">ZIP DNIs</button>
-                <button onClick={() => descargarZip('ficha')} disabled={descargandoZip} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-black disabled:opacity-50 transition hover:bg-purple-700">ZIP FICHAS</button>
               </div>
             </div>
 
             <div className="flex gap-4 mb-4">
-              <input placeholder="Buscar..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className="p-2 border rounded outline-none text-sm w-64" />
+              <input placeholder="Buscar DNI o Apellido..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className="p-2 border rounded outline-none text-sm w-64" />
               <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="p-2 border rounded text-sm font-bold w-48">
                 <option value="todas">Todos los Estados</option>
                 <option value="pendiente">Pendientes</option>
@@ -489,8 +531,8 @@ export default function Home() {
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="p-4 font-black text-gray-700">Afiliado</th>
-                    <th className="p-4 font-black text-gray-700">Archivos</th>
-                    <th className="p-4 font-black text-gray-700">Estado Actual</th>
+                    <th className="p-4 font-black text-gray-700">Archivos Separados</th>
+                    <th className="p-4 font-black text-gray-700">Estado JE</th>
                     <th className="p-4 font-black text-gray-700">Auditoría</th>
                     <th className="p-4 font-black text-right text-gray-700">Acción</th>
                   </tr>
@@ -500,26 +542,26 @@ export default function Home() {
                     <tr key={reg.id} className="hover:bg-gray-50">
                       <td className="p-4">
                         <div className="font-bold">{reg.apellidos}, {reg.nombres}</div>
-                        <div className="text-xs text-gray-500">{reg.dni}</div>
+                        <div className="text-xs text-gray-500">DNI: {reg.dni}</div>
                       </td>
                       <td className="p-4 flex gap-2 items-center h-full pt-6">
-                        {reg.archivoDni ? <a href={reg.archivoDni} target="_blank" className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-[10px] font-black hover:bg-blue-200">DNI</a> : <span className="bg-gray-100 text-gray-400 px-2 py-1 rounded text-[10px] font-black">NO DNI</span>}
-                        {reg.archivoFicha ? <a href={reg.archivoFicha} target="_blank" className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-[10px] font-black hover:bg-purple-200">FICHA</a> : <button onClick={() => { setFichaSeleccionada(reg); setCamaraActiva('fichaExtra'); }} className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-[10px] font-black cursor-pointer hover:bg-yellow-200 transition">+ FICHA</button>}
+                        {reg.archivoDni ? <a href={reg.archivoDni} target="_blank" className="bg-blue-100 text-blue-800 px-3 py-1 rounded text-[10px] font-black hover:bg-blue-200 transition">VER DNI</a> : <span className="bg-gray-100 text-gray-400 px-3 py-1 rounded text-[10px] font-black">SIN DNI</span>}
+                        {reg.archivoFicha ? <a href={reg.archivoFicha} target="_blank" className="bg-purple-100 text-purple-800 px-3 py-1 rounded text-[10px] font-black hover:bg-purple-200 transition">VER FICHA JE</a> : <button onClick={() => setModalAdminReg(reg)} className="bg-yellow-300 text-black px-3 py-1 rounded text-[10px] font-black cursor-pointer hover:bg-yellow-400 transition">+ ADJUNTAR FICHA</button>}
                       </td>
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${reg.estado === 'pendiente' ? 'bg-gray-200 text-gray-600' : reg.estado === 'subida' ? 'bg-blue-200 text-blue-900' : reg.estado === 'aprobada' ? 'bg-green-200 text-green-900' : 'bg-red-200 text-red-900'}`}>{reg.estado}</span>
                         {reg.estado === 'error' && <div className="text-[10px] text-red-600 mt-1 max-w-[150px] truncate font-bold" title={reg.comentarioError}>{reg.comentarioError}</div>}
                       </td>
                       <td className="p-4 text-[10px]">
-                        <div><span className="font-bold">Creó:</span> {reg.afiliadorNombre}</div>
-                        {reg.subidoPor && <div><span className="font-bold text-blue-700">Subió:</span> {reg.subidoPor}</div>}
-                        {reg.aprobadoPor && <div><span className="font-bold text-green-700">Aprobó:</span> {reg.aprobadoPor}</div>}
+                        <div><span className="font-bold text-gray-500">Cargó:</span> {reg.afiliadorNombre}</div>
+                        {reg.subidoPor && <div><span className="font-bold text-blue-600">Subió:</span> {reg.subidoPor}</div>}
+                        {reg.aprobadoPor && <div><span className="font-bold text-green-600">Aprobó:</span> {reg.aprobadoPor}</div>}
                       </td>
                       <td className="p-4 text-right space-x-2">
-                        {reg.estado !== 'subida' && reg.estado !== 'aprobada' && <button onClick={() => cambiarEstado(reg.id, 'subida')} className="text-xs bg-blue-600 text-white px-2 py-1 rounded font-bold hover:bg-blue-700 transition">Subir JE</button>}
-                        {reg.estado === 'subida' && <button onClick={() => cambiarEstado(reg.id, 'aprobada')} className="text-xs bg-green-600 text-white px-2 py-1 rounded font-bold hover:bg-green-700 transition">Aprobar</button>}
-                        {reg.estado !== 'aprobada' && <button onClick={() => { const m = prompt("Motivo del error:"); if(m) cambiarEstado(reg.id, 'error', m); }} className="text-xs border border-red-600 text-red-600 px-2 py-1 rounded font-bold hover:bg-red-50 transition">Error</button>}
-                        <button onClick={() => { setFormData({...reg}); setEditandoId(reg.id); cambiarTab('editar'); }} className="text-xs underline text-gray-500 hover:text-gray-900 ml-2">Editar</button>
+                        {reg.estado !== 'subida' && reg.estado !== 'aprobada' && <button onClick={() => cambiarEstado(reg.id, 'subida')} className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded font-bold uppercase hover:bg-blue-700 transition">Subir JE</button>}
+                        {reg.estado === 'subida' && <button onClick={() => cambiarEstado(reg.id, 'aprobada')} className="text-[10px] bg-green-600 text-white px-2 py-1 rounded font-bold uppercase hover:bg-green-700 transition">Aprobar</button>}
+                        {reg.estado !== 'aprobada' && <button onClick={() => { const m = prompt("Motivo del error:"); if(m) cambiarEstado(reg.id, 'error', m); }} className="text-[10px] border border-red-600 text-red-600 px-2 py-1 rounded font-bold uppercase hover:bg-red-50 transition">Error</button>}
+                        <button onClick={() => { setFormData({...reg}); setEditandoId(reg.id); cambiarTab('editar'); }} className="text-xs text-gray-400 hover:text-black underline ml-2">Editar</button>
                       </td>
                     </tr>
                   ))}
@@ -529,6 +571,7 @@ export default function Home() {
           </div>
         )}
 
+        {/* TABLA USUARIOS (ADMIN) */}
         {tab === 'usuarios' && isAdmin && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gray-50"><h3 className="font-black text-xl text-gray-900">Control de Accesos</h3></div>
@@ -565,6 +608,7 @@ export default function Home() {
           </div>
         )}
 
+        {/* DETALLE (AFILIADORES) */}
         {tab === 'detalle' && fichaSeleccionada && !isAdmin && (
           <div className="bg-white p-6 md:p-10 rounded-2xl shadow-md border border-gray-200">
             <button onClick={() => cambiarTab('registros')} className="text-purple-900 mb-6 font-bold text-sm flex items-center gap-2 hover:underline">
@@ -582,191 +626,70 @@ export default function Home() {
           </div>
         )}
 
+        {/* CARGA AFILIADORES (CALLE) */}
         {(tab === 'nueva' || tab === 'editar') && (
           <form onSubmit={guardarFicha} className="space-y-6 bg-white p-6 md:p-10 rounded-2xl shadow-md border border-gray-200">
             <h3 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight border-b border-gray-100 pb-4">
-              {tab === 'editar' ? '✏️ Editando Ficha' : '📝 Nueva Ficha'}
+              {tab === 'editar' ? '✏️ Editando Formulario' : '📝 Carga App (Calle)'}
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Apellidos</label>
-                <input type="text" name="apellidos" value={formData.apellidos} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Nombres</label>
-                <input type="text" name="nombres" value={formData.nombres} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
-              </div>
-              
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Apellidos</label><input type="text" name="apellidos" value={formData.apellidos} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none" required /></div>
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Nombres</label><input type="text" name="nombres" value={formData.nombres} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none" required /></div>
               <div className="flex gap-2">
-                <div className="w-1/3">
-                  <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Tipo</label>
-                  <select name="tipoDocumento" value={formData.tipoDocumento} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-bold focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required>
-                    <option value="DNI">DNI</option>
-                    <option value="LE">LE</option>
-                    <option value="LC">LC</option>
-                  </select>
-                </div>
-                <div className="flex-1">
-                  <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">NRO</label>
-                  <input type="number" inputMode="numeric" pattern="[0-9]*" name="dni" value={formData.dni} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-bold focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
-                </div>
+                <div className="w-1/3"><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Tipo</label><select name="tipoDocumento" value={formData.tipoDocumento} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-bold outline-none" required><option value="DNI">DNI</option><option value="LE">LE</option><option value="LC">LC</option></select></div>
+                <div className="flex-1"><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">NRO</label><input type="number" inputMode="numeric" pattern="[0-9]*" name="dni" value={formData.dni} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-bold outline-none" required /></div>
               </div>
-              
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Sexo</label>
-                <select name="sexo" value={formData.sexo} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required>
-                  <option value="">Seleccionar...</option>
-                  <option value="Masculino">Masculino</option>
-                  <option value="Femenino">Femenino</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Estado Civil</label>
-                <select name="estadoCivil" value={formData.estadoCivil} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required>
-                  <option value="">Seleccionar...</option>
-                  <option value="Soltero/a">Soltero/a</option>
-                  <option value="Casado/a">Casado/a</option>
-                  <option value="Divorciado/a">Divorciado/a</option>
-                  <option value="Viudo/a">Viudo/a</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Fecha Nacimiento</label>
-                <div className="relative flex items-center">
-                  <input type="text" inputMode="numeric" maxLength={10} name="fechaNacimiento" placeholder="DD/MM/AAAA" value={formData.fechaNacimiento} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base pr-12" required />
-                  <div className="absolute right-2 w-10 h-10 flex items-center justify-center bg-purple-100 text-purple-900 rounded-lg hover:bg-purple-200 transition overflow-hidden">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 pointer-events-none"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
-                    <input type="date" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => { const val = e.target.value; if (val) { const [y, m, d] = val.split('-'); setFormData({ ...formData, fechaNacimiento: `${d}/${m}/${y}` }); } }} />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Clase (Año)</label>
-                <input type="text" inputMode="numeric" maxLength={4} name="clase" value={formData.clase} onChange={handleChange} placeholder="Ej: 1985" className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
-              </div>
-
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Lugar de Nacim.</label>
-                <input type="text" name="lugarNacimiento" value={formData.lugarNacimiento} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
-              </div>
-
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Nacionalidad</label>
-                <input type="text" name="nacionalidad" value={formData.nacionalidad} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
-              </div>
-
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Profesión</label>
-                <input type="text" name="profesion" value={formData.profesion} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" required />
-              </div>
-
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Celular</label>
-                <input type="tel" inputMode="numeric" name="celular" value={formData.celular} onChange={handleChange} placeholder="Ej: 1123456789" className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" />
-              </div>
-
-              <div>
-                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Email</label>
-                <input type="email" name="mail" value={formData.mail} onChange={handleChange} placeholder="Ej: correo@gmail.com" className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" />
-              </div>
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Sexo</label><select name="sexo" value={formData.sexo} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium outline-none" required><option value="">Seleccionar...</option><option value="Masculino">Masculino</option><option value="Femenino">Femenino</option></select></div>
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Estado Civil</label><select name="estadoCivil" value={formData.estadoCivil} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium outline-none" required><option value="">Seleccionar...</option><option value="Soltero/a">Soltero/a</option><option value="Casado/a">Casado/a</option><option value="Divorciado/a">Divorciado/a</option><option value="Viudo/a">Viudo/a</option></select></div>
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Fecha Nacimiento</label><div className="relative flex items-center"><input type="text" inputMode="numeric" maxLength={10} name="fechaNacimiento" placeholder="DD/MM/AAAA" value={formData.fechaNacimiento} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium outline-none pr-12" required /><div className="absolute right-2 w-10 h-10 flex items-center justify-center bg-purple-100 text-purple-900 rounded-lg overflow-hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 pointer-events-none"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg><input type="date" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => { const val = e.target.value; if (val) { const [y, m, d] = val.split('-'); setFormData({ ...formData, fechaNacimiento: `${d}/${m}/${y}` }); } }} /></div></div></div>
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Clase (Año)</label><input type="text" inputMode="numeric" maxLength={4} name="clase" value={formData.clase} onChange={handleChange} placeholder="Ej: 1985" className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium outline-none" required /></div>
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Lugar de Nacim.</label><input type="text" name="lugarNacimiento" value={formData.lugarNacimiento} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium outline-none" required /></div>
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Nacionalidad</label><input type="text" name="nacionalidad" value={formData.nacionalidad} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium outline-none" required /></div>
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Profesión</label><input type="text" name="profesion" value={formData.profesion} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium outline-none" required /></div>
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Celular</label><input type="tel" inputMode="numeric" name="celular" value={formData.celular} onChange={handleChange} placeholder="Ej: 1123456789" className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium outline-none" /></div>
+              <div><label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Email</label><input type="email" name="mail" value={formData.mail} onChange={handleChange} placeholder="Ej: correo@gmail.com" className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium outline-none" /></div>
             </div>
 
             <div className="bg-purple-950 p-6 md:p-8 rounded-2xl text-white space-y-6 shadow-md mt-8">
                <h4 className="text-sm md:text-base font-black uppercase tracking-widest border-b border-purple-800 pb-4">Ubicación del Domicilio</h4>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div>
-                   <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Distrito</label>
-                   <input type="text" value="Buenos Aires" readOnly className="w-full p-3 md:p-4 bg-purple-900/50 border border-purple-700 rounded-xl text-white font-bold cursor-not-allowed outline-none text-base" />
-                 </div>
-                 <div>
-                   <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Localidad</label>
-                   <select name="localidad" value={formData.localidad} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" required>
-                     <option value="">Seleccionar...</option>
-                     <option value="Acassuso">Acassuso</option>
-                     <option value="Beccar">Beccar</option>
-                     <option value="Boulogne">Boulogne</option>
-                     <option value="Martínez">Martínez</option>
-                     <option value="San Isidro">San Isidro</option>
-                     <option value="Villa Adelina">Villa Adelina</option>
-                   </select>
-                 </div>
-                 <div className="md:col-span-2">
-                   <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Calle</label>
-                   <input type="text" name="calle" value={formData.calle} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" required />
-                 </div>
+                 <div><label className="block text-xs font-bold text-purple-300 uppercase mb-2">Distrito</label><input type="text" value="Buenos Aires" readOnly className="w-full p-3 md:p-4 bg-purple-900/50 border border-purple-700 rounded-xl font-bold outline-none" /></div>
+                 <div><label className="block text-xs font-bold text-purple-300 uppercase mb-2">Localidad</label><select name="localidad" value={formData.localidad} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none" required><option value="">Seleccionar...</option><option value="Acassuso">Acassuso</option><option value="Beccar">Beccar</option><option value="Boulogne">Boulogne</option><option value="Martínez">Martínez</option><option value="San Isidro">San Isidro</option><option value="Villa Adelina">Villa Adelina</option></select></div>
+                 <div className="md:col-span-2"><label className="block text-xs font-bold text-purple-300 uppercase mb-2">Calle</label><input type="text" name="calle" value={formData.calle} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none" required /></div>
                  <div className="flex gap-4 md:col-span-2">
-                   <div className="flex-1">
-                     <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Número</label>
-                     <input type="number" inputMode="numeric" pattern="[0-9]*" name="numero" value={formData.numero} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" required />
-                   </div>
-                   <div className="w-24">
-                     <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Piso</label>
-                     <input type="text" name="piso" value={formData.piso} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" />
-                   </div>
-                   <div className="w-24">
-                     <label className="block text-xs font-bold text-purple-300 uppercase mb-2">Dpto</label>
-                     <input type="text" name="dpto" value={formData.dpto} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none text-base" />
-                   </div>
+                   <div className="flex-1"><label className="block text-xs font-bold text-purple-300 uppercase mb-2">Número</label><input type="number" inputMode="numeric" pattern="[0-9]*" name="numero" value={formData.numero} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none" required /></div>
+                   <div className="w-24"><label className="block text-xs font-bold text-purple-300 uppercase mb-2">Piso</label><input type="text" name="piso" value={formData.piso} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none" /></div>
+                   <div className="w-24"><label className="block text-xs font-bold text-purple-300 uppercase mb-2">Dpto</label><input type="text" name="dpto" value={formData.dpto} onChange={handleChange} className="w-full p-3 md:p-4 bg-white text-purple-950 border-0 rounded-xl font-bold outline-none" /></div>
                  </div>
                </div>
             </div>
 
             <div>
               <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2 mt-8">Observaciones</label>
-              <textarea name="observaciones" value={formData.observaciones} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition text-base" rows={3}></textarea>
+              <textarea name="observaciones" value={formData.observaciones} onChange={handleChange} className="w-full p-3 md:p-4 bg-gray-50 border border-gray-300 rounded-xl font-medium outline-none" rows={3}></textarea>
             </div>
 
             {!editandoId && (
               <div className="space-y-6 pt-6 border-t border-gray-200 mt-8">
-                <h4 className="text-base font-black text-gray-900 uppercase tracking-wide">Captura de Documentación</h4>
-                
-                <div className="flex bg-gray-100 p-2 rounded-xl max-w-sm mb-4">
-                  <button type="button" onClick={() => setModoArchivo('escaner')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase tracking-wider ${modoArchivo === 'escaner' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Cámara</button>
-                  <button type="button" onClick={() => setModoArchivo('unico')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase tracking-wider ${modoArchivo === 'unico' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Archivo Local</button>
-                </div>
-                
-                {modoArchivo === 'escaner' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
-                      <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoFrenteB64 ? 'FRENTE Listo' : '1. FRENTE DNI'}</span>
-                      <button type="button" onClick={() => setCamaraActiva('frente')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFrenteB64 ? { backgroundImage: `url(${fotoFrenteB64})`, borderColor: '#22c55e' } : {}}>
-                        {!fotoFrenteB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
-                      </button>
-                      {fotoFrenteB64 && <button type="button" onClick={() => setFotoFrenteB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
-                    </div>
+                <h4 className="text-base font-black text-gray-900 uppercase tracking-wide">Captura de DNI (Obligatorio)</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
+                    <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoFrenteB64 ? 'FRENTE Listo' : '1. FRENTE DNI'}</span>
+                    <button type="button" onClick={() => setCamaraActiva('frente')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFrenteB64 ? { backgroundImage: `url(${fotoFrenteB64})`, borderColor: '#22c55e' } : {}}>
+                      {!fotoFrenteB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
+                    </button>
+                    {fotoFrenteB64 && <button type="button" onClick={() => setFotoFrenteB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
+                  </div>
 
-                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
-                      <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoDorsoB64 ? 'DORSO Listo' : '2. DORSO DNI'}</span>
-                      <button type="button" onClick={() => setCamaraActiva('dorso')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoDorsoB64 ? { backgroundImage: `url(${fotoDorsoB64})`, borderColor: '#22c55e' } : {}}>
-                        {!fotoDorsoB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
-                      </button>
-                      {fotoDorsoB64 && <button type="button" onClick={() => setFotoDorsoB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
-                    </div>
-                    
-                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
-                      <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoFichaB64 ? 'FICHA Lista' : '3. FICHA (OPCIONAL)'}</span>
-                      <button type="button" onClick={() => setCamaraActiva('ficha')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFichaB64 ? { backgroundImage: `url(${fotoFichaB64})`, borderColor: '#22c55e' } : {}}>
-                        {!fotoFichaB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>}
-                      </button>
-                      {fotoFichaB64 && <button type="button" onClick={() => setFotoFichaB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
-                    </div>
+                  <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
+                    <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoDorsoB64 ? 'DORSO Listo' : '2. DORSO DNI'}</span>
+                    <button type="button" onClick={() => setCamaraActiva('dorso')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoDorsoB64 ? { backgroundImage: `url(${fotoDorsoB64})`, borderColor: '#22c55e' } : {}}>
+                      {!fotoDorsoB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
+                    </button>
+                    {fotoDorsoB64 && <button type="button" onClick={() => setFotoDorsoB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
                   </div>
-                ) : (
-                  <div className="border-2 border-dashed border-gray-300 rounded-2xl p-8 bg-gray-50 text-center hover:bg-gray-100 transition max-w-xl">
-                     <label className="cursor-pointer block">
-                       <span className="block text-sm font-bold text-gray-900 mb-4 uppercase">{archivoUnico ? 'ARCHIVO CARGADO' : 'SELECCIONAR PDF O IMAGEN'}</span>
-                       <input type="file" accept="image/*,application/pdf" onChange={(e) => setArchivoUnico(e.target.files ? e.target.files[0] : null)} className="hidden" />
-                       <div className={`w-full h-16 rounded-xl flex items-center justify-center border border-gray-300 ${archivoUnico ? 'bg-green-500 border-green-500' : 'bg-white'}`}>
-                         {archivoUnico ? <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg> : <span className="text-gray-500 font-medium text-sm">Examinar en el dispositivo...</span>}
-                       </div>
-                     </label>
-                  </div>
-                )}
+                </div>
               </div>
             )}
 
@@ -776,40 +699,28 @@ export default function Home() {
           </form>
         )}
 
+        {/* LISTADO AFILIADORES (CALLE) */}
         {tab === 'registros' && (
-          <div className="space-y-4">
-            
+          <div className="space-y-4 max-w-4xl mx-auto">
             <div className="flex flex-col md:flex-row gap-4 mb-6 border-b border-gray-200 pb-6">
               <div className="flex-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
-                </div>
-                <input type="text" placeholder="Buscar por DNI, Nombre o Apellido..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className="w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 focus:ring-1 focus:ring-purple-900 font-medium text-gray-900" />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg></div>
+                <input type="text" placeholder="Buscar por DNI o Nombre..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className="w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 focus:ring-1 focus:ring-purple-900 font-medium text-gray-900" />
               </div>
             </div>
 
             <div className="flex justify-between items-end mb-4">
-              <h3 className="text-xl font-black text-gray-900 tracking-tight">Listado Operativo</h3>
-              <div className="bg-purple-100 text-purple-900 px-4 py-2 rounded-lg font-black text-sm border border-purple-200">
-                Resultados: {registrosFiltrados.length}
-              </div>
+              <h3 className="text-xl font-black text-gray-900 tracking-tight">Mis Cargas</h3>
+              <div className="bg-purple-100 text-purple-900 px-4 py-2 rounded-lg font-black text-sm border border-purple-200">Resultados: {registrosFiltrados.length}</div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {registrosFiltrados.map((reg) => (
-                <div 
-                  key={reg.id} 
-                  onClick={() => { if(isAdmin) cambiarTab('control'); else { setFichaSeleccionada(reg); cambiarTab('detalle'); } }} 
-                  className={`bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-purple-300 hover:bg-purple-50 active:scale-[0.98] transition cursor-pointer 
-                    ${reg.estado === 'error' ? 'border-l-4 border-l-red-500' : reg.estado === 'subida' ? 'border-l-4 border-l-blue-500' : reg.estado === 'aprobada' ? 'border-l-4 border-l-green-500' : ''}`}
-                >
+                <div key={reg.id} onClick={() => { setFichaSeleccionada(reg); cambiarTab('detalle'); }} className={`bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-purple-300 hover:bg-purple-50 active:scale-[0.98] transition cursor-pointer ${reg.estado === 'error' ? 'border-l-4 border-l-red-500' : reg.estado === 'subida' ? 'border-l-4 border-l-blue-500' : reg.estado === 'aprobada' ? 'border-l-4 border-l-green-500' : ''}`}>
                   <div>
                     <div className="text-lg font-black text-gray-900 leading-tight">{reg.dni}</div>
                     <div className="text-xs font-bold text-gray-500 uppercase mt-0.5">{reg.apellidos}, {reg.nombres}</div>
-                    <div className="flex gap-1 mt-2">
-                      {reg.archivoDni ? <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[8px] font-black uppercase">DNI</span> : <span className="bg-gray-100 text-gray-400 px-2 py-0.5 rounded text-[8px] font-black uppercase">NO DNI</span>}
-                      {reg.archivoFicha ? <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-[8px] font-black uppercase">FICHA</span> : <span className="bg-gray-100 text-gray-400 px-2 py-0.5 rounded text-[8px] font-black uppercase">NO FICHA</span>}
-                    </div>
+                    <div className={`text-[10px] font-black uppercase mt-1 ${reg.estado === 'aprobada' ? 'text-green-600' : reg.estado === 'subida' ? 'text-blue-600' : reg.estado === 'error' ? 'text-red-600' : 'text-gray-400'}`}>{reg.estado || 'pendiente'}</div>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <div className={`w-3 h-3 rounded-full ${reg.estado === 'pendiente' ? 'bg-gray-300' : reg.estado === 'subida' ? 'bg-blue-500' : reg.estado === 'aprobada' ? 'bg-green-500' : 'bg-red-500'}`} />
@@ -818,19 +729,18 @@ export default function Home() {
                 </div>
               ))}
             </div>
-            {registrosFiltrados.length === 0 && (
-              <p className="py-20 text-center font-bold text-gray-400 text-lg">No se encontraron fichas.</p>
-            )}
+            {registrosFiltrados.length === 0 && <p className="py-20 text-center font-bold text-gray-400 text-lg">No hay fichas cargadas.</p>}
           </div>
         )}
       </main>
 
-      {!camaraActiva && (
+      {/* MENÚ MÓVIL (AFILIADORES) */}
+      {!camaraActiva && !camaraAdminActiva && !modalAdminReg && (
         <div className="md:hidden fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4">
           <nav className="bg-white/80 backdrop-blur-xl border border-gray-200 shadow-xl flex gap-2 p-2 rounded-[2rem] w-full max-w-sm">
-            <button onClick={prepararNueva} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'nueva' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
+            <button onClick={() => { setEditandoId(null); cambiarTab('nueva'); }} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'nueva' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
               <IconNueva />
-              <span className="text-[10px] font-black uppercase tracking-widest mt-1">Nueva</span>
+              <span className="text-[10px] font-black uppercase tracking-widest mt-1">Cargar</span>
             </button>
             <button onClick={() => cambiarTab('registros')} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'registros' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
               <IconFichas />
@@ -839,7 +749,7 @@ export default function Home() {
             {isAdmin && (
               <button onClick={() => cambiarTab('control')} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'control' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
                 <IconPC />
-                <span className="text-[10px] font-black uppercase tracking-widest mt-1">Control</span>
+                <span className="text-[10px] font-black uppercase tracking-widest mt-1">Sede</span>
               </button>
             )}
           </nav>
