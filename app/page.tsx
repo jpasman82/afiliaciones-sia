@@ -148,7 +148,7 @@ export default function Home() {
   const [archivoFichaEscaneada, setArchivoFichaEscaneada] = useState<File | null>(null);
   const [textoErrorJE, setTextoErrorJE] = useState('');
   const [textoSuspension, setTextoSuspension] = useState('');
-  const [accionSuspension, setAccionSuspension] = useState<'suspender' | 'baja' | null>(null);
+  const [accionSuspension, setAccionSuspension] = useState<'suspendido' | 'baja' | null>(null);
   const [subiendoControl, setSubiendoControl] = useState(false);
 
   useEffect(() => {
@@ -683,8 +683,8 @@ export default function Home() {
                     </div>
                     {!esInactivo && (
                       <div className="flex gap-2">
-                        <button onClick={() => { setAccionSuspension(accionSuspension === 'suspender' ? null : 'suspender'); setTextoSuspension(''); }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide border transition ${accionSuspension === 'suspender' ? 'bg-orange-600 text-white border-orange-600' : 'border-orange-300 text-orange-600 hover:bg-orange-50'}`}>
+                        <button onClick={() => { setAccionSuspension(accionSuspension === 'suspendido' ? null : 'suspendido'); setTextoSuspension(''); }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide border transition ${accionSuspension === 'suspendido' ? 'bg-orange-600 text-white border-orange-600' : 'border-orange-300 text-orange-600 hover:bg-orange-50'}`}>
                           Suspender
                         </button>
                         <button onClick={() => { setAccionSuspension(accionSuspension === 'baja' ? null : 'baja'); setTextoSuspension(''); }}
@@ -696,13 +696,13 @@ export default function Home() {
                     {accionSuspension && (
                       <div className="w-full md:w-72 p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
                         <p className="text-xs font-black text-gray-700 uppercase tracking-wide">
-                          {accionSuspension === 'suspender' ? 'Motivo de suspensión (opcional):' : 'Motivo de baja (opcional):'}
+                          {accionSuspension === 'suspendido' ? 'Motivo de suspensión (opcional):' : 'Motivo de baja (opcional):'}
                         </p>
                         <textarea placeholder="Motivo..." value={textoSuspension} onChange={(e) => setTextoSuspension(e.target.value)}
                           className="w-full p-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none resize-none focus:border-gray-400" rows={2} />
                         <div className="flex gap-2">
                           <button onClick={() => confirmarAccionInactivo(accionSuspension)}
-                            className={`flex-1 py-2 text-white font-black rounded-lg text-xs uppercase transition ${accionSuspension === 'suspender' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-800 hover:bg-red-900'}`}>
+                            className={`flex-1 py-2 text-white font-black rounded-lg text-xs uppercase transition ${accionSuspension === 'suspendido' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-800 hover:bg-red-900'}`}>
                             Confirmar
                           </button>
                           <button onClick={() => { setAccionSuspension(null); setTextoSuspension(''); }}
