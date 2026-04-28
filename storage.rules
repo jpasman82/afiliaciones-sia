@@ -2,9 +2,12 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     match /dnis/{fileName} {
-      // Solo usuarios autenticados pueden subir archivos
       allow write: if request.auth != null;
-      // Solo usuarios autenticados pueden leer; no se pueden eliminar archivos desde el cliente
+      allow read: if request.auth != null;
+      allow delete: if false;
+    }
+    match /fichas/{fileName} {
+      allow write: if request.auth != null;
       allow read: if request.auth != null;
       allow delete: if false;
     }

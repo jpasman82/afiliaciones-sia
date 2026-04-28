@@ -148,6 +148,7 @@ export default function Home() {
   const [archivoFichaEscaneada, setArchivoFichaEscaneada] = useState<File | null>(null);
   const [textoErrorJE, setTextoErrorJE] = useState('');
   const [textoSuspension, setTextoSuspension] = useState('');
+  const [accionSuspension, setAccionSuspension] = useState<'suspender' | 'baja' | null>(null);
   const [subiendoControl, setSubiendoControl] = useState(false);
 
   useEffect(() => {
@@ -194,6 +195,7 @@ export default function Home() {
     aprobado:   { label: 'Aprobada',    cls: 'bg-green-100 text-green-700 border-green-200' },
     error:      { label: 'Con Error',   cls: 'bg-red-50 text-red-700 border-red-200' },
     suspendido: { label: 'Suspendido',  cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+    baja:       { label: 'Dado de baja', cls: 'bg-red-100 text-red-800 border-red-300' },
   };
 
   const fmtTs = (ts: any): string => {
@@ -560,7 +562,7 @@ export default function Home() {
               <p className="text-sm text-gray-500 font-medium mt-1">Seguimiento del proceso de afiliación ante la JE</p>
             </div>
 
-            <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+            <div className="grid grid-cols-3 md:grid-cols-9 gap-2">
               {([
                 { k: 'todas',      label: 'Total',      cls: 'bg-gray-900 text-white' },
                 { k: 'pendiente',  label: 'Pendiente',  cls: 'bg-gray-100 text-gray-700' },
@@ -570,6 +572,7 @@ export default function Home() {
                 { k: 'aprobado',   label: 'Aprobada',   cls: 'bg-green-100 text-green-700' },
                 { k: 'error',      label: 'Con Error',  cls: 'bg-red-50 text-red-700' },
                 { k: 'suspendido', label: 'Suspendido', cls: 'bg-orange-50 text-orange-700' },
+                { k: 'baja',       label: 'Baja',       cls: 'bg-red-100 text-red-800' },
               ] as { k: string; label: string; cls: string }[]).map(({ k, label, cls }) => (
                 <button key={k} onClick={() => setFiltroControl(k)}
                   className={`p-2 rounded-xl text-center transition ${cls} ${filtroControl === k ? 'ring-2 ring-current ring-offset-1' : 'opacity-70 hover:opacity-100'}`}>
@@ -632,9 +635,26 @@ export default function Home() {
           const cfg = estadoControlCfg[estado] || estadoControlCfg.pendiente;
           const u = user as any;
           const userInfo = { por: u.displayName || u.email, uid: u.uid };
+          const esInactivo = estado === 'suspendido' || estado === 'baja';
+
+          const confirmarAccionInactivo = (nuevoEstado: 'suspendido' | 'baja') => {
+            const label = nuevoEstado === 'suspendido' ? 'suspensión' : 'baja definitiva';
+            if (!window.confirm(`¿Confirmar ${label} de este afiliado?`)) return;
+            const extras: Record<string, any> = {
+              estadoAnterior: estado,
+              fechaSuspension: serverTimestamp(),
+              suspendidoPor: userInfo.por,
+              suspendidoPorUid: userInfo.uid,
+              suspendidoComentario: textoSuspension.trim() || null,
+            };
+            actualizarControl(reg.id, nuevoEstado, extras);
+            setTextoSuspension('');
+            setAccionSuspension(null);
+          };
+
           return (
             <div className="space-y-6">
-              <button onClick={() => setFichaControlDetalleId(null)} className="text-purple-900 font-bold text-sm flex items-center gap-2 hover:underline">
+              <button onClick={() => { setFichaControlDetalleId(null); setAccionSuspension(null); }} className="text-purple-900 font-bold text-sm flex items-center gap-2 hover:underline">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
                 Volver al listado
               </button>
@@ -645,19 +665,52 @@ export default function Home() {
                     <h3 className="text-2xl md:text-3xl font-black text-gray-900 leading-tight">{reg.apellidos}, {reg.nombres}</h3>
                     <p className="text-gray-500 font-bold tracking-widest uppercase mt-1">{reg.tipoDocumento || 'DNI'}: {reg.dni}</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className={`px-4 py-2 rounded-full text-sm font-black tracking-wide border-2 ${cfg.cls}`}>{cfg.label}</span>
-                    {reg.archivoDni && (
-                      <a href={reg.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-100 transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                        Ver DNI
-                      </a>
+                  <div className="flex flex-col items-start md:items-end gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`px-4 py-1.5 rounded-full text-sm font-black tracking-wide border-2 ${cfg.cls}`}>{cfg.label}</span>
+                      {reg.archivoDni && (
+                        <a href={reg.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-100 transition">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                          Ver DNI
+                        </a>
+                      )}
+                      {reg.archivoFicha && (
+                        <a href={reg.archivoFicha} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-100 transition">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                          Ver ficha
+                        </a>
+                      )}
+                    </div>
+                    {!esInactivo && (
+                      <div className="flex gap-2">
+                        <button onClick={() => { setAccionSuspension(accionSuspension === 'suspender' ? null : 'suspender'); setTextoSuspension(''); }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide border transition ${accionSuspension === 'suspender' ? 'bg-orange-600 text-white border-orange-600' : 'border-orange-300 text-orange-600 hover:bg-orange-50'}`}>
+                          Suspender
+                        </button>
+                        <button onClick={() => { setAccionSuspension(accionSuspension === 'baja' ? null : 'baja'); setTextoSuspension(''); }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide border transition ${accionSuspension === 'baja' ? 'bg-red-800 text-white border-red-800' : 'border-red-300 text-red-700 hover:bg-red-50'}`}>
+                          Dar de baja
+                        </button>
+                      </div>
                     )}
-                    {reg.archivoFicha && (
-                      <a href={reg.archivoFicha} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-100 transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                        Ver ficha escaneada
-                      </a>
+                    {accionSuspension && (
+                      <div className="w-full md:w-72 p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
+                        <p className="text-xs font-black text-gray-700 uppercase tracking-wide">
+                          {accionSuspension === 'suspender' ? 'Motivo de suspensión (opcional):' : 'Motivo de baja (opcional):'}
+                        </p>
+                        <textarea placeholder="Motivo..." value={textoSuspension} onChange={(e) => setTextoSuspension(e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none resize-none focus:border-gray-400" rows={2} />
+                        <div className="flex gap-2">
+                          <button onClick={() => confirmarAccionInactivo(accionSuspension)}
+                            className={`flex-1 py-2 text-white font-black rounded-lg text-xs uppercase transition ${accionSuspension === 'suspender' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-800 hover:bg-red-900'}`}>
+                            Confirmar
+                          </button>
+                          <button onClick={() => { setAccionSuspension(null); setTextoSuspension(''); }}
+                            className="px-3 py-2 text-gray-600 font-black rounded-lg text-xs uppercase border border-gray-300 hover:bg-gray-100 transition">
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -681,40 +734,45 @@ export default function Home() {
               <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-200">
                 <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm mb-4">Historial</h4>
                 <div className="space-y-3">
-                  {[
-                    { check: true, label: 'Cargado', por: reg.afiliadorNombre || reg.afiliadorEmail, ts: reg.fecha },
-                    { check: !!reg.firmadoPor, label: 'Firmada', por: reg.firmadoPor, ts: reg.fechaFirma },
-                    { check: !!reg.escaneadoPor, label: 'Escaneada', por: reg.escaneadoPor, ts: reg.fechaEscaneado },
-                    { check: !!reg.cargadoJEPor, label: 'Cargada en JE', por: reg.cargadoJEPor, ts: reg.fechaCargadoJE },
-                    { check: !!reg.resueltoJEPor && estado === 'aprobado', label: 'Aprobada por JE', por: reg.resueltoJEPor, ts: reg.fechaAprobacion },
-                    { check: !!reg.resueltoJEPor && estado === 'error', label: 'Error JE', por: reg.resueltoJEPor, ts: reg.fechaError, extra: reg.errorJE },
-                    { check: !!reg.suspendidoPor, label: reg.estadoControl === 'suspendido' ? 'Suspendido/Dado de baja' : 'Suspendido (inactivo)', por: reg.suspendidoPor, ts: reg.fechaSuspension, extra: reg.suspendidoComentario },
-                  ].map((item, i) => item.check ? (
+                  {([
+                    { show: true,                     dot: 'bg-green-500', label: 'Cargado digitalmente',  por: reg.afiliadorNombre || reg.afiliadorEmail, ts: reg.fecha },
+                    { show: !!reg.firmadoPor,          dot: 'bg-green-500', label: 'Ficha firmada recibida', por: reg.firmadoPor,    ts: reg.fechaFirma },
+                    { show: !!reg.escaneadoPor,        dot: 'bg-green-500', label: 'Escaneada y subida',    por: reg.escaneadoPor,  ts: reg.fechaEscaneado },
+                    { show: !!reg.cargadoJEPor,        dot: 'bg-green-500', label: 'Cargada en JE',        por: reg.cargadoJEPor,  ts: reg.fechaCargadoJE },
+                    { show: !!reg.resueltoJEPor && estado === 'aprobado', dot: 'bg-green-500', label: 'Aprobada por JE', por: reg.resueltoJEPor, ts: reg.fechaAprobacion },
+                    { show: !!reg.resueltoJEPor && (estado === 'error' || !!reg.fechaError), dot: 'bg-red-400', label: 'Error JE', por: reg.resueltoJEPor, ts: reg.fechaError, extra: reg.errorJE },
+                    { show: !!reg.reactivadoPor,       dot: 'bg-blue-400', label: 'Reactivado',             por: reg.reactivadoPor, ts: reg.fechaReactivacion },
+                    { show: estado === 'suspendido',   dot: 'bg-orange-400', label: 'Suspendido',           por: reg.suspendidoPor, ts: reg.fechaSuspension, extra: reg.suspendidoComentario },
+                    { show: estado === 'baja',         dot: 'bg-red-700',  label: 'Dado de baja',           por: reg.suspendidoPor, ts: reg.fechaSuspension, extra: reg.suspendidoComentario },
+                  ] as { show: boolean; dot: string; label: string; por?: string; ts?: any; extra?: string }[]).filter(i => i.show).map((item, i) => (
                     <div key={i} className="flex gap-3 items-start">
-                      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${item.label.includes('Error') || item.label.includes('Suspendido') ? 'bg-red-400' : 'bg-green-500'}`}></div>
+                      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${item.dot}`}></div>
                       <div>
                         <span className="font-black text-gray-900 text-sm">{item.label}</span>
-                        <span className="text-gray-500 text-sm font-medium"> — {item.por}{item.ts ? ` · ${fmtTs(item.ts)}` : ''}</span>
+                        {item.por && <span className="text-gray-500 text-sm font-medium"> — {item.por}{item.ts ? ` · ${fmtTs(item.ts)}` : ''}</span>}
                         {item.extra && <p className="text-xs text-gray-500 font-medium mt-0.5 italic">"{item.extra}"</p>}
                       </div>
                     </div>
-                  ) : null)}
+                  ))}
                 </div>
               </div>
 
               <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-200 space-y-4">
-                <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm">Acciones de Control</h4>
+                <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm">Acciones</h4>
 
                 {estado === 'pendiente' && (
-                  <button onClick={() => actualizarControl(reg.id, 'firmado', { fechaFirma: serverTimestamp(), firmadoPor: userInfo.por, firmadoPorUid: userInfo.uid })}
-                    className="w-full py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition uppercase tracking-wide text-sm">
-                    Marcar como Firmada
-                  </button>
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-500 font-medium">La ficha física fue impresa, firmada por el afiliado y el apoderado, y fue recibida en la sede.</p>
+                    <button onClick={() => actualizarControl(reg.id, 'firmado', { fechaFirma: serverTimestamp(), firmadoPor: userInfo.por, firmadoPorUid: userInfo.uid })}
+                      className="w-full py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition uppercase tracking-wide text-sm">
+                      Marcar ficha como recibida y firmada
+                    </button>
+                  </div>
                 )}
 
                 {estado === 'firmado' && (
                   <div className="space-y-3">
-                    <p className="text-sm font-bold text-gray-700">Subir ficha firmada escaneada:</p>
+                    <p className="text-sm text-gray-500 font-medium">Subí el escaneado de la ficha firmada. Una vez subida podrás cargarla en la JE.</p>
                     <label className="block cursor-pointer">
                       <div className={`w-full p-4 border-2 border-dashed rounded-xl text-center transition ${archivoFichaEscaneada ? 'border-green-400 bg-green-50' : 'border-gray-300 hover:bg-gray-50'}`}>
                         {archivoFichaEscaneada ? <span className="font-bold text-green-700 text-sm">{archivoFichaEscaneada.name}</span> : <span className="text-gray-500 text-sm font-medium">Seleccionar archivo (PDF o imagen)...</span>}
@@ -723,16 +781,19 @@ export default function Home() {
                     </label>
                     <button onClick={() => subirFichaEscaneada(reg.id)} disabled={subiendoControl || !archivoFichaEscaneada}
                       className="w-full py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition uppercase tracking-wide text-sm">
-                      {subiendoControl ? 'Subiendo...' : 'Subir y Marcar como Escaneada'}
+                      {subiendoControl ? 'Subiendo...' : 'Subir escaneado'}
                     </button>
                   </div>
                 )}
 
                 {estado === 'escaneado' && (
-                  <button onClick={() => actualizarControl(reg.id, 'cargado_je', { fechaCargadoJE: serverTimestamp(), cargadoJEPor: userInfo.por, cargadoJEPorUid: userInfo.uid })}
-                    className="w-full py-3 bg-amber-500 text-white font-black rounded-xl hover:bg-amber-600 transition uppercase tracking-wide text-sm">
-                    Marcar como Cargada en JE
-                  </button>
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-500 font-medium">La ficha escaneada está disponible. Marcala como cargada una vez que la hayas ingresado en la web de la JE.</p>
+                    <button onClick={() => actualizarControl(reg.id, 'cargado_je', { fechaCargadoJE: serverTimestamp(), cargadoJEPor: userInfo.por, cargadoJEPorUid: userInfo.uid })}
+                      className="w-full py-3 bg-amber-500 text-white font-black rounded-xl hover:bg-amber-600 transition uppercase tracking-wide text-sm">
+                      Marcar como cargada en la JE
+                    </button>
+                  </div>
                 )}
 
                 {estado === 'cargado_je' && (
@@ -743,7 +804,7 @@ export default function Home() {
                     </button>
                     <div className="space-y-2 pt-3 border-t border-gray-200">
                       <p className="text-sm font-bold text-gray-700">Registrar error de la JE:</p>
-                      <textarea placeholder="Describir el error..." value={textoErrorJE} onChange={(e) => setTextoErrorJE(e.target.value)}
+                      <textarea placeholder="Describir el error recibido..." value={textoErrorJE} onChange={(e) => setTextoErrorJE(e.target.value)}
                         className="w-full p-3 border border-gray-300 rounded-xl text-sm text-gray-900 font-medium focus:border-red-400 outline-none resize-none" rows={2} />
                       <button onClick={() => { if (!textoErrorJE.trim()) { alert('Describí el error antes de confirmar.'); return; } actualizarControl(reg.id, 'error', { errorJE: textoErrorJE.trim(), fechaError: serverTimestamp(), resueltoJEPor: userInfo.por, resueltoJEPorUid: userInfo.uid }); }}
                         className="w-full py-3 bg-red-600 text-white font-black rounded-xl hover:bg-red-700 transition uppercase tracking-wide text-sm">
@@ -781,26 +842,26 @@ export default function Home() {
 
                 {estado === 'suspendido' && (
                   <div className="space-y-3">
-                    {reg.suspendidoComentario && <div className="bg-orange-50 border border-orange-200 rounded-xl p-3"><p className="text-xs font-black text-orange-700 uppercase tracking-wide mb-1">Motivo de suspensión:</p><p className="text-sm text-orange-800 font-medium">{reg.suspendidoComentario}</p></div>}
+                    {reg.suspendidoComentario && <div className="bg-orange-50 border border-orange-200 rounded-xl p-3"><p className="text-xs font-black text-orange-700 uppercase tracking-wide mb-1">Motivo:</p><p className="text-sm text-orange-800 font-medium">{reg.suspendidoComentario}</p></div>}
+                    <p className="text-sm text-gray-500 font-medium">El afiliado está suspendido temporalmente. Podés reactivarlo para retomar el proceso.</p>
                     <button onClick={() => actualizarControl(reg.id, reg.estadoAnterior || 'pendiente', { fechaReactivacion: serverTimestamp(), reactivadoPor: userInfo.por, reactivadoPorUid: userInfo.uid, suspendidoPor: null, fechaSuspension: null, suspendidoComentario: null, estadoAnterior: null })}
                       className="w-full py-3 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 transition uppercase tracking-wide text-sm">
                       Reactivar afiliado
                     </button>
                   </div>
                 )}
-              </div>
 
-              {estado !== 'suspendido' && (
-                <div className="bg-white p-6 rounded-2xl shadow-md border border-orange-200 space-y-3">
-                  <h4 className="font-black text-orange-700 uppercase tracking-widest text-sm">Suspender / Dar de baja</h4>
-                  <textarea placeholder="Motivo (opcional)..." value={textoSuspension} onChange={(e) => setTextoSuspension(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-xl text-sm text-gray-900 font-medium outline-none resize-none focus:border-orange-400" rows={2} />
-                  <button onClick={() => { if (!window.confirm('¿Confirmar suspensión de este afiliado?')) return; actualizarControl(reg.id, 'suspendido', { estadoAnterior: estado, fechaSuspension: serverTimestamp(), suspendidoPor: userInfo.por, suspendidoPorUid: userInfo.uid, suspendidoComentario: textoSuspension.trim() || null }); setTextoSuspension(''); }}
-                    className="w-full py-3 bg-orange-600 text-white font-black rounded-xl hover:bg-orange-700 transition uppercase tracking-wide text-sm">
-                    Suspender / Dar de baja
-                  </button>
-                </div>
-              )}
+                {estado === 'baja' && (
+                  <div className="space-y-3">
+                    {reg.suspendidoComentario && <div className="bg-red-50 border border-red-200 rounded-xl p-3"><p className="text-xs font-black text-red-800 uppercase tracking-wide mb-1">Motivo de baja:</p><p className="text-sm text-red-900 font-medium">{reg.suspendidoComentario}</p></div>}
+                    <p className="text-sm text-gray-500 font-medium">El afiliado fue dado de baja. Esta acción es definitiva, pero puede revertirse si fuera necesario.</p>
+                    <button onClick={() => { if (!window.confirm('¿Revertir la baja y reactivar este afiliado?')) return; actualizarControl(reg.id, reg.estadoAnterior || 'pendiente', { fechaReactivacion: serverTimestamp(), reactivadoPor: userInfo.por, reactivadoPorUid: userInfo.uid, suspendidoPor: null, fechaSuspension: null, suspendidoComentario: null, estadoAnterior: null }); }}
+                      className="w-full py-3 bg-gray-700 text-white font-black rounded-xl hover:bg-black transition uppercase tracking-wide text-sm">
+                      Revertir baja
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           );
         })()}
