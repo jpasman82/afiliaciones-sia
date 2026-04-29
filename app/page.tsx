@@ -1026,6 +1026,9 @@ export default function Home() {
                             {isAdmin && u.rol !== 'admin' && u.id !== (user as any).uid && (
                               <button onClick={() => actualizarRol(u.id, 'admin')} className="border-2 border-black text-black text-xs font-black px-4 py-2 rounded-lg hover:bg-gray-100">ADMIN</button>
                             )}
+                            {isAdmin && u.rol !== 'admin' && u.rol !== 'pendiente' && u.id !== (user as any).uid && (
+                              <button onClick={() => { if (window.confirm(`¿Revocar acceso de ${u.nombre || u.email}? Quedará como pendiente.`)) actualizarRol(u.id, 'pendiente'); }} className="border-2 border-red-500 text-red-600 text-xs font-black px-4 py-2 rounded-lg hover:bg-red-50">REVOCAR</button>
+                            )}
                           </div>
                         )}
                       </td>
