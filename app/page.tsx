@@ -258,7 +258,7 @@ export default function Home() {
   }
 
   if (role === 'pendiente') {
-    if (!userData?.perfilCompleto) {
+    if (!(userData as any)?.perfilCompleto) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
           <div className="bg-white p-10 rounded-3xl shadow-xl border border-gray-200 max-w-md w-full">
@@ -331,7 +331,7 @@ export default function Home() {
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
         <div className="bg-white p-10 rounded-3xl shadow-xl border border-gray-200 max-w-md">
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 mb-4">Acceso Pendiente</h2>
-          <p className="text-gray-600 mb-2 font-medium">Hola, <span className="font-black text-gray-900">{userData?.nombre} {userData?.apellido}</span>.</p>
+          <p className="text-gray-600 mb-2 font-medium">Hola, <span className="font-black text-gray-900">{(userData as any)?.nombre} {(userData as any)?.apellido}</span>.</p>
           <p className="text-gray-600 mb-8 leading-relaxed font-medium text-base">Tu perfil está siendo validado. Te notificaremos una vez que puedas cargar fichas.</p>
           <button onClick={logout} className="text-purple-900 font-black uppercase tracking-widest text-sm hover:underline">Cerrar Sesión</button>
         </div>
@@ -534,7 +534,7 @@ export default function Home() {
         await updateDoc(doc(db, 'afiliaciones', editandoId), { ...formData, últimaModificación: serverTimestamp(), ...(urlDni && { archivoDni: urlDni }) });
         alert('Datos actualizados');
       } else {
-        const nombreAfiliador = userData ? `${userData.apellido || ''} ${userData.nombre || ''}`.trim() : ((user as any).displayName || '');
+        const nombreAfiliador = userData ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim() : ((user as any).displayName || '');
         await addDoc(collection(db, 'afiliaciones'), { ...formData, archivoDni: urlDni, afiliadorNombre: nombreAfiliador, afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
         alert('Registro exitoso');
       }
