@@ -1,55 +1,57 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '../firebaseConfig';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 export function useAuth() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState(null);
+  const [userData, setUserData] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubDoc = null;
+
+    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
+      if (unsubDoc) { unsubDoc(); unsubDoc = null; }
+
       if (currentUser) {
         setLoading(true);
         const docRef = doc(db, 'usuarios', currentUser.uid);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          setRole(docSnap.data().rol);
-        } else {
-          const nuevoUsuario = {
-            email: currentUser.email,
-            nombre: currentUser.displayName,
-            rol: 'pendiente',
-            fechaRegistro: new Date()
-          };
-          await setDoc(docRef, nuevoUsuario);
-          setRole('pendiente');
+        let creando = false;
 
-          currentUser.getIdToken().then((idToken) => {
-            fetch('/api/notificar-nuevo-usuario', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}`,
-              },
-              body: JSON.stringify({
-                email: currentUser.email,
-                nombre: currentUser.displayName,
-              }),
+        unsubDoc = onSnapshot(docRef, async (docSnap) => {
+          if (!docSnap.exists() && !creando) {
+            creando = true;
+            await setDoc(docRef, {
+              email: currentUser.email,
+              nombre: '',
+              apellido: '',
+              rol: 'pendiente',
+              perfilCompleto: false,
+              fechaRegistro: new Date()
             });
-          }).catch(() => {});
-        }
-        setUser(currentUser);
-        setLoading(false);
+            // La notificación se envía desde el formulario de perfil tras completar nombre y apellido
+          } else if (docSnap.exists()) {
+            const data = docSnap.data();
+            setRole(data.rol);
+            setUserData(data);
+            setUser(currentUser);
+            setLoading(false);
+          }
+        });
       } else {
         setUser(null);
         setRole(null);
+        setUserData(null);
         setLoading(false);
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubAuth();
+      if (unsubDoc) unsubDoc();
+    };
   }, []);
 
   const loginConGoogle = async () => {
@@ -64,5 +66,11 @@ export function useAuth() {
 
   const logout = () => signOut(auth);
 
-  return { user, loading, role, isAdmin: role === 'admin', loginConGoogle, logout };
+  return {
+    user, loading, role, userData,
+    isAdmin: role === 'admin',
+    isSupervisor: role === 'supervisor',
+    isAdminOrSupervisor: role === 'admin' || role === 'supervisor',
+    loginConGoogle, logout
+  };
 }

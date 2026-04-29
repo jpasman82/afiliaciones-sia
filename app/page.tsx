@@ -114,7 +114,7 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
 
 // --- APLICACIÓN PRINCIPAL ---
 export default function Home() {
-  const { user, loading, role, isAdmin, loginConGoogle, logout } = useAuth();
+  const { user, loading, role, userData, isAdmin, isSupervisor, isAdminOrSupervisor, loginConGoogle, logout } = useAuth();
   
   const [tab, setTab] = useState<'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar'>('registros');
   
@@ -143,6 +143,11 @@ export default function Home() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroAfiliador, setFiltroAfiliador] = useState('todas');
 
+  const [editandoUsuarioId, setEditandoUsuarioId] = useState<string | null>(null);
+  const [formEditUsuario, setFormEditUsuario] = useState({ nombre: '', apellido: '' });
+  const [formPerfil, setFormPerfil] = useState({ nombre: '', apellido: '' });
+  const [guardandoPerfil, setGuardandoPerfil] = useState(false);
+
   useEffect(() => {
     if (typeof window !== "undefined" && !window.history.state) {
       window.history.replaceState({ tab: 'registros' }, '', '');
@@ -167,20 +172,20 @@ export default function Home() {
 
   useEffect(() => {
     if (!user || role === 'pendiente') return;
-    const q = isAdmin 
+    const q = isAdminOrSupervisor
       ? query(collection(db, 'afiliaciones'), orderBy('fecha', 'desc'))
       : query(collection(db, 'afiliaciones'), where('afiliadorUid', '==', (user as any).uid));
     return onSnapshot(q, (snapshot) => setRegistros(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-  }, [user, isAdmin, role]);
+  }, [user, isAdminOrSupervisor, role]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdminOrSupervisor) return;
     const q = query(collection(db, 'usuarios'), orderBy('fechaRegistro', 'desc'));
     return onSnapshot(q, (snapshot) => setUsuariosSistema(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-  }, [isAdmin]);
+  }, [isAdminOrSupervisor]);
 
   const registrosFiltrados = registros.filter((reg) => {
-    if (isAdmin && filtroAfiliador !== 'todas' && reg.afiliadorUid !== filtroAfiliador) {
+    if (isAdminOrSupervisor && filtroAfiliador !== 'todas' && reg.afiliadorUid !== filtroAfiliador) {
       return false;
     }
     
@@ -213,10 +218,80 @@ export default function Home() {
   }
 
   if (role === 'pendiente') {
+    if (!userData?.perfilCompleto) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
+          <div className="bg-white p-10 rounded-3xl shadow-xl border border-gray-200 max-w-md w-full">
+            <img src="/logo.png" alt="SIA Logo" className="w-14 h-14 mb-4 mx-auto object-contain" />
+            <h2 className="text-2xl font-black text-gray-900 mb-1">Completar Perfil</h2>
+            <p className="text-gray-500 text-sm font-medium mb-8">Ingresá tu nombre y apellido para solicitar acceso al sistema.</p>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!user) return;
+                setGuardandoPerfil(true);
+                try {
+                  await updateDoc(doc(db, 'usuarios', (user as any).uid), {
+                    nombre: formPerfil.nombre.trim(),
+                    apellido: formPerfil.apellido.trim(),
+                    perfilCompleto: true
+                  });
+                  (user as any).getIdToken().then((idToken: string) => {
+                    fetch('/api/notificar-nuevo-usuario', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                      body: JSON.stringify({ email: (user as any).email, nombre: `${formPerfil.nombre.trim()} ${formPerfil.apellido.trim()}` }),
+                    });
+                  }).catch(() => {});
+                } catch {
+                  alert('Error al guardar. Intentá de nuevo.');
+                } finally {
+                  setGuardandoPerfil(false);
+                }
+              }}
+              className="space-y-4 text-left"
+            >
+              <div>
+                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Nombre</label>
+                <input
+                  type="text"
+                  required
+                  value={formPerfil.nombre}
+                  onChange={e => setFormPerfil(p => ({ ...p, nombre: e.target.value }))}
+                  placeholder="Tu nombre"
+                  className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-black text-gray-700 uppercase tracking-wide mb-2">Apellido</label>
+                <input
+                  type="text"
+                  required
+                  value={formPerfil.apellido}
+                  onChange={e => setFormPerfil(p => ({ ...p, apellido: e.target.value }))}
+                  placeholder="Tu apellido"
+                  className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 font-medium focus:border-purple-900 focus:ring-1 focus:ring-purple-900 outline-none transition"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={guardandoPerfil}
+                className="w-full py-4 bg-purple-900 text-white font-black rounded-xl uppercase tracking-widest hover:bg-purple-800 transition disabled:opacity-60"
+              >
+                {guardandoPerfil ? 'Guardando...' : 'Solicitar Acceso'}
+              </button>
+            </form>
+            <button onClick={logout} className="mt-5 text-gray-400 font-bold text-xs hover:underline">Cancelar / Cerrar Sesión</button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
         <div className="bg-white p-10 rounded-3xl shadow-xl border border-gray-200 max-w-md">
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 mb-4">Acceso Pendiente</h2>
+          <p className="text-gray-600 mb-2 font-medium">Hola, <span className="font-black text-gray-900">{userData?.nombre} {userData?.apellido}</span>.</p>
           <p className="text-gray-600 mb-8 leading-relaxed font-medium text-base">Tu perfil está siendo validado. Te notificaremos una vez que puedas cargar fichas.</p>
           <button onClick={logout} className="text-purple-900 font-black uppercase tracking-widest text-sm hover:underline">Cerrar Sesión</button>
         </div>
@@ -230,6 +305,19 @@ export default function Home() {
       alert('Permisos actualizados');
     } catch (e) {
       alert('Error de red');
+    }
+  };
+
+  const guardarNombreUsuario = async () => {
+    if (!editandoUsuarioId) return;
+    try {
+      await updateDoc(doc(db, 'usuarios', editandoUsuarioId), {
+        nombre: formEditUsuario.nombre.trim(),
+        apellido: formEditUsuario.apellido.trim()
+      });
+      setEditandoUsuarioId(null);
+    } catch {
+      alert('Error al guardar');
     }
   };
 
@@ -381,7 +469,8 @@ export default function Home() {
         await updateDoc(doc(db, 'afiliaciones', editandoId), { ...formData, últimaModificación: serverTimestamp(), ...(urlDni && { archivoDni: urlDni }) });
         alert('Datos actualizados');
       } else {
-        await addDoc(collection(db, 'afiliaciones'), { ...formData, archivoDni: urlDni, afiliadorNombre: (user as any).displayName || '', afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
+        const nombreAfiliador = userData ? `${userData.apellido || ''} ${userData.nombre || ''}`.trim() : ((user as any).displayName || '');
+        await addDoc(collection(db, 'afiliaciones'), { ...formData, archivoDni: urlDni, afiliadorNombre: nombreAfiliador, afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
         alert('Registro exitoso');
       }
 
@@ -435,14 +524,14 @@ export default function Home() {
           <img src="/logo.png" alt="Logo" className="w-10 h-10 md:w-12 md:h-12 object-contain" />
           <div>
             <h2 className="font-black text-lg md:text-2xl text-purple-950 leading-none">SIA GESTIÓN</h2>
-            <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">{isAdmin ? 'ADMINISTRADOR' : 'AFILIADOR'}</p>
+            <p className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">{isAdmin ? 'ADMINISTRADOR' : isSupervisor ? 'SUPERVISOR' : 'AFILIADOR'}</p>
           </div>
         </div>
         
         <div className="hidden md:flex items-center gap-4">
           <button onClick={prepararNueva} className={`px-4 py-2 rounded-lg font-bold transition ${tab === 'nueva' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Nueva Ficha</button>
           <button onClick={() => cambiarTab('registros')} className={`px-4 py-2 rounded-lg font-bold transition ${tab === 'registros' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Registros</button>
-          {isAdmin && <button onClick={() => cambiarTab('usuarios')} className={`px-4 py-2 rounded-lg font-bold transition ${tab === 'usuarios' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Usuarios</button>}
+          {isAdminOrSupervisor && <button onClick={() => cambiarTab('usuarios')} className={`px-4 py-2 rounded-lg font-bold transition ${tab === 'usuarios' ? 'bg-purple-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Usuarios</button>}
           <div className="w-px h-6 bg-gray-300 mx-2"></div>
           <button onClick={logout} className="text-red-600 font-bold hover:bg-red-50 px-4 py-2 rounded-lg transition">Salir</button>
         </div>
@@ -455,7 +544,7 @@ export default function Home() {
       <main className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-8 pb-32 md:pb-8">
         
         {/* PESTAÑA: USUARIOS */}
-        {tab === 'usuarios' && isAdmin && (
+        {tab === 'usuarios' && isAdminOrSupervisor && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gray-50"><h3 className="font-black text-xl text-gray-900">Control de Accesos</h3></div>
             <div className="overflow-x-auto">
@@ -471,17 +560,62 @@ export default function Home() {
                   {usuariosSistema.map((u) => (
                     <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="p-4">
-                        <div className="font-bold text-gray-900">{u.nombre}</div>
-                        <div className="text-sm text-gray-500">{u.email}</div>
+                        {editandoUsuarioId === u.id ? (
+                          <div className="flex flex-col gap-2">
+                            <input
+                              value={formEditUsuario.nombre}
+                              onChange={e => setFormEditUsuario(p => ({ ...p, nombre: e.target.value }))}
+                              placeholder="Nombre"
+                              className="p-2 border border-gray-300 rounded-lg text-sm font-medium outline-none focus:border-purple-900"
+                            />
+                            <input
+                              value={formEditUsuario.apellido}
+                              onChange={e => setFormEditUsuario(p => ({ ...p, apellido: e.target.value }))}
+                              placeholder="Apellido"
+                              className="p-2 border border-gray-300 rounded-lg text-sm font-medium outline-none focus:border-purple-900"
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="font-bold text-gray-900">
+                              {[u.apellido, u.nombre].filter(Boolean).join(', ') || <span className="text-gray-400 italic font-normal text-sm">Sin nombre</span>}
+                            </div>
+                            <div className="text-sm text-gray-500">{u.email}</div>
+                          </>
+                        )}
                       </td>
                       <td className="p-4">
-                        <span className={`px-3 py-1 rounded-lg text-xs font-black tracking-widest uppercase ${u.rol === 'admin' ? 'bg-purple-900 text-white' : u.rol === 'afiliador' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+                        <span className={`px-3 py-1 rounded-lg text-xs font-black tracking-widest uppercase ${u.rol === 'admin' ? 'bg-purple-900 text-white' : u.rol === 'supervisor' ? 'bg-blue-700 text-white' : u.rol === 'afiliador' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
                           {u.rol}
                         </span>
                       </td>
-                      <td className="p-4 text-right flex justify-end gap-2">
-                        {u.rol !== 'afiliador' && <button onClick={() => actualizarRol(u.id, 'afiliador')} className="bg-black text-white text-xs font-black px-4 py-2 rounded-lg hover:bg-gray-800">AUTORIZAR</button>}
-                        {u.rol !== 'admin' && u.email !== (user as any).email && <button onClick={() => actualizarRol(u.id, 'admin')} className="border-2 border-black text-black text-xs font-black px-4 py-2 rounded-lg hover:bg-gray-100">ADMIN</button>}
+                      <td className="p-4">
+                        {editandoUsuarioId === u.id ? (
+                          <div className="flex justify-end gap-2">
+                            <button onClick={guardarNombreUsuario} className="bg-green-600 text-white text-xs font-black px-4 py-2 rounded-lg hover:bg-green-700">GUARDAR</button>
+                            <button onClick={() => setEditandoUsuarioId(null)} className="bg-gray-200 text-gray-700 text-xs font-black px-4 py-2 rounded-lg hover:bg-gray-300">CANCELAR</button>
+                          </div>
+                        ) : (
+                          <div className="flex justify-end gap-2 flex-wrap">
+                            {(isAdmin || (isSupervisor && u.rol !== 'admin' && u.rol !== 'supervisor')) && (
+                              <button
+                                onClick={() => { setEditandoUsuarioId(u.id); setFormEditUsuario({ nombre: u.nombre || '', apellido: u.apellido || '' }); }}
+                                className="border border-gray-300 text-gray-600 text-xs font-black px-3 py-2 rounded-lg hover:bg-gray-50"
+                              >
+                                EDITAR
+                              </button>
+                            )}
+                            {(isAdmin ? u.rol !== 'afiliador' : u.rol === 'pendiente') && (
+                              <button onClick={() => actualizarRol(u.id, 'afiliador')} className="bg-black text-white text-xs font-black px-4 py-2 rounded-lg hover:bg-gray-800">AUTORIZAR</button>
+                            )}
+                            {isAdmin && u.rol !== 'supervisor' && u.id !== (user as any).uid && (
+                              <button onClick={() => actualizarRol(u.id, 'supervisor')} className="border-2 border-blue-700 text-blue-700 text-xs font-black px-4 py-2 rounded-lg hover:bg-blue-50">SUPERVISOR</button>
+                            )}
+                            {isAdmin && u.rol !== 'admin' && u.id !== (user as any).uid && (
+                              <button onClick={() => actualizarRol(u.id, 'admin')} className="border-2 border-black text-black text-xs font-black px-4 py-2 rounded-lg hover:bg-gray-100">ADMIN</button>
+                            )}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -708,16 +842,16 @@ export default function Home() {
                 />
               </div>
 
-              {isAdmin && (
+              {isAdminOrSupervisor && (
                 <div className="w-full md:w-64">
-                  <select 
-                    value={filtroAfiliador} 
+                  <select
+                    value={filtroAfiliador}
                     onChange={(e) => setFiltroAfiliador(e.target.value)}
                     className="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-purple-900 font-bold text-gray-900 cursor-pointer"
                   >
                     <option value="todas">Todos los afiliadores</option>
                     {usuariosSistema.filter(u => u.rol !== 'pendiente').map(u => (
-                      <option key={u.id} value={u.id}>{u.nombre}</option>
+                      <option key={u.id} value={u.id}>{[u.apellido, u.nombre].filter(Boolean).join(', ') || u.email}</option>
                     ))}
                   </select>
                 </div>
@@ -730,7 +864,7 @@ export default function Home() {
                 <div className="bg-purple-100 text-purple-900 px-4 py-2 rounded-lg font-black text-sm border border-purple-200">
                   Resultados: {registrosFiltrados.length}
                 </div>
-                {isAdmin && (
+                {isAdminOrSupervisor && (
                   <div className="flex items-center gap-2">
                     <button onClick={exportarCSV} className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-lg font-black text-sm border border-green-200 hover:bg-green-100 transition active:scale-95">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
@@ -782,7 +916,7 @@ export default function Home() {
               <span className="text-[10px] font-black uppercase tracking-widest mt-1">Fichas</span>
             </button>
 
-            {isAdmin && (
+            {isAdminOrSupervisor && (
               <button onClick={() => cambiarTab('usuarios')} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-[1.5rem] transition ${tab === 'usuarios' ? 'bg-purple-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}>
                 <IconUsuarios />
                 <span className="text-[10px] font-black uppercase tracking-widest mt-1">Usuarios</span>
