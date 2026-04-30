@@ -113,6 +113,16 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
 export default function Home() {
   const { user, loading, role, userData, isAdmin, isSupervisor, isAdminOrSupervisor, loginConGoogle, logout } = useAuth();
   
+  // --- VIDEO INTRO STATE ---
+  const [mostrarIntro, setMostrarIntro] = useState(true);
+
+  useEffect(() => {
+    // A los 4 segundos, oculta el video de la intro
+    const timer = setTimeout(() => setMostrarIntro(false), 4000);
+    return () => clearTimeout(timer);
+  }, []);
+  // -------------------------
+
   const [tab, setTab] = useState<'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar' | 'control'>('registros');
   
   const [formData, setFormData] = useState({
@@ -242,6 +252,24 @@ export default function Home() {
   }) : [];
 
   const fichaControlDetalle = fichaControlDetalleId ? (registros.find(r => r.id === fichaControlDetalleId) || null) : null;
+
+  // --- BLOQUE QUE MUESTRA EL VIDEO DE INTRO ---
+  if (mostrarIntro) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center overflow-hidden">
+        <video 
+          autoPlay 
+          muted 
+          playsInline 
+          className="w-full h-full object-cover"
+          onEnded={() => setMostrarIntro(false)} 
+        >
+          <source src="/video.mp4" type="video/mp4" />
+        </video>
+      </div>
+    );
+  }
+  // --------------------------------------------
 
   if (loading) return <div className="p-10 text-center font-bold text-gray-900 text-lg">Iniciando SIA...</div>;
 
@@ -824,15 +852,15 @@ export default function Home() {
                 <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm mb-4">Historial</h4>
                 <div className="space-y-3">
                   {([
-                    { show: true,                     dot: 'bg-green-500', label: 'Cargado digitalmente',  por: reg.afiliadorNombre || reg.afiliadorEmail, ts: reg.fecha },
+                    { show: true,                  dot: 'bg-green-500', label: 'Cargado digitalmente',  por: reg.afiliadorNombre || reg.afiliadorEmail, ts: reg.fecha },
                     { show: !!reg.firmadoPor,          dot: 'bg-green-500', label: 'Ficha firmada recibida', por: reg.firmadoPor,    ts: reg.fechaFirma },
                     { show: !!reg.escaneadoPor,        dot: 'bg-green-500', label: 'Escaneada y subida',    por: reg.escaneadoPor,  ts: reg.fechaEscaneado },
                     { show: !!reg.cargadoJEPor,        dot: 'bg-green-500', label: 'Cargada en JE',        por: reg.cargadoJEPor,  ts: reg.fechaCargadoJE },
                     { show: !!reg.resueltoJEPor && estado === 'aprobado', dot: 'bg-green-500', label: 'Aprobada por JE', por: reg.resueltoJEPor, ts: reg.fechaAprobacion },
                     { show: !!reg.resueltoJEPor && (estado === 'error' || !!reg.fechaError), dot: 'bg-red-400', label: 'Error JE', por: reg.resueltoJEPor, ts: reg.fechaError, extra: reg.errorJE },
                     { show: !!reg.reactivadoPor,       dot: 'bg-blue-400', label: 'Reactivado',             por: reg.reactivadoPor, ts: reg.fechaReactivacion },
-                    { show: estado === 'suspendido',   dot: 'bg-orange-400', label: 'Suspendido',           por: reg.suspendidoPor, ts: reg.fechaSuspension, extra: reg.suspendidoComentario },
-                    { show: estado === 'baja',         dot: 'bg-red-700',  label: 'Dado de baja',           por: reg.suspendidoPor, ts: reg.fechaSuspension, extra: reg.suspendidoComentario },
+                    { show: estado === 'suspendido',   dot: 'bg-orange-400', label: 'Suspendido',            por: reg.suspendidoPor, ts: reg.fechaSuspension, extra: reg.suspendidoComentario },
+                    { show: estado === 'baja',         dot: 'bg-red-700',  label: 'Dado de baja',            por: reg.suspendidoPor, ts: reg.fechaSuspension, extra: reg.suspendidoComentario },
                   ] as { show: boolean; dot: string; label: string; por?: string; ts?: any; extra?: string }[]).filter(i => i.show).map((item, i) => (
                     <div key={i} className="flex gap-3 items-start">
                       <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${item.dot}`}></div>
@@ -1230,28 +1258,37 @@ export default function Home() {
 
             {!editandoId && (
               <div className="space-y-6 pt-6 border-t border-gray-200 mt-8">
-                <h4 className="text-base font-black text-gray-900 uppercase tracking-wide">Documentación DNI</h4>
-                <div className="flex bg-gray-100 p-2 rounded-xl max-w-sm">
-                  <button type="button" onClick={() => setModoArchivo('escaner')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase tracking-wider ${modoArchivo === 'escaner' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Escaner</button>
+                <h4 className="text-base font-black text-gray-900 uppercase tracking-wide">Captura de Documentación</h4>
+                
+                <div className="flex bg-gray-100 p-2 rounded-xl max-w-sm mb-4">
+                  <button type="button" onClick={() => setModoArchivo('escaner')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase tracking-wider ${modoArchivo === 'escaner' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Cámara</button>
                   <button type="button" onClick={() => setModoArchivo('unico')} className={`flex-1 py-3 rounded-lg text-sm font-black transition uppercase tracking-wider ${modoArchivo === 'unico' ? 'bg-white shadow-sm text-purple-900' : 'text-gray-500 hover:text-gray-700'}`}>Archivo Local</button>
                 </div>
                 
                 {modoArchivo === 'escaner' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
-                      <span className="block text-sm font-bold text-gray-900 mb-4 uppercase">{fotoFrenteB64 ? 'FRENTE CAPTURADO' : 'TOMAR FRENTE'}</span>
-                      <button type="button" onClick={() => setCamaraActiva('frente')} className={`w-full h-24 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFrenteB64 ? { backgroundImage: `url(${fotoFrenteB64})`, borderColor: '#22c55e' } : {}}>
+                      <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoFrenteB64 ? 'FRENTE Listo' : '1. FRENTE DNI'}</span>
+                      <button type="button" onClick={() => setCamaraActiva('frente')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFrenteB64 ? { backgroundImage: `url(${fotoFrenteB64})`, borderColor: '#22c55e' } : {}}>
                         {!fotoFrenteB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
                       </button>
-                      {fotoFrenteB64 && <button type="button" onClick={() => setFotoFrenteB64(null)} className="text-red-500 text-xs font-bold mt-2 uppercase hover:underline">Borrar</button>}
+                      {fotoFrenteB64 && <button type="button" onClick={() => setFotoFrenteB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
                     </div>
 
                     <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
-                      <span className="block text-sm font-bold text-gray-900 mb-4 uppercase">{fotoDorsoB64 ? 'DORSO CAPTURADO' : 'TOMAR DORSO'}</span>
-                      <button type="button" onClick={() => setCamaraActiva('dorso')} className={`w-full h-24 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoDorsoB64 ? { backgroundImage: `url(${fotoDorsoB64})`, borderColor: '#22c55e' } : {}}>
+                      <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoDorsoB64 ? 'DORSO Listo' : '2. DORSO DNI'}</span>
+                      <button type="button" onClick={() => setCamaraActiva('dorso')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoDorsoB64 ? { backgroundImage: `url(${fotoDorsoB64})`, borderColor: '#22c55e' } : {}}>
                         {!fotoDorsoB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
                       </button>
-                      {fotoDorsoB64 && <button type="button" onClick={() => setFotoDorsoB64(null)} className="text-red-500 text-xs font-bold mt-2 uppercase hover:underline">Borrar</button>}
+                      {fotoDorsoB64 && <button type="button" onClick={() => setFotoDorsoB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
+                    </div>
+                    
+                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
+                      <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoFichaB64 ? 'FICHA Lista' : '3. FICHA (OPCIONAL)'}</span>
+                      <button type="button" onClick={() => setCamaraActiva('ficha')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFichaB64 ? { backgroundImage: `url(${fotoFichaB64})`, borderColor: '#22c55e' } : {}}>
+                        {!fotoFichaB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>}
+                      </button>
+                      {fotoFichaB64 && <button type="button" onClick={() => setFotoFichaB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
                     </div>
                   </div>
                 ) : (
@@ -1274,6 +1311,7 @@ export default function Home() {
           </form>
         )}
 
+        {/* LISTADO AFILIADORES (CALLE) */}
         {tab === 'registros' && (
           <div className="space-y-4">
             
@@ -1308,24 +1346,10 @@ export default function Home() {
               )}
             </div>
 
-            <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4 mb-4">
-              <h3 className="text-xl font-black text-gray-900 tracking-tight">Listado</h3>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="bg-purple-100 text-purple-900 px-4 py-2 rounded-lg font-black text-sm border border-purple-200">
-                  Resultados: {registrosFiltrados.length}
-                </div>
-                {isAdminOrSupervisor && (
-                  <div className="flex items-center gap-2">
-                    <button onClick={exportarCSV} className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-lg font-black text-sm border border-green-200 hover:bg-green-100 transition active:scale-95">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                      Exportar CSV
-                    </button>
-                    <button onClick={descargarZip} disabled={descargandoZip} className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-black text-sm border border-blue-200 hover:bg-blue-100 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                      {descargandoZip ? 'Generando ZIP...' : 'Descargar DNIs (ZIP)'}
-                    </button>
-                  </div>
-                )}
+            <div className="flex justify-between items-end mb-4">
+              <h3 className="text-xl font-black text-gray-900 tracking-tight">Listado Operativo</h3>
+              <div className="bg-purple-100 text-purple-900 px-4 py-2 rounded-lg font-black text-sm border border-purple-200">
+                Resultados: {registrosFiltrados.length}
               </div>
             </div>
             
@@ -1333,15 +1357,21 @@ export default function Home() {
               {registrosFiltrados.map((reg) => (
                 <div 
                   key={reg.id} 
-                  onClick={() => { setFichaSeleccionada(reg); cambiarTab('detalle'); }} 
-                  className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-purple-300 hover:bg-purple-50 active:scale-[0.98] transition cursor-pointer"
+                  onClick={() => { if(isAdmin) cambiarTab('control'); else { setFichaSeleccionada(reg); cambiarTab('detalle'); } }} 
+                  className={`bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-purple-300 hover:bg-purple-50 active:scale-[0.98] transition cursor-pointer 
+                    ${reg.estado === 'error' ? 'border-l-4 border-l-red-500' : reg.estado === 'subida' ? 'border-l-4 border-l-blue-500' : reg.estado === 'aprobada' ? 'border-l-4 border-l-green-500' : ''}`}
                 >
                   <div>
                     <div className="text-lg font-black text-gray-900 leading-tight">{reg.dni}</div>
                     <div className="text-xs font-bold text-gray-500 uppercase mt-0.5">{reg.apellidos}, {reg.nombres}</div>
+                    <div className="flex gap-1 mt-2">
+                      {reg.archivoDni ? <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[8px] font-black uppercase">DNI</span> : <span className="bg-gray-100 text-gray-400 px-2 py-0.5 rounded text-[8px] font-black uppercase">NO DNI</span>}
+                      {reg.archivoFicha ? <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-[8px] font-black uppercase">FICHA</span> : <span className="bg-gray-100 text-gray-400 px-2 py-0.5 rounded text-[8px] font-black uppercase">NO FICHA</span>}
+                    </div>
                   </div>
-                  <div className="text-gray-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className={`w-3 h-3 rounded-full ${reg.estado === 'pendiente' ? 'bg-gray-300' : reg.estado === 'subida' ? 'bg-blue-500' : reg.estado === 'aprobada' ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4 text-gray-300"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
                   </div>
                 </div>
               ))}
