@@ -113,15 +113,12 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
 export default function Home() {
   const { user, loading, role, userData, isAdmin, isSupervisor, isAdminOrSupervisor, loginConGoogle, logout } = useAuth();
   
-  // --- VIDEO INTRO STATE ---
   const [mostrarIntro, setMostrarIntro] = useState(true);
 
   useEffect(() => {
-    // A los 4 segundos, oculta el video de la intro
-    const timer = setTimeout(() => setMostrarIntro(false), 4000);
+    const timer = setTimeout(() => setMostrarIntro(false), 6000);
     return () => clearTimeout(timer);
   }, []);
-  // -------------------------
 
   const [tab, setTab] = useState<'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar' | 'control'>('registros');
   
@@ -140,9 +137,10 @@ export default function Home() {
   const [fichaSeleccionada, setFichaSeleccionada] = useState<any>(null);
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
-  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso'>(null);
+  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'ficha'>(null);
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
+  const [fotoFichaB64, setFotoFichaB64] = useState<string | null>(null);
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
   
   const [subiendo, setSubiendo] = useState(false);
@@ -253,23 +251,23 @@ export default function Home() {
 
   const fichaControlDetalle = fichaControlDetalleId ? (registros.find(r => r.id === fichaControlDetalleId) || null) : null;
 
-  // --- BLOQUE QUE MUESTRA EL VIDEO DE INTRO ---
   if (mostrarIntro) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center overflow-hidden">
+      <div className="fixed inset-0 z-[9999] bg-white flex items-center justify-center overflow-hidden">
         <video 
           autoPlay 
           muted 
           playsInline 
+          preload="auto"
           className="w-full h-full object-cover"
           onEnded={() => setMostrarIntro(false)} 
+          onError={() => setMostrarIntro(false)}
         >
           <source src="/video.mp4" type="video/mp4" />
         </video>
       </div>
     );
   }
-  // --------------------------------------------
 
   if (loading) return <div className="p-10 text-center font-bold text-gray-900 text-lg">Iniciando SIA...</div>;
 
@@ -639,7 +637,7 @@ export default function Home() {
         <EscanerDNI 
           titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : "Escanear Dorso DNI"}
           onClose={() => setCamaraActiva(null)} 
-          onCapture={(dataUrl) => {
+          onCapture={(dataUrl: string) => {
             if (camaraActiva === 'frente') setFotoFrenteB64(dataUrl);
             else setFotoDorsoB64(dataUrl);
             setCamaraActiva(null);
@@ -983,7 +981,6 @@ export default function Home() {
           );
         })()}
 
-        {/* PESTAÑA: USUARIOS */}
         {tab === 'usuarios' && isAdminOrSupervisor && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gray-50"><h3 className="font-black text-xl text-gray-900">Control de Accesos</h3></div>
@@ -1311,7 +1308,6 @@ export default function Home() {
           </form>
         )}
 
-        {/* LISTADO AFILIADORES (CALLE) */}
         {tab === 'registros' && (
           <div className="space-y-4">
             
