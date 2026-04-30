@@ -134,7 +134,7 @@ export default function Home() {
     nacionalidad: '', profesion: '', estadoCivil: '', 
     celular: '', mail: '',
     distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '',
-    localidad: '', observaciones: ''
+    localidad: '', observaciones: '', estadoControl: 'pendiente'
   });
   
   const [registros, setRegistros] = useState<any[]>([]);
@@ -143,14 +143,13 @@ export default function Home() {
   const [fichaSeleccionada, setFichaSeleccionada] = useState<any>(null);
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
-  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'ficha' | 'fichaControl'>(null);
+  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
-  const [fotoFichaB64, setFotoFichaB64] = useState<string | null>(null);
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
   
   const [subiendo, setSubiendo] = useState(false);
-  const [descargandoZip, setDescargandoZip] = useState(false);
+  const [descargandoZip, setDescargandoZip] = useState<string | null>(null);
   
   const [busqueda, setBusqueda] = useState('');
   const [filtroAfiliador, setFiltroAfiliador] = useState('todas');
@@ -164,7 +163,6 @@ export default function Home() {
   const [filtroControlAfiliador, setFiltroControlAfiliador] = useState('todas');
   const [busquedaControl, setBusquedaControl] = useState('');
   const [fichaControlDetalleId, setFichaControlDetalleId] = useState<string | null>(null);
-  const [archivoFichaEscaneada, setArchivoFichaEscaneada] = useState<File | null>(null);
   const [textoErrorJE, setTextoErrorJE] = useState('');
   const [textoSuspension, setTextoSuspension] = useState('');
   const [accionSuspension, setAccionSuspension] = useState<'suspendido' | 'baja' | null>(null);
@@ -413,38 +411,39 @@ export default function Home() {
     }
   };
 
-  const descargarZip = async () => {
-    const conArchivo = registrosFiltrados.filter(r => r.archivoDni);
+  const descargarZip = async (tipo: 'dni' | 'ficha') => {
+    const conArchivo = registrosFiltrados.filter(r => tipo === 'dni' ? r.archivoDni : r.archivoFicha);
     if (conArchivo.length === 0) {
-      alert('No hay archivos DNI para descargar.');
+      alert(`No hay archivos de ${tipo.toUpperCase()} para descargar.`);
       return;
     }
-    setDescargandoZip(true);
+    setDescargandoZip(tipo);
     const zip = new JSZip();
     const CONCURRENCIA = 10;
     for (let i = 0; i < conArchivo.length; i += CONCURRENCIA) {
       const lote = conArchivo.slice(i, i + CONCURRENCIA);
       await Promise.all(lote.map(async (reg) => {
         try {
-          const res = await fetch(reg.archivoDni);
+          const targetUrl = tipo === 'dni' ? reg.archivoDni : reg.archivoFicha;
+          const res = await fetch(targetUrl);
           const blob = await res.blob();
           const ext = blob.type === 'application/pdf' ? 'pdf' : 'jpg';
-          const nombre = `${reg.apellidos}_${reg.nombres}_${reg.dni}.${ext}`.replace(/\s+/g, '_');
+          const sufijo = tipo === 'dni' ? 'DNI' : 'FICHA';
+          const nombre = `${reg.apellidos}_${reg.nombres}_${reg.dni}_${sufijo}.${ext}`.replace(/\s+/g, '_');
           zip.file(nombre, blob);
-        } catch {
-        }
+        } catch {}
       }));
     }
     const contenido = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(contenido);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `DNIs_SIA_${new Date().toLocaleDateString('es-AR').replace(/\//g, '-')}.zip`;
+    link.download = `${tipo === 'dni' ? 'DNIs' : 'Fichas'}_SIA_${new Date().toLocaleDateString('es-AR').replace(/\//g, '-')}.zip`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    setDescargandoZip(false);
+    setDescargandoZip(null);
   };
 
   const exportarCSV = () => {
@@ -454,13 +453,14 @@ export default function Home() {
     }
 
     const cabeceras = [
-      "Tipo Doc", "NRO Documento", "Apellidos", "Nombres", "Sexo", "Clase", 
+      "Estado", "Tipo Doc", "NRO Documento", "Apellidos", "Nombres", "Sexo", "Clase", 
       "Fecha Nacimiento", "Lugar Nacimiento", "Nacionalidad", "Profesión", "Estado Civil",
       "Celular", "Mail", "Distrito", "Localidad", "Calle", "Número", "Piso", "Dpto", 
-      "Observaciones", "Cargado Por", "Link DNI"
+      "Observaciones", "Cargado Por", "Link DNI", "Link Ficha"
     ];
 
     const filas = registrosFiltrados.map(reg => [
+      reg.estadoControl || 'pendiente',
       reg.tipoDocumento || 'DNI',
       reg.dni,
       reg.apellidos,
@@ -482,7 +482,8 @@ export default function Home() {
       reg.dpto || '',
       reg.observaciones || '',
       reg.afiliadorNombre || reg.afiliadorEmail || '',
-      reg.archivoDni || 'Sin archivo'
+      reg.archivoDni || 'Sin archivo',
+      reg.archivoFicha || 'Sin archivo'
     ]);
 
     const contenidoCSV = [
@@ -562,7 +563,13 @@ export default function Home() {
       }
 
       if (editandoId) {
-        await updateDoc(doc(db, 'afiliaciones', editandoId), { ...formData, últimaModificación: serverTimestamp(), ...(urlDni && { archivoDni: urlDni }) });
+        const payload: any = { ...formData, últimaModificación: serverTimestamp(), ...(urlDni && { archivoDni: urlDni }) };
+        const est = (formData as any).estadoControl || 'pendiente';
+        if (isAdmin && ['escaneado', 'cargado_je', 'aprobado', 'error', 'suspendido', 'baja'].includes(est)) {
+          payload.editadoPorAdmin = (user as any).displayName || (user as any).email;
+          payload.fechaEdicionAdmin = serverTimestamp();
+        }
+        await updateDoc(doc(db, 'afiliaciones', editandoId), payload);
         alert('Datos actualizados');
       } else {
         const nombreAfiliador = userData ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim() : ((user as any).displayName || '');
@@ -571,7 +578,7 @@ export default function Home() {
       }
 
       setEditandoId(null);
-      setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
+      setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
       cambiarTab('registros');
       
@@ -592,7 +599,8 @@ export default function Home() {
       estadoCivil: reg.estadoCivil || '',
       celular: reg.celular || '',
       mail: reg.mail || '',
-      distrito: reg.distrito || 'Buenos Aires'
+      distrito: reg.distrito || 'Buenos Aires',
+      estadoControl: reg.estadoControl || 'pendiente'
     });
     setEditandoId(reg.id);
     cambiarTab('editar');
@@ -600,7 +608,7 @@ export default function Home() {
 
   const prepararNueva = () => {
     setEditandoId(null);
-    setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '' });
+    setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
     setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
     cambiarTab('nueva');
   };
@@ -618,14 +626,19 @@ export default function Home() {
     const u = user as any;
     try {
       let blob: Blob;
+      let contentType = 'image/jpeg';
+      let extension = 'jpg';
+
       if (typeof b64OrFile === 'string') {
         blob = await (await fetch(b64OrFile)).blob();
       } else {
         blob = b64OrFile;
       }
-      const storageRef = ref(storage, `fichas/${id}-${Date.now()}.jpg`);
-      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+
+      const storageRef = ref(storage, `fichas/${id}-${Date.now()}.${extension}`);
+      await uploadBytes(storageRef, blob, { contentType });
       const url = await getDownloadURL(storageRef);
+      
       await actualizarControl(id, 'escaneado', {
         archivoFicha: url,
         fechaEscaneado: serverTimestamp(),
@@ -635,7 +648,6 @@ export default function Home() {
         firmadoPor: u.displayName || u.email,
         firmadoPorUid: u.uid
       });
-      setArchivoFichaEscaneada(null);
     } catch (error: any) {
       console.error("Detalle del error:", error);
       alert(`Error al subir: ${error.message || 'Revisá la consola para más detalles.'}`);
@@ -655,8 +667,9 @@ export default function Home() {
           onCapture={(dataUrl) => {
             if (camaraActiva === 'frente') setFotoFrenteB64(dataUrl);
             else if (camaraActiva === 'dorso') setFotoDorsoB64(dataUrl);
-            else if (camaraActiva === 'fichaControl' && fichaControlDetalleId) {
-              subirFichaControlExtra(fichaControlDetalleId, dataUrl);
+            else if (camaraActiva === 'fichaControl') {
+              const targetId = fichaControlDetalleId || (fichaSeleccionada ? fichaSeleccionada.id : null);
+              if(targetId) subirFichaControlExtra(targetId, dataUrl);
             }
             setCamaraActiva(null);
           }} 
@@ -699,6 +712,7 @@ export default function Home() {
               {([
                 { k: 'todas',      label: 'Total',      cls: 'bg-gray-900 text-white' },
                 { k: 'pendiente',  label: 'Pendiente',  cls: 'bg-gray-100 text-gray-700' },
+                { k: 'firmado',    label: 'Firmada',    cls: 'bg-blue-50 text-blue-700' },
                 { k: 'escaneado',  label: 'Escaneada',  cls: 'bg-indigo-50 text-indigo-700' },
                 { k: 'cargado_je', label: 'En JE',      cls: 'bg-amber-50 text-amber-700' },
                 { k: 'aprobado',   label: 'Aprobada',   cls: 'bg-green-100 text-green-700' },
@@ -872,6 +886,7 @@ export default function Home() {
                     { show: !!reg.cargadoJEPor,        dot: 'bg-green-500', label: 'Cargada en JE',        por: reg.cargadoJEPor,  ts: reg.fechaCargadoJE },
                     { show: !!reg.resueltoJEPor && estado === 'aprobado', dot: 'bg-green-500', label: 'Aprobada por JE', por: reg.resueltoJEPor, ts: reg.fechaAprobacion },
                     { show: !!reg.resueltoJEPor && (estado === 'error' || !!reg.fechaError), dot: 'bg-red-400', label: 'Error JE', por: reg.resueltoJEPor, ts: reg.fechaError, extra: reg.errorJE },
+                    { show: !!reg.editadoPorAdmin,     dot: 'bg-purple-500', label: 'Datos editados por Admin', por: reg.editadoPorAdmin, ts: reg.fechaEdicionAdmin },
                     { show: !!reg.reactivadoPor,       dot: 'bg-blue-400', label: 'Reactivado',             por: reg.reactivadoPor, ts: reg.fechaReactivacion },
                     { show: estado === 'suspendido',   dot: 'bg-orange-400', label: 'Suspendido',            por: reg.suspendidoPor, ts: reg.fechaSuspension, extra: reg.suspendidoComentario },
                     { show: estado === 'baja',         dot: 'bg-red-700',  label: 'Dado de baja',            por: reg.suspendidoPor, ts: reg.fechaSuspension, extra: reg.suspendidoComentario },
@@ -889,7 +904,7 @@ export default function Home() {
               </div>
 
               <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-200 space-y-4">
-                <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm">Carga de Ficha</h4>
+                <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm">Acciones</h4>
 
                 {estado === 'pendiente' && (
                   <div className="space-y-3">
@@ -1119,10 +1134,12 @@ export default function Home() {
               )}
             </div>
 
-            <button onClick={() => prepararEdicion(fichaSeleccionada)} className="w-full py-5 bg-purple-100 text-purple-900 border-2 border-purple-200 rounded-2xl font-black uppercase tracking-widest hover:bg-purple-200 transition flex justify-center items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
-              Editar Datos
-            </button>
+            {(!(['escaneado', 'cargado_je', 'aprobado', 'error', 'suspendido', 'baja'].includes(fichaSeleccionada.estadoControl || 'pendiente')) || isAdmin) && (
+              <button onClick={() => prepararEdicion(fichaSeleccionada)} className="w-full py-5 bg-purple-100 text-purple-900 border-2 border-purple-200 rounded-2xl font-black uppercase tracking-widest hover:bg-purple-200 transition flex justify-center items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                Editar Datos
+              </button>
+            )}
           </div>
         )}
 
@@ -1358,9 +1375,9 @@ export default function Home() {
               {registrosFiltrados.map((reg) => (
                 <div 
                   key={reg.id} 
-                  onClick={() => { if(isAdmin) cambiarTab('control'); else { setFichaSeleccionada(reg); cambiarTab('detalle'); } }} 
+                  onClick={() => { setFichaSeleccionada(reg); cambiarTab('detalle'); }} 
                   className={`bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-purple-300 hover:bg-purple-50 active:scale-[0.98] transition cursor-pointer 
-                    ${reg.estado === 'error' ? 'border-l-4 border-l-red-500' : reg.estado === 'subida' ? 'border-l-4 border-l-blue-500' : reg.estado === 'aprobada' ? 'border-l-4 border-l-green-500' : ''}`}
+                    ${reg.estadoControl === 'error' ? 'border-l-4 border-l-red-500' : reg.estadoControl === 'escaneado' ? 'border-l-4 border-l-blue-500' : reg.estadoControl === 'aprobado' ? 'border-l-4 border-l-green-500' : ''}`}
                 >
                   <div>
                     <div className="text-lg font-black text-gray-900 leading-tight">{reg.dni}</div>
@@ -1371,7 +1388,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <div className={`w-3 h-3 rounded-full ${reg.estado === 'pendiente' ? 'bg-gray-300' : reg.estado === 'subida' ? 'bg-blue-500' : reg.estado === 'aprobada' ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <div className={`w-3 h-3 rounded-full ${(!reg.estadoControl || reg.estadoControl === 'pendiente') ? 'bg-gray-300' : reg.estadoControl === 'escaneado' ? 'bg-blue-500' : reg.estadoControl === 'aprobado' ? 'bg-green-500' : 'bg-red-500'}`} />
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4 text-gray-300"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
                   </div>
                 </div>
