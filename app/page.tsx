@@ -11,24 +11,25 @@ const IconFichas = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" vie
 const IconUsuarios = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>;
 const IconControl = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>;
 
-const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCapture: (imgData: string) => void, titulo: string }) => {
+const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClose: () => void, onCapture: (imgData: string) => void, titulo: string, tipo?: 'dni' | 'ficha' }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const marcoRef = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const proporcionMarco = tipo === 'ficha' ? 'aspect-[0.7]' : 'aspect-[1.58]';
 
   useEffect(() => {
     let currentStream: MediaStream;
     const encenderCamara = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+          video: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } }
         });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
         currentStream = stream;
       } catch (err) {
-        alert("No se pudo acceder a la cámara. Verifica los permisos de tu navegador.");
+        alert("No se pudo acceder a la cámara.");
         onClose();
       }
     };
@@ -48,8 +49,8 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
     const scaleX = video.videoWidth / videoRect.width;
     const scaleY = video.videoHeight / videoRect.height;
 
-    const margenX = marcoRect.width * 0.1;
-    const margenY = marcoRect.height * 0.1;
+    const margenX = marcoRect.width * 0.05;
+    const margenY = marcoRect.height * 0.05;
 
     const sx = Math.max(0, (marcoRect.left - videoRect.left - margenX) * scaleX);
     const sy = Math.max(0, (marcoRect.top - videoRect.top - margenY) * scaleY);
@@ -60,6 +61,9 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
     canvas.height = sHeight;
     const ctx = canvas.getContext('2d');
     if (ctx) {
+      if (tipo === 'ficha') {
+        ctx.filter = 'contrast(1.5) grayscale(100%)';
+      }
       ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
       setPreview(dataUrl);
@@ -76,12 +80,14 @@ const EscanerDNI = ({ onClose, onCapture, titulo }: { onClose: () => void, onCap
       <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${preview ? 'hidden' : ''}`}>
         <video ref={videoRef} autoPlay playsInline className="absolute w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black/40 pointer-events-none"></div>
-        <div ref={marcoRef} className="relative w-[85%] aspect-[1.58] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none">
+        <div ref={marcoRef} className={`relative w-[85%] ${proporcionMarco} border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none`}>
           <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400"></div>
           <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400"></div>
           <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400"></div>
           <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400"></div>
-          <p className="absolute inset-0 flex items-center justify-center text-white/50 font-bold text-lg uppercase tracking-widest text-center">Alinee el DNI<br/>y tome la foto</p>
+          <p className="absolute inset-0 flex items-center justify-center text-white/50 font-bold text-lg uppercase tracking-widest text-center">
+            {tipo === 'ficha' ? 'Alinee la ficha' : 'Alinee el DNI'}
+          </p>
         </div>
       </div>
       
@@ -137,10 +143,9 @@ export default function Home() {
   const [fichaSeleccionada, setFichaSeleccionada] = useState<any>(null);
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
-  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'ficha'>(null);
+  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
-  const [fotoFichaB64, setFotoFichaB64] = useState<string | null>(null);
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
   
   const [subiendo, setSubiendo] = useState(false);
@@ -158,7 +163,6 @@ export default function Home() {
   const [filtroControlAfiliador, setFiltroControlAfiliador] = useState('todas');
   const [busquedaControl, setBusquedaControl] = useState('');
   const [fichaControlDetalleId, setFichaControlDetalleId] = useState<string | null>(null);
-  const [archivoFichaEscaneada, setArchivoFichaEscaneada] = useState<File | null>(null);
   const [textoErrorJE, setTextoErrorJE] = useState('');
   const [textoSuspension, setTextoSuspension] = useState('');
   const [accionSuspension, setAccionSuspension] = useState<'suspendido' | 'baja' | null>(null);
@@ -202,7 +206,6 @@ export default function Home() {
 
   const estadoControlCfg: Record<string, { label: string; cls: string }> = {
     pendiente:  { label: 'Pendiente',   cls: 'bg-gray-100 text-gray-600 border-gray-200' },
-    firmado:    { label: 'Firmada',     cls: 'bg-blue-50 text-blue-700 border-blue-200' },
     escaneado:  { label: 'Escaneada',   cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
     cargado_je: { label: 'En JE',       cls: 'bg-amber-50 text-amber-700 border-amber-200' },
     aprobado:   { label: 'Aprobada',    cls: 'bg-green-100 text-green-700 border-green-200' },
@@ -368,7 +371,6 @@ export default function Home() {
   const actualizarRol = async (uid: string, nuevoRol: string) => {
     try {
       await updateDoc(doc(db, 'usuarios', uid), { rol: nuevoRol });
-      alert('Permisos actualizados');
     } catch (e) {
       alert('Error de red');
     }
@@ -608,21 +610,28 @@ export default function Home() {
     }
   };
 
-  const subirFichaEscaneada = async (id: string) => {
-    if (!archivoFichaEscaneada) { alert('Seleccioná un archivo primero.'); return; }
+  const subirFichaControlExtra = async (id: string, b64OrFile: string | File) => {
     setSubiendoControl(true);
     const u = user as any;
     try {
-      const storageRef = ref(storage, `fichas/${id}-${Date.now()}`);
-      await uploadBytes(storageRef, archivoFichaEscaneada);
+      let blob: Blob;
+      if (typeof b64OrFile === 'string') {
+        blob = await (await fetch(b64OrFile)).blob();
+      } else {
+        blob = b64OrFile;
+      }
+      const storageRef = ref(storage, `fichas/${id}-${Date.now()}.jpg`);
+      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
       const url = await getDownloadURL(storageRef);
       await actualizarControl(id, 'escaneado', {
         archivoFicha: url,
         fechaEscaneado: serverTimestamp(),
         escaneadoPor: u.displayName || u.email,
         escaneadoPorUid: u.uid,
+        fechaFirma: serverTimestamp(),
+        firmadoPor: u.displayName || u.email,
+        firmadoPorUid: u.uid
       });
-      setArchivoFichaEscaneada(null);
     } catch {
       alert('Error al subir el archivo.');
     } finally {
@@ -634,12 +643,16 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       
       {camaraActiva && (
-        <EscanerDNI 
-          titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : "Escanear Dorso DNI"}
+        <EscanerDocumento 
+          titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : camaraActiva === 'dorso' ? "Escanear Dorso DNI" : "Escanear Ficha"}
+          tipo={camaraActiva.includes('ficha') ? 'ficha' : 'dni'}
           onClose={() => setCamaraActiva(null)} 
-          onCapture={(dataUrl: string) => {
+          onCapture={(dataUrl) => {
             if (camaraActiva === 'frente') setFotoFrenteB64(dataUrl);
-            else setFotoDorsoB64(dataUrl);
+            else if (camaraActiva === 'dorso') setFotoDorsoB64(dataUrl);
+            else if (camaraActiva === 'fichaControl' && fichaControlDetalleId) {
+              subirFichaControlExtra(fichaControlDetalleId, dataUrl);
+            }
             setCamaraActiva(null);
           }} 
         />
@@ -681,7 +694,6 @@ export default function Home() {
               {([
                 { k: 'todas',      label: 'Total',      cls: 'bg-gray-900 text-white' },
                 { k: 'pendiente',  label: 'Pendiente',  cls: 'bg-gray-100 text-gray-700' },
-                { k: 'firmado',    label: 'Firmada',    cls: 'bg-blue-50 text-blue-700' },
                 { k: 'escaneado',  label: 'Escaneada',  cls: 'bg-indigo-50 text-indigo-700' },
                 { k: 'cargado_je', label: 'En JE',      cls: 'bg-amber-50 text-amber-700' },
                 { k: 'aprobado',   label: 'Aprobada',   cls: 'bg-green-100 text-green-700' },
@@ -724,7 +736,7 @@ export default function Home() {
                 const estado = reg.estadoControl || 'pendiente';
                 const cfg = estadoControlCfg[estado] || estadoControlCfg.pendiente;
                 return (
-                  <div key={reg.id} onClick={() => { setFichaControlDetalleId(reg.id); setArchivoFichaEscaneada(null); setTextoErrorJE(reg.errorJE || ''); setTextoSuspension(''); }}
+                  <div key={reg.id} onClick={() => { setFichaControlDetalleId(reg.id); setTextoErrorJE(reg.errorJE || ''); setTextoSuspension(''); }}
                     className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4 hover:border-purple-300 hover:bg-purple-50 active:scale-[0.99] transition cursor-pointer">
                     <div className="flex-1 min-w-0">
                       <div className="font-black text-gray-900 truncate">{reg.apellidos}, {reg.nombres}</div>
@@ -851,7 +863,6 @@ export default function Home() {
                 <div className="space-y-3">
                   {([
                     { show: true,                  dot: 'bg-green-500', label: 'Cargado digitalmente',  por: reg.afiliadorNombre || reg.afiliadorEmail, ts: reg.fecha },
-                    { show: !!reg.firmadoPor,          dot: 'bg-green-500', label: 'Ficha firmada recibida', por: reg.firmadoPor,    ts: reg.fechaFirma },
                     { show: !!reg.escaneadoPor,        dot: 'bg-green-500', label: 'Escaneada y subida',    por: reg.escaneadoPor,  ts: reg.fechaEscaneado },
                     { show: !!reg.cargadoJEPor,        dot: 'bg-green-500', label: 'Cargada en JE',        por: reg.cargadoJEPor,  ts: reg.fechaCargadoJE },
                     { show: !!reg.resueltoJEPor && estado === 'aprobado', dot: 'bg-green-500', label: 'Aprobada por JE', por: reg.resueltoJEPor, ts: reg.fechaAprobacion },
@@ -876,28 +887,18 @@ export default function Home() {
                 <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm">Acciones</h4>
 
                 {estado === 'pendiente' && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-500 font-medium">La ficha física fue impresa, firmada por el afiliado y el apoderado, y fue recibida en la sede.</p>
-                    <button onClick={() => actualizarControl(reg.id, 'firmado', { fechaFirma: serverTimestamp(), firmadoPor: userInfo.por, firmadoPorUid: userInfo.uid })}
-                      className="w-full py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition uppercase tracking-wide text-sm">
-                      Marcar ficha como recibida y firmada
-                    </button>
-                  </div>
-                )}
-
-                {estado === 'firmado' && (
                   <div className="space-y-3">
-                    <p className="text-sm text-gray-500 font-medium">Subí el escaneado de la ficha firmada. Una vez subida podrás cargarla en la JE.</p>
-                    <label className="block cursor-pointer">
-                      <div className={`w-full p-4 border-2 border-dashed rounded-xl text-center transition ${archivoFichaEscaneada ? 'border-green-400 bg-green-50' : 'border-gray-300 hover:bg-gray-50'}`}>
-                        {archivoFichaEscaneada ? <span className="font-bold text-green-700 text-sm">{archivoFichaEscaneada.name}</span> : <span className="text-gray-500 text-sm font-medium">Seleccionar archivo (PDF o imagen)...</span>}
-                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => setArchivoFichaEscaneada(e.target.files?.[0] || null)} />
-                      </div>
-                    </label>
-                    <button onClick={() => subirFichaEscaneada(reg.id)} disabled={subiendoControl || !archivoFichaEscaneada}
-                      className="w-full py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition uppercase tracking-wide text-sm">
-                      {subiendoControl ? 'Subiendo...' : 'Subir escaneado'}
-                    </button>
+                    <p className="text-sm text-gray-500 font-medium">Adjuntá la ficha física firmada usando la cámara o subiendo un archivo. La ficha pasará automáticamente a estado "Escaneada".</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => setCamaraActiva('fichaControl')} className="flex-1 py-3 bg-purple-600 text-white font-black rounded-xl hover:bg-purple-700 transition uppercase tracking-wide text-xs">
+                        📸 Cámara
+                      </button>
+                      <label className="flex-1 py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition uppercase tracking-wide text-xs text-center cursor-pointer">
+                        📁 Archivo
+                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => { if (e.target.files?.[0]) subirFichaControlExtra(reg.id, e.target.files[0]); }} />
+                      </label>
+                    </div>
+                    {subiendoControl && <p className="text-xs font-bold text-purple-600 text-center uppercase tracking-widest">Subiendo ficha...</p>}
                   </div>
                 )}
 
@@ -989,8 +990,8 @@ export default function Home() {
                 <thead>
                   <tr className="border-b border-gray-200 bg-white">
                     <th className="p-4 font-black text-gray-900 uppercase">Usuario</th>
-                    <th className="p-4 font-black text-gray-900 uppercase">Rol</th>
-                    <th className="p-4 text-right font-black text-gray-900 uppercase">Acción</th>
+                    <th className="p-4 font-black text-gray-900 uppercase">Rol Actual</th>
+                    <th className="p-4 text-right font-black text-gray-900 uppercase">Permisos</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1011,11 +1012,20 @@ export default function Home() {
                               placeholder="Apellido"
                               className="p-2 border border-gray-300 rounded-lg text-sm font-medium outline-none focus:border-purple-900"
                             />
+                            <div className="flex gap-2 mt-1">
+                              <button onClick={guardarNombreUsuario} className="flex-1 bg-green-600 text-white text-xs font-black py-1.5 rounded-lg hover:bg-green-700">GUARDAR</button>
+                              <button onClick={() => setEditandoUsuarioId(null)} className="flex-1 bg-gray-200 text-gray-700 text-xs font-black py-1.5 rounded-lg hover:bg-gray-300">CANCELAR</button>
+                            </div>
                           </div>
                         ) : (
                           <>
-                            <div className="font-bold text-gray-900">
+                            <div className="font-bold text-gray-900 flex items-center gap-2">
                               {[u.apellido, u.nombre].filter(Boolean).join(', ') || <span className="text-gray-400 italic font-normal text-sm">Sin nombre</span>}
+                              {(isAdmin || (isSupervisor && u.rol !== 'admin' && u.rol !== 'supervisor')) && (
+                                <button onClick={() => { setEditandoUsuarioId(u.id); setFormEditUsuario({ nombre: u.nombre || '', apellido: u.apellido || '' }); }} className="text-purple-600 hover:text-purple-900">
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>
+                                </button>
+                              )}
                             </div>
                             <div className="text-sm text-gray-500">{u.email}</div>
                           </>
@@ -1026,35 +1036,24 @@ export default function Home() {
                           {u.rol}
                         </span>
                       </td>
-                      <td className="p-4">
-                        {editandoUsuarioId === u.id ? (
-                          <div className="flex justify-end gap-2">
-                            <button onClick={guardarNombreUsuario} className="bg-green-600 text-white text-xs font-black px-4 py-2 rounded-lg hover:bg-green-700">GUARDAR</button>
-                            <button onClick={() => setEditandoUsuarioId(null)} className="bg-gray-200 text-gray-700 text-xs font-black px-4 py-2 rounded-lg hover:bg-gray-300">CANCELAR</button>
-                          </div>
+                      <td className="p-4 text-right">
+                        {(isAdmin || (isSupervisor && u.rol !== 'admin' && u.rol !== 'supervisor')) && u.id !== (user as any).uid ? (
+                          <select
+                            value={u.rol}
+                            onChange={(e) => {
+                              const nuevoRol = e.target.value;
+                              if (nuevoRol === 'pendiente' && !window.confirm(`¿Seguro que querés revocar el acceso a ${u.nombre || u.email}?`)) return;
+                              actualizarRol(u.id, nuevoRol);
+                            }}
+                            className={`p-2 border border-gray-300 rounded-lg text-xs font-black outline-none focus:border-purple-900 cursor-pointer uppercase ${u.rol === 'admin' ? 'text-purple-900' : u.rol === 'supervisor' ? 'text-blue-700' : u.rol === 'afiliador' ? 'text-green-700' : 'text-gray-600'}`}
+                          >
+                            <option value="pendiente">Revocar Acceso</option>
+                            <option value="afiliador">Afiliador</option>
+                            {isAdmin && <option value="supervisor">Supervisor</option>}
+                            {isAdmin && <option value="admin">Admin</option>}
+                          </select>
                         ) : (
-                          <div className="flex justify-end gap-2 flex-wrap">
-                            {(isAdmin || (isSupervisor && u.rol !== 'admin' && u.rol !== 'supervisor')) && (
-                              <button
-                                onClick={() => { setEditandoUsuarioId(u.id); setFormEditUsuario({ nombre: u.nombre || '', apellido: u.apellido || '' }); }}
-                                className="border border-gray-300 text-gray-600 text-xs font-black px-3 py-2 rounded-lg hover:bg-gray-50"
-                              >
-                                EDITAR
-                              </button>
-                            )}
-                            {(isAdmin ? u.rol !== 'afiliador' : u.rol === 'pendiente') && (
-                              <button onClick={() => actualizarRol(u.id, 'afiliador')} className="bg-black text-white text-xs font-black px-4 py-2 rounded-lg hover:bg-gray-800">AUTORIZAR</button>
-                            )}
-                            {isAdmin && u.rol !== 'supervisor' && u.id !== (user as any).uid && (
-                              <button onClick={() => actualizarRol(u.id, 'supervisor')} className="border-2 border-blue-700 text-blue-700 text-xs font-black px-4 py-2 rounded-lg hover:bg-blue-50">SUPERVISOR</button>
-                            )}
-                            {isAdmin && u.rol !== 'admin' && u.id !== (user as any).uid && (
-                              <button onClick={() => actualizarRol(u.id, 'admin')} className="border-2 border-black text-black text-xs font-black px-4 py-2 rounded-lg hover:bg-gray-100">ADMIN</button>
-                            )}
-                            {isAdmin && u.rol !== 'admin' && u.rol !== 'pendiente' && u.id !== (user as any).uid && (
-                              <button onClick={() => { if (window.confirm(`¿Revocar acceso de ${u.nombre || u.email}? Quedará como pendiente.`)) actualizarRol(u.id, 'pendiente'); }} className="border-2 border-red-500 text-red-600 text-xs font-black px-4 py-2 rounded-lg hover:bg-red-50">REVOCAR</button>
-                            )}
-                          </div>
+                          <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Sin acciones</span>
                         )}
                       </td>
                     </tr>
@@ -1078,12 +1077,20 @@ export default function Home() {
                 <p className="text-gray-500 font-bold tracking-widest uppercase mt-1">{fichaSeleccionada.tipoDocumento || 'DNI'}: {fichaSeleccionada.dni}</p>
               </div>
               
-              {fichaSeleccionada.archivoDni && (
-                <a href={fichaSeleccionada.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-red-50 text-red-700 border-2 border-red-200 px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-sm hover:bg-red-100 active:scale-95 transition">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
-                  Ver DNI
-                </a>
-              )}
+              <div className="flex gap-2">
+                {fichaSeleccionada.archivoDni && (
+                  <a href={fichaSeleccionada.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-red-50 text-red-700 border-2 border-red-200 px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-sm hover:bg-red-100 active:scale-95 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                    Ver DNI
+                  </a>
+                )}
+                {fichaSeleccionada.archivoFicha && (
+                  <a href={fichaSeleccionada.archivoFicha} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 border-2 border-indigo-200 px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-sm hover:bg-indigo-100 active:scale-95 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                    Ver Ficha
+                  </a>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
@@ -1263,29 +1270,21 @@ export default function Home() {
                 </div>
                 
                 {modoArchivo === 'escaner' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
-                      <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoFrenteB64 ? 'FRENTE Listo' : '1. FRENTE DNI'}</span>
-                      <button type="button" onClick={() => setCamaraActiva('frente')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFrenteB64 ? { backgroundImage: `url(${fotoFrenteB64})`, borderColor: '#22c55e' } : {}}>
+                      <span className="block text-sm font-bold text-gray-900 mb-4 uppercase">{fotoFrenteB64 ? 'FRENTE CAPTURADO' : 'TOMAR FRENTE'}</span>
+                      <button type="button" onClick={() => setCamaraActiva('frente')} className={`w-full h-24 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFrenteB64 ? { backgroundImage: `url(${fotoFrenteB64})`, borderColor: '#22c55e' } : {}}>
                         {!fotoFrenteB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
                       </button>
-                      {fotoFrenteB64 && <button type="button" onClick={() => setFotoFrenteB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
+                      {fotoFrenteB64 && <button type="button" onClick={() => setFotoFrenteB64(null)} className="text-red-500 text-xs font-bold mt-2 uppercase hover:underline">Borrar</button>}
                     </div>
 
                     <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
-                      <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoDorsoB64 ? 'DORSO Listo' : '2. DORSO DNI'}</span>
-                      <button type="button" onClick={() => setCamaraActiva('dorso')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoDorsoB64 ? { backgroundImage: `url(${fotoDorsoB64})`, borderColor: '#22c55e' } : {}}>
+                      <span className="block text-sm font-bold text-gray-900 mb-4 uppercase">{fotoDorsoB64 ? 'DORSO CAPTURADO' : 'TOMAR DORSO'}</span>
+                      <button type="button" onClick={() => setCamaraActiva('dorso')} className={`w-full h-24 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoDorsoB64 ? { backgroundImage: `url(${fotoDorsoB64})`, borderColor: '#22c55e' } : {}}>
                         {!fotoDorsoB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>}
                       </button>
-                      {fotoDorsoB64 && <button type="button" onClick={() => setFotoDorsoB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
-                    </div>
-                    
-                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 text-center hover:bg-gray-100 transition">
-                      <span className="block text-xs font-bold text-gray-900 mb-4 uppercase tracking-widest">{fotoFichaB64 ? 'FICHA Lista' : '3. FICHA (OPCIONAL)'}</span>
-                      <button type="button" onClick={() => setCamaraActiva('ficha')} className={`w-full h-20 rounded-xl flex items-center justify-center border-2 border-gray-300 bg-white shadow-sm hover:shadow-md transition bg-center bg-cover bg-no-repeat`} style={fotoFichaB64 ? { backgroundImage: `url(${fotoFichaB64})`, borderColor: '#22c55e' } : {}}>
-                        {!fotoFichaB64 && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8 text-purple-900"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>}
-                      </button>
-                      {fotoFichaB64 && <button type="button" onClick={() => setFotoFichaB64(null)} className="text-red-500 text-[10px] font-bold mt-2 uppercase hover:underline">Borrar</button>}
+                      {fotoDorsoB64 && <button type="button" onClick={() => setFotoDorsoB64(null)} className="text-red-500 text-xs font-bold mt-2 uppercase hover:underline">Borrar</button>}
                     </div>
                   </div>
                 ) : (
@@ -1353,7 +1352,7 @@ export default function Home() {
               {registrosFiltrados.map((reg) => (
                 <div 
                   key={reg.id} 
-                  onClick={() => { if(isAdmin) cambiarTab('control'); else { setFichaSeleccionada(reg); cambiarTab('detalle'); } }} 
+                  onClick={() => { setFichaSeleccionada(reg); cambiarTab('detalle'); }} 
                   className={`bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-purple-300 hover:bg-purple-50 active:scale-[0.98] transition cursor-pointer 
                     ${reg.estado === 'error' ? 'border-l-4 border-l-red-500' : reg.estado === 'subida' ? 'border-l-4 border-l-blue-500' : reg.estado === 'aprobada' ? 'border-l-4 border-l-green-500' : ''}`}
                 >
