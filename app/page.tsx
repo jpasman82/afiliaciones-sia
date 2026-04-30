@@ -15,7 +15,7 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
   const videoRef = useRef<HTMLVideoElement>(null);
   const marcoRef = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const proporcionMarco = tipo === 'ficha' ? 'aspect-[0.7]' : 'aspect-[1.58]';
+  const proporcionMarco = tipo === 'ficha' ? 'aspect-[1.66]' : 'aspect-[1.58]';
 
   useEffect(() => {
     let currentStream: MediaStream;
@@ -143,9 +143,10 @@ export default function Home() {
   const [fichaSeleccionada, setFichaSeleccionada] = useState<any>(null);
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
-  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
+  const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'ficha' | 'fichaControl'>(null);
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
+  const [fotoFichaB64, setFotoFichaB64] = useState<string | null>(null);
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
   
   const [subiendo, setSubiendo] = useState(false);
@@ -163,6 +164,7 @@ export default function Home() {
   const [filtroControlAfiliador, setFiltroControlAfiliador] = useState('todas');
   const [busquedaControl, setBusquedaControl] = useState('');
   const [fichaControlDetalleId, setFichaControlDetalleId] = useState<string | null>(null);
+  const [archivoFichaEscaneada, setArchivoFichaEscaneada] = useState<File | null>(null);
   const [textoErrorJE, setTextoErrorJE] = useState('');
   const [textoSuspension, setTextoSuspension] = useState('');
   const [accionSuspension, setAccionSuspension] = useState<'suspendido' | 'baja' | null>(null);
@@ -206,6 +208,7 @@ export default function Home() {
 
   const estadoControlCfg: Record<string, { label: string; cls: string }> = {
     pendiente:  { label: 'Pendiente',   cls: 'bg-gray-100 text-gray-600 border-gray-200' },
+    firmado:    { label: 'Firmada',     cls: 'bg-blue-50 text-blue-700 border-blue-200' },
     escaneado:  { label: 'Escaneada',   cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
     cargado_je: { label: 'En JE',       cls: 'bg-amber-50 text-amber-700 border-amber-200' },
     aprobado:   { label: 'Aprobada',    cls: 'bg-green-100 text-green-700 border-green-200' },
@@ -632,8 +635,10 @@ export default function Home() {
         firmadoPor: u.displayName || u.email,
         firmadoPorUid: u.uid
       });
-    } catch {
-      alert('Error al subir el archivo.');
+      setArchivoFichaEscaneada(null);
+    } catch (error: any) {
+      console.error("Detalle del error:", error);
+      alert(`Error al subir: ${error.message || 'Revisá la consola para más detalles.'}`);
     } finally {
       setSubiendoControl(false);
     }
@@ -884,7 +889,7 @@ export default function Home() {
               </div>
 
               <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-200 space-y-4">
-                <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm">Acciones</h4>
+                <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm">Carga de Ficha</h4>
 
                 {estado === 'pendiente' && (
                   <div className="space-y-3">
@@ -895,7 +900,7 @@ export default function Home() {
                       </button>
                       <label className="flex-1 py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition uppercase tracking-wide text-xs text-center cursor-pointer">
                         📁 Archivo
-                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => { if (e.target.files?.[0]) subirFichaControlExtra(reg.id, e.target.files[0]); }} />
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) subirFichaControlExtra(reg.id, e.target.files[0]); }} />
                       </label>
                     </div>
                     {subiendoControl && <p className="text-xs font-bold text-purple-600 text-center uppercase tracking-widest">Subiendo ficha...</p>}
@@ -1307,6 +1312,7 @@ export default function Home() {
           </form>
         )}
 
+        {/* LISTADO AFILIADORES (CALLE) */}
         {tab === 'registros' && (
           <div className="space-y-4">
             
@@ -1352,7 +1358,7 @@ export default function Home() {
               {registrosFiltrados.map((reg) => (
                 <div 
                   key={reg.id} 
-                  onClick={() => { setFichaSeleccionada(reg); cambiarTab('detalle'); }} 
+                  onClick={() => { if(isAdmin) cambiarTab('control'); else { setFichaSeleccionada(reg); cambiarTab('detalle'); } }} 
                   className={`bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-purple-300 hover:bg-purple-50 active:scale-[0.98] transition cursor-pointer 
                     ${reg.estado === 'error' ? 'border-l-4 border-l-red-500' : reg.estado === 'subida' ? 'border-l-4 border-l-blue-500' : reg.estado === 'aprobada' ? 'border-l-4 border-l-green-500' : ''}`}
                 >
