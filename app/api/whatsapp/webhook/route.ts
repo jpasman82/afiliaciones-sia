@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN!;
+const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID!;
+const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN!;
+const GRAPH_URL = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
 
 // GET: verificación inicial de Meta
 export async function GET(req: NextRequest) {
@@ -10,11 +13,8 @@ export async function GET(req: NextRequest) {
   const challenge = searchParams.get('hub.challenge');
 
   if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    console.log('✅ Webhook verificado por Meta');
     return new Response(challenge, { status: 200 });
   }
-
-  console.warn('❌ Verificación fallida', { mode, token });
   return new Response('Forbidden', { status: 403 });
 }
 
@@ -22,9 +22,54 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
-  // Por ahora solo logueamos para confirmar que llegan los eventos
-  console.log('📩 Webhook POST recibido:', JSON.stringify(body, null, 2));
+  try {
+    const entry = body.entry?.[0]?.changes?.[0]?.value;
+    const message = entry?.messages?.[0];
 
-  // Respuesta rápida (Meta espera 200 en menos de 5 segundos)
+    if (message) {
+      const from = message.from;
+      const texto = message.text?.body ?? message.interactive?.button_reply?.title ?? '(sin texto)';
+      console.log(`📩 Mensaje de ${from}: ${texto}`);
+
+      // Por ahora, cualquier mensaje dispara el menú
+      await sendMenu(from);
+    }
+  } catch (err) {
+    console.error('webhook error', err);
+  }
+
+  // Respuesta rápida a Meta
   return NextResponse.json({ ok: true });
+}
+
+async function sendMenu(to: string) {
+  const res = await fetch(GRAPH_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${ACCESS_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: {
+          text: '¡Hola! 👋 Soy el asistente de San Isidro Avanza. ¿En qué puedo ayudarte?',
+        },
+        action: {
+          buttons: [
+            { type: 'reply', reply: { id: 'afiliarme', title: 'Quiero afiliarme' } },
+            { type: 'reply', reply: { id: 'voluntario', title: 'Ser voluntario' } },
+            { type: 'reply', reply: { id: 'info', title: 'Más información' } },
+          ],
+        },
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    console.error('Error enviando menú:', res.status, await res.text());
+  }
 }
