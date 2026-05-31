@@ -20,13 +20,12 @@ export function TopBar({ role, search, setSearch, onNueva, onLogout, title }:
           {role === 'afiliador' && (
             <a
               href="/guia.html"
-              target="_blank"
-              rel="noopener noreferrer"
               title="Ver guía"
               aria-label="Ver guía"
-              className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 active:bg-brand-50 active:text-brand-700"
+              className="h-9 inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 text-xs font-semibold text-brand-700 ring-1 ring-inset ring-brand-100 active:bg-brand-100"
             >
-              <Icon name="doc" className="w-5 h-5" strokeWidth={2} />
+              <Icon name="doc" className="w-4 h-4" strokeWidth={2} />
+              Guía
             </a>
           )}
           <button
@@ -34,7 +33,7 @@ export function TopBar({ role, search, setSearch, onNueva, onLogout, title }:
             onClick={onLogout}
             title="Cerrar sesión"
             aria-label="Cerrar sesión"
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 active:bg-rose-50 active:text-rose-600"
+            className="ml-1 w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 active:bg-rose-50 active:text-rose-600"
           >
             <Icon name="logout" className="w-5 h-5" strokeWidth={2} />
           </button>
