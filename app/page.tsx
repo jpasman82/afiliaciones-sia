@@ -489,8 +489,20 @@ export default function Home() {
     });
   };
 
+  const puedeEditarFicha = (ficha: any) => {
+    const estado = ficha?.estadoControl || 'pendiente';
+    return isAdmin || estado === 'pendiente';
+  };
+
   const guardarFicha = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (editandoId) {
+      const fichaActual = registros.find(r => r.id === editandoId);
+      if (!puedeEditarFicha(fichaActual || formData)) {
+        alert('La ficha ya fue escaneada. Solo un administrador puede modificarla.');
+        return;
+      }
+    }
     setSubiendo(true);
 
     try {
@@ -539,6 +551,11 @@ export default function Home() {
   };
 
   const prepararEdicion = (reg: any) => {
+    if (!puedeEditarFicha(reg)) {
+      alert('La ficha ya fue escaneada. Solo un administrador puede modificarla.');
+      return;
+    }
+
     setFormData({
       ...reg,
       tipoDocumento: reg.tipoDocumento || 'DNI',

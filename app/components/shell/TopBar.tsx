@@ -4,17 +4,29 @@
 import type { Rol } from '../../lib/types';
 import { Button } from '../ui/Button';
 import { SearchInput } from '../ui/Form';
+import { Icon } from '../ui/Icon';
 import { RoleBadge } from '../ui/Badges';
 import { Brand } from './Sidebar';
 
-export function TopBar({ role, search, setSearch, onNueva, title }:
-  { role: Rol; search: string; setSearch: (s: string) => void; onNueva: () => void; title?: string }) {
+export function TopBar({ role, search, setSearch, onNueva, onLogout, title }:
+  { role: Rol; search: string; setSearch: (s: string) => void; onNueva: () => void; onLogout: () => void; title?: string }) {
   return (
     <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
       {/* Mobile */}
       <div className="md:hidden flex items-center justify-between px-4 h-14">
         <Brand />
-        <RoleBadge rol={role} />
+        <div className="flex items-center gap-2">
+          <RoleBadge rol={role} />
+          <button
+            type="button"
+            onClick={onLogout}
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 active:bg-rose-50 active:text-rose-600"
+          >
+            <Icon name="logout" className="w-5 h-5" strokeWidth={2} />
+          </button>
+        </div>
       </div>
       {/* Desktop */}
       <div className="hidden md:flex items-center gap-4 px-6 h-16">

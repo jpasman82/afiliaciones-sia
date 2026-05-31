@@ -20,6 +20,20 @@ service cloud.firestore {
       return rol == 'admin' || rol == 'supervisor' || rol == 'afiliador';
     }
 
+    function estadoPendiente(data) {
+      return !('estadoControl' in data) || data.estadoControl == 'pendiente';
+    }
+
+    function conservaEstadoPendiente() {
+      return (
+        !('estadoControl' in resource.data) &&
+        (!('estadoControl' in request.resource.data) || request.resource.data.estadoControl == 'pendiente')
+      ) || (
+        ('estadoControl' in resource.data) &&
+        request.resource.data.estadoControl == resource.data.estadoControl
+      );
+    }
+
     match /usuarios/{uid} {
       // El propio usuario y admins/supervisores pueden leer
       allow read: if request.auth != null &&
@@ -46,12 +60,22 @@ service cloud.firestore {
       // Solo usuarios activos pueden crear fichas con su propio uid
       allow create: if request.auth != null &&
         rolActivo(request.auth.uid) &&
-        request.resource.data.afiliadorUid == request.auth.uid;
-      // El dueño del registro, un admin o un supervisor pueden editarlo
-      allow update: if request.auth != null &&
-        (resource.data.afiliadorUid == request.auth.uid || esAdminOSupervisor(request.auth.uid));
-      // Solo admins y supervisores pueden eliminar
-      allow delete: if request.auth != null && esAdminOSupervisor(request.auth.uid);
+        request.resource.data.afiliadorUid == request.auth.uid &&
+        estadoPendiente(request.resource.data);
+      // Admin puede editar siempre. Afiliador/supervisor solo mientras la ficha siga en paso 1.
+      allow update: if request.auth != null && (
+        esAdmin(request.auth.uid) ||
+        (
+          (resource.data.afiliadorUid == request.auth.uid || esSupervisor(request.auth.uid)) &&
+          estadoPendiente(resource.data) &&
+          conservaEstadoPendiente()
+        )
+      );
+      // Admin puede eliminar siempre. Supervisor solo mientras la ficha siga en paso 1.
+      allow delete: if request.auth != null && (
+        esAdmin(request.auth.uid) ||
+        (esSupervisor(request.auth.uid) && estadoPendiente(resource.data))
+      );
     }
   }
 }

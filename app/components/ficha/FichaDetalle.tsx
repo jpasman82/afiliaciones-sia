@@ -10,8 +10,7 @@ import { Avatar, Card } from '../ui/Primitives';
 export function FichaDetalle({ ficha, role, onBack, onEdit }:
   { ficha: Ficha; role: Rol; onBack: () => void; onEdit: (f: Ficha) => void }) {
   const estado = ficha.estadoControl || 'pendiente';
-  const avanzado = ['cargado_je', 'aprobado', 'error', 'suspendido', 'baja'].includes(estado);
-  const puedeEditar = role === 'admin' || !avanzado;
+  const puedeEditar = role === 'admin' || estado === 'pendiente';
 
   return (
     <div className="max-w-3xl mx-auto" data-screen-label="Detalle de ficha">
