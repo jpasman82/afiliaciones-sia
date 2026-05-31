@@ -42,6 +42,17 @@ export function Sidebar({ role, current, onNav, userData, onLogout }:
             </button>
           );
         })}
+        {role === 'afiliador' && (
+          <a
+            href="/guia.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition"
+          >
+            <Icon name="doc" className="w-5 h-5" strokeWidth={1.8} />
+            Guía
+          </a>
+        )}
       </nav>
       <div className="border-t border-slate-100 p-3">
         <div className="flex items-center gap-3 rounded-lg px-2 py-2">

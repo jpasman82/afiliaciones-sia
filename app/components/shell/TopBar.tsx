@@ -17,6 +17,18 @@ export function TopBar({ role, search, setSearch, onNueva, onLogout, title }:
         <Brand />
         <div className="flex items-center gap-2">
           <RoleBadge rol={role} />
+          {role === 'afiliador' && (
+            <a
+              href="/guia.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Ver guía"
+              aria-label="Ver guía"
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 active:bg-brand-50 active:text-brand-700"
+            >
+              <Icon name="doc" className="w-5 h-5" strokeWidth={2} />
+            </a>
+          )}
           <button
             type="button"
             onClick={onLogout}
