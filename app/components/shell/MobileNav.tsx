@@ -8,6 +8,20 @@ import { navItems, type NavItem, type TabKey } from './nav';
 export function MobileNav({ role, current, onNav }:
   { role: Rol; current: TabKey; onNav: (t: TabKey) => void }) {
   const items = navItems(role).filter(i => i.key !== 'nueva');
+
+  if (role === 'afiliador') {
+    return (
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
+        <div className="h-16 relative">
+          <button onClick={() => onNav('nueva')}
+            className="absolute left-1/2 -translate-x-1/2 -mt-5 w-14 h-14 rounded-full bg-brand-700 text-white shadow-pop flex items-center justify-center active:scale-95 transition ring-4 ring-white">
+            <Icon name="plus" className="w-6 h-6" strokeWidth={2.4} />
+          </button>
+        </div>
+      </nav>
+    );
+  }
+
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
       <div className="grid grid-cols-4 h-16 relative">

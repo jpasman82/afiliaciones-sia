@@ -361,6 +361,11 @@ export default function Home() {
   };
 
   const descargarZip = async (tipo: 'dni' | 'ficha') => {
+    if (!isAdmin) {
+      alert('Solo un administrador puede descargar archivos.');
+      return;
+    }
+
     const conArchivo = registrosFiltrados.filter(r => tipo === 'dni' ? r.archivoDni : r.archivoFicha);
     if (conArchivo.length === 0) {
       alert(`No hay archivos de ${tipo.toUpperCase()} para descargar.`);
@@ -396,6 +401,11 @@ export default function Home() {
   };
 
   const exportarCSV = () => {
+    if (!isAdmin) {
+      alert('Solo un administrador puede exportar CSV.');
+      return;
+    }
+
     if (registrosFiltrados.length === 0) {
       alert("No hay registros para exportar.");
       return;
@@ -743,8 +753,8 @@ export default function Home() {
             setFichaSeleccionada(registros.find(r => r.id === id) || null);
             cambiarTab('detalle');
           }}
-          onExportCSV={exportarCSV}
-          onDescargarZip={() => descargarZip('dni')}
+          onExportCSV={isAdmin ? exportarCSV : undefined}
+          onDescargarZip={isAdmin ? () => descargarZip('dni') : undefined}
         />
       )}
 
