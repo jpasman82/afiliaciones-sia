@@ -9,7 +9,7 @@ import type { Ficha } from '../../lib/types';
 import { ESTADOS } from '../../lib/estados';
 import { Icon } from '../ui/Icon';
 import { Button } from '../ui/Button';
-import { Select, Field, Textarea, SearchInput } from '../ui/Form';
+import { Select, Field, Textarea } from '../ui/Form';
 import { StatusBadge } from '../ui/Badges';
 import { Avatar, Card, StatCard, PageHeader, EmptyState } from '../ui/Primitives';
 import { Stepper } from '../ui/Stepper';
@@ -20,15 +20,16 @@ interface ControlProps {
   afiliadores: { uid: string; nombre: string }[];
   actualizarControl: (id: string, estado: string, extras?: Record<string, any>) => void;
   onSubirFichaFisica: (id: string) => void;
+  onOpenFicha: (id: string) => void;
 }
 
-export function ControlView({ fichas, search, afiliadores, actualizarControl, onSubirFichaFisica }: ControlProps) {
+export function ControlView({ fichas, search, afiliadores, actualizarControl, onSubirFichaFisica, onOpenFicha }: ControlProps) {
   const [sel, setSel] = useState<string | null>(null);
   const [filtro, setFiltro] = useState('todas');
   const [filtroAfil, setFiltroAfil] = useState('todas');
 
   const ficha = sel ? fichas.find(f => f.id === sel) : null;
-  if (ficha) return <ControlDetalle ficha={ficha} onBack={() => setSel(null)} actualizarControl={actualizarControl} onSubirFichaFisica={onSubirFichaFisica} />;
+  if (ficha) return <ControlDetalle ficha={ficha} onBack={() => setSel(null)} actualizarControl={actualizarControl} onSubirFichaFisica={onSubirFichaFisica} onOpenFicha={onOpenFicha} />;
 
   const lista = fichas.filter(f => {
     const e = f.estadoControl || 'pendiente';
@@ -84,13 +85,14 @@ export function ControlView({ fichas, search, afiliadores, actualizarControl, on
 }
 
 // ----------------------------------------------------------------------------
-function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica }:
-  { ficha: Ficha; onBack: () => void } & Pick<ControlProps, 'actualizarControl' | 'onSubirFichaFisica'>) {
+function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, onOpenFicha }:
+  { ficha: Ficha; onBack: () => void } & Pick<ControlProps, 'actualizarControl' | 'onSubirFichaFisica' | 'onOpenFicha'>) {
   const estado = ficha.estadoControl || 'pendiente';
   const [errorTxt, setErrorTxt] = useState(ficha.errorJE || '');
   const [accion, setAccion] = useState<null | 'error' | 'suspender' | 'baja'>(null);
   const [motivo, setMotivo] = useState('');
   const esInactivo = estado === 'suspendido' || estado === 'baja';
+  const historial = normalizarHistorial(ficha);
 
   return (
     <div className="max-w-3xl mx-auto" data-screen-label="Control · Detalle">
@@ -107,7 +109,8 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica }
               <p className="text-xs text-slate-500 tnum mt-0.5">{ficha.tipoDocumento || 'DNI'} {ficha.dni} · Clase {ficha.clase || '—'} · {ficha.localidad}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="secondary" size="sm" icon="doc" onClick={() => onOpenFicha(ficha.id)}>Ver ficha completa</Button>
             {ficha.archivoDni && <a href={ficha.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 ring-inset bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"><Icon name="doc" className="w-4 h-4" strokeWidth={2} /> DNI</a>}
             {ficha.archivoFicha && <a href={ficha.archivoFicha} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 ring-inset bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"><Icon name="doc" className="w-4 h-4" strokeWidth={2} /> Ficha</a>}
           </div>
@@ -177,25 +180,113 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica }
       <Card className="p-5">
         <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">Historial</h3>
         <ol className="space-y-3.5">
+          {historial.length > 0 ? historial.map((item, idx) => (
+            <HistItem
+              key={`${item.fecha || item.label}-${idx}`}
+              dot={item.dot}
+              label={item.label}
+              por={item.por}
+              fecha={item.fecha}
+              detalle={item.detalle}
+            />
+          )) : (
+            <>
           <HistItem dot="bg-emerald-500" label="Cargada digitalmente" por={ficha.afiliadorNombre || ficha.afiliadorEmail} />
           {['escaneado', 'cargado_je', 'aprobado', 'error'].includes(estado) && <HistItem dot="bg-violet-500" label="Ficha física escaneada" por={ficha.escaneadoPor} />}
           {['cargado_je', 'aprobado', 'error'].includes(estado) && <HistItem dot="bg-amber-500" label="Cargada en JE" por={ficha.cargadoJEPor} />}
           {estado === 'aprobado' && <HistItem dot="bg-emerald-500" label="Aprobada por JE" />}
           {estado === 'error' && <HistItem dot="bg-rose-500" label="Error de JE" detalle={ficha.errorJE} />}
           {esInactivo && <HistItem dot="bg-orange-500" label={estado === 'suspendido' ? 'Suspendido' : 'Dado de baja'} por={ficha.suspendidoPor} detalle={ficha.suspendidoComentario || undefined} />}
+            </>
+          )}
         </ol>
       </Card>
     </div>
   );
 }
 
-function HistItem({ dot, label, por, detalle }: { dot: string; label: string; por?: string; detalle?: string }) {
+type HistorialUI = {
+  dot: string;
+  label: string;
+  por?: string;
+  fecha?: string;
+  detalle?: string;
+};
+
+function normalizarHistorial(ficha: Ficha): HistorialUI[] {
+  const historial = Array.isArray(ficha.historialControl) ? ficha.historialControl : [];
+
+  return historial
+    .slice()
+    .sort((a: any, b: any) => fechaMillis(b.fecha) - fechaMillis(a.fecha))
+    .map((item: any) => {
+      const estado = item.estadoNuevo || item.estado || item.accion;
+      const anterior = item.estadoAnterior;
+      const label = item.accion === 'reactivacion'
+        ? `Reactivado a ${labelEstado(estado)}`
+        : anterior
+          ? `${labelEstado(anterior)} -> ${labelEstado(estado)}`
+          : labelEstado(estado);
+
+      return {
+        dot: dotEstado(estado, item.accion),
+        label,
+        por: item.por,
+        fecha: formatearFechaHistorial(item.fecha),
+        detalle: item.comentario || undefined,
+      };
+    });
+}
+
+function labelEstado(estado?: string) {
+  if (!estado) return 'Sin estado';
+  return ESTADOS[estado]?.label || estado.replace(/_/g, ' ');
+}
+
+function dotEstado(estado?: string, accion?: string) {
+  if (accion === 'reactivacion') return 'bg-sky-500';
+  if (estado === 'baja' || estado === 'error') return 'bg-rose-500';
+  if (estado === 'suspendido') return 'bg-orange-500';
+  if (estado === 'aprobado') return 'bg-emerald-500';
+  if (estado === 'cargado_je') return 'bg-amber-500';
+  if (estado === 'escaneado') return 'bg-violet-500';
+  return 'bg-slate-400';
+}
+
+function formatearFechaHistorial(fecha: any) {
+  if (!fecha) return undefined;
+  try {
+    const date = fecha.toDate ? fecha.toDate() : new Date(fecha);
+    if (Number.isNaN(date.getTime())) return undefined;
+    return date.toLocaleString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function fechaMillis(fecha: any) {
+  if (!fecha) return 0;
+  try {
+    const date = fecha.toDate ? fecha.toDate() : new Date(fecha);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+  } catch {
+    return 0;
+  }
+}
+
+function HistItem({ dot, label, por, fecha, detalle }: HistorialUI) {
   return (
     <li className="flex gap-3">
       <div className="flex flex-col items-center pt-1"><span className={`w-2.5 h-2.5 rounded-full ${dot} ring-4 ring-white`} /></div>
       <div className="min-w-0 flex-1 -mt-0.5">
         <span className="text-sm font-semibold text-slate-800">{label}</span>
-        {por && <div className="text-xs text-slate-500">{por}</div>}
+        {(por || fecha) && <div className="text-xs text-slate-500">{por || 'Sin operador'}{fecha ? ` - ${fecha}` : ''}</div>}
         {detalle && <div className="text-xs text-slate-500 mt-1 bg-slate-50 rounded-md px-2.5 py-1.5 ring-1 ring-slate-100">{detalle}</div>}
       </div>
     </li>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy, arrayUnion } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
@@ -564,7 +564,73 @@ export default function Home() {
 
   const actualizarControl = async (id: string, estado: string, extras: Record<string, any> = {}) => {
     try {
-      await updateDoc(doc(db, 'afiliaciones', id), { estadoControl: estado, ...extras });
+      const fichaActual = registros.find(r => r.id === id);
+      const estadoAnterior = fichaActual?.estadoControl || 'pendiente';
+      const u = user as any;
+      const operador = u?.displayName || u?.email || 'Usuario';
+      const operadorUid = u?.uid || null;
+      const esReactivacion = ['suspendido', 'baja'].includes(estadoAnterior) && !['suspendido', 'baja'].includes(estado);
+      const comentario = extras.errorJE || extras.suspendidoComentario || null;
+      const fechaHistorial = new Date().toISOString();
+
+      const payload: Record<string, any> = {
+        estadoControl: estado,
+        ...extras,
+        fechaUltimoControl: serverTimestamp(),
+        ultimoControlPor: operador,
+        ultimoControlPorUid: operadorUid,
+        historialControl: arrayUnion({
+          accion: esReactivacion ? 'reactivacion' : estado,
+          estadoAnterior,
+          estadoNuevo: estado,
+          fecha: fechaHistorial,
+          por: operador,
+          uid: operadorUid,
+          comentario,
+        }),
+      };
+
+      if (estado === 'escaneado') {
+        payload.fechaEscaneado = extras.fechaEscaneado || serverTimestamp();
+        payload.escaneadoPor = extras.escaneadoPor || operador;
+        payload.escaneadoPorUid = extras.escaneadoPorUid || operadorUid;
+      }
+      if (estado === 'cargado_je') {
+        payload.fechaCargaJE = serverTimestamp();
+        payload.cargadoJEPor = operador;
+        payload.cargadoJEPorUid = operadorUid;
+      }
+      if (estado === 'aprobado') {
+        payload.fechaAprobacion = serverTimestamp();
+        payload.aprobadoPor = operador;
+        payload.aprobadoPorUid = operadorUid;
+      }
+      if (estado === 'error') {
+        payload.fechaErrorJE = serverTimestamp();
+        payload.errorPor = operador;
+        payload.errorPorUid = operadorUid;
+      }
+      if (estado === 'suspendido') {
+        payload.estadoAnterior = estadoAnterior;
+        payload.fechaSuspension = serverTimestamp();
+        payload.suspendidoPor = operador;
+        payload.suspendidoPorUid = operadorUid;
+      }
+      if (estado === 'baja') {
+        payload.estadoAnterior = estadoAnterior;
+        payload.fechaBaja = serverTimestamp();
+        payload.bajaPor = operador;
+        payload.bajaPorUid = operadorUid;
+        payload.suspendidoPor = operador;
+        payload.suspendidoPorUid = operadorUid;
+      }
+      if (esReactivacion) {
+        payload.fechaReactivacion = serverTimestamp();
+        payload.reactivadoPor = operador;
+        payload.reactivadoPorUid = operadorUid;
+      }
+
+      await updateDoc(doc(db, 'afiliaciones', id), payload);
     } catch {
       alert('Error al actualizar estado.');
     }
@@ -708,6 +774,10 @@ export default function Home() {
           afiliadores={afiliadores}
           search={busquedaControl}
           actualizarControl={actualizarControl}
+          onOpenFicha={(id) => {
+            setFichaSeleccionada(registros.find(r => r.id === id) || null);
+            cambiarTab('detalle');
+          }}
           onSubirFichaFisica={(id) => {
             setFichaControlDetalleId(id);
             setCamaraActiva('fichaControl');
