@@ -266,13 +266,13 @@ export default function Home() {
 
   if (mostrarIntro) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-white flex items-center justify-center overflow-hidden">
+      <div className="fixed inset-0 z-[9999] bg-white flex items-center justify-center overflow-hidden p-4 md:p-8">
         <video 
           autoPlay 
           muted 
           playsInline 
           preload="auto"
-          className="w-full h-full object-cover"
+          className="w-full h-full max-w-5xl max-h-[90vh] object-contain"
           onEnded={() => setMostrarIntro(false)} 
           onError={() => setMostrarIntro(false)}
         >
