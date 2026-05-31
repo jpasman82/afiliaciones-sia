@@ -570,7 +570,7 @@ export default function Home() {
       const operador = u?.displayName || u?.email || 'Usuario';
       const operadorUid = u?.uid || null;
       const esReactivacion = ['suspendido', 'baja'].includes(estadoAnterior) && !['suspendido', 'baja'].includes(estado);
-      const comentario = extras.errorJE || extras.suspendidoComentario || null;
+      const comentario = extras.errorJE || extras.suspendidoComentario || extras.reactivacionComentario || null;
       const fechaHistorial = new Date().toISOString();
 
       const payload: Record<string, any> = {
@@ -628,6 +628,7 @@ export default function Home() {
         payload.fechaReactivacion = serverTimestamp();
         payload.reactivadoPor = operador;
         payload.reactivadoPorUid = operadorUid;
+        payload.reactivacionComentario = extras.reactivacionComentario || null;
       }
 
       await updateDoc(doc(db, 'afiliaciones', id), payload);

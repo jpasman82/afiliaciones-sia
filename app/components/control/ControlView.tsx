@@ -89,7 +89,7 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
   { ficha: Ficha; onBack: () => void } & Pick<ControlProps, 'actualizarControl' | 'onSubirFichaFisica' | 'onOpenFicha'>) {
   const estado = ficha.estadoControl || 'pendiente';
   const [errorTxt, setErrorTxt] = useState(ficha.errorJE || '');
-  const [accion, setAccion] = useState<null | 'error' | 'suspender' | 'baja'>(null);
+  const [accion, setAccion] = useState<null | 'error' | 'suspender' | 'baja' | 'reactivar'>(null);
   const [motivo, setMotivo] = useState('');
   const esInactivo = estado === 'suspendido' || estado === 'baja';
   const historial = normalizarHistorial(ficha);
@@ -145,7 +145,7 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
           )}
           {estado === 'error' && <Button icon="refresh" onClick={() => actualizarControl(ficha.id, 'cargado_je')}>Reintentar carga en JE</Button>}
           {estado === 'aprobado' && <span className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700"><Icon name="check" className="w-5 h-5" strokeWidth={2.5} /> Afiliación completada y aprobada.</span>}
-          {esInactivo && <Button icon="refresh" onClick={() => actualizarControl(ficha.id, ficha.estadoAnterior || 'pendiente')}>Reactivar afiliado</Button>}
+          {esInactivo && <Button icon="refresh" onClick={() => setAccion(accion === 'reactivar' ? null : 'reactivar')}>Reactivar afiliado</Button>}
           {!esInactivo && (
             <div className="flex gap-2.5 ml-auto">
               <Button variant="ghost" className="text-orange-600 hover:bg-orange-50" onClick={() => setAccion(accion === 'suspender' ? null : 'suspender')}>Suspender</Button>
@@ -172,6 +172,20 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
                 Confirmar {accion === 'suspender' ? 'suspensión' : 'baja'}
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setAccion(null)}>Cancelar</Button>
+            </div>
+          </div>
+        )}
+        {accion === 'reactivar' && (
+          <div className="mt-4 p-4 rounded-lg bg-slate-50 ring-1 ring-slate-200">
+            <Field label="Comentario de reactivación (opcional)">
+              <Textarea rows={2} value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Motivo o aclaración…" />
+            </Field>
+            <div className="flex gap-2 mt-3">
+              <Button size="sm"
+                onClick={() => { actualizarControl(ficha.id, ficha.estadoAnterior || 'pendiente', { reactivacionComentario: motivo.trim() || null }); setAccion(null); setMotivo(''); }}>
+                Confirmar reactivación
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => { setAccion(null); setMotivo(''); }}>Cancelar</Button>
             </div>
           </div>
         )}

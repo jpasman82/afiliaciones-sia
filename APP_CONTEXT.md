@@ -70,7 +70,16 @@ Notas:
 
 ## Estructura relevante
 
-- `app/page.tsx`: contiene casi toda la UI y logica cliente. Es un componente `'use client'`.
+- `app/page.tsx`: contiene la logica cliente principal, estado, listeners de Firestore y handlers. Es un componente `'use client'`.
+- `app/components/`: componentes presentacionales del rediseño.
+  - `shell/`: `AppShell`, `Sidebar`, `TopBar`, `MobileNav` y navegacion.
+  - `records/`: listado de fichas.
+  - `ficha/`: formulario y detalle de ficha.
+  - `control/`: modulo administrativo de control.
+  - `users/`: gestion de usuarios.
+  - `auth/`: login y pantallas de perfil pendiente.
+  - `ui/`: primitivas visuales compartidas.
+- `app/lib/`: tipos y constantes de dominio (`types.ts`, `estados.ts`).
 - `hooks/useAuth.js`: hook de autenticacion, rol y perfil del usuario.
 - `firebaseConfig.js`: inicializacion de Firebase Auth, Firestore y Storage.
 - `app/api/notificar/route.ts`: endpoint protegido por secret para enviar email.
@@ -87,7 +96,9 @@ Notas:
 
 La app es una single-page app renderizada del lado cliente. No hay SSR relevante para datos de negocio.
 
-`app/page.tsx` mantiene el estado principal con `useState` y escucha Firestore en tiempo real con `onSnapshot`.
+`app/page.tsx` mantiene el estado principal con `useState`, escucha Firestore en tiempo real con `onSnapshot` y delega el render en componentes presentacionales. La UI actual esta envuelta en `AppShell`.
+
+Las vistas nuevas no llaman a Firebase directamente: reciben datos y callbacks desde `page.tsx`. La excepcion es que algunos componentes manejan estado local de filtros o formularios visuales.
 
 La navegacion interna se maneja por tabs:
 
@@ -205,24 +216,37 @@ Campos de autoria:
 - `afiliadorEmail`.
 - `afiliadorUid`.
 - `fecha`: timestamp de creacion.
-- `ultimaModificacion`: timestamp de edicion. En el codigo actual aparece con caracteres mal codificados en el nombre del campo.
+- `ultimaModificacion`: timestamp de edicion. En codigo se escribe como clave unicode computada para evitar problemas de encoding.
 
 Campos de control:
 
 - `estadoControl`: estado actual del circuito.
+- `fechaUltimoControl`.
+- `ultimoControlPor`.
+- `ultimoControlPorUid`.
+- `historialControl`: array de auditoria de acciones de control. Cada item guarda:
+  - `accion`: estado aplicado o `reactivacion`.
+  - `estadoAnterior`.
+  - `estadoNuevo`.
+  - `fecha`: ISO string.
+  - `por`: operador visible.
+  - `uid`: UID del operador.
+  - `comentario`: error, motivo de baja/suspension o comentario de reactivacion.
 - `fechaFirma`.
 - `firmadoPor`.
 - `firmadoPorUid`.
 - `fechaEscaneado`.
 - `escaneadoPor`.
 - `escaneadoPorUid`.
-- `fechaCargadoJE`.
+- `fechaCargaJE`.
 - `cargadoJEPor`.
 - `cargadoJEPorUid`.
 - `fechaAprobacion`.
-- `fechaError`.
-- `resueltoJEPor`.
-- `resueltoJEPorUid`.
+- `aprobadoPor`.
+- `aprobadoPorUid`.
+- `fechaErrorJE`.
+- `errorPor`.
+- `errorPorUid`.
 - `errorJE`.
 - `editadoPorAdmin`.
 - `fechaEdicionAdmin`.
@@ -231,9 +255,13 @@ Campos de control:
 - `suspendidoPor`.
 - `suspendidoPorUid`.
 - `suspendidoComentario`.
+- `fechaBaja`.
+- `bajaPor`.
+- `bajaPorUid`.
 - `fechaReactivacion`.
 - `reactivadoPor`.
 - `reactivadoPorUid`.
+- `reactivacionComentario`.
 
 ## Estados de control
 
@@ -256,6 +284,8 @@ Flujo principal:
 4. Admin marca como cargada en JE y pasa a `cargado_je`.
 5. Admin marca como `aprobado` o registra `error`.
 6. Desde ciertos estados se puede suspender, dar de baja o reactivar.
+
+Toda transicion realizada desde Control pasa por `actualizarControl` y queda registrada en `historialControl` con operador, UID, fecha/hora y comentario si aplica. Para fichas viejas sin `historialControl`, la UI muestra un historial de respaldo armado desde campos sueltos.
 
 ## Storage
 
@@ -299,7 +329,7 @@ Tambien se permite carga de archivo local:
 
 Muestra logo y boton `Ingresar con Gmail`.
 
-Antes del login hay una intro de video (`/video.mp4`) durante hasta 6 segundos o hasta que termine/falle el video.
+Antes del login hay una intro de video (`/video.mp4`) durante hasta 6 segundos o hasta que termine/falle el video. En desktop se muestra con `object-contain` y limites de ancho/alto para no recortar el contenido.
 
 ### Perfil pendiente
 
@@ -376,11 +406,20 @@ Incluye:
 - Filtro por afiliador.
 - Busqueda por DNI, nombre o apellido.
 - Detalle administrativo.
-- Historial de acciones.
+- Boton para abrir la ficha completa del afiliado desde el detalle de Control.
+- Historial de acciones con fecha/hora, operador y comentario cuando corresponde.
 - Carga de ficha fisica.
 - Marcado como cargado en JE.
 - Aprobacion o error JE.
 - Suspension, baja y reactivacion.
+- Al suspender o dar de baja se puede cargar motivo opcional.
+- Al reactivar una ficha suspendida o dada de baja se puede cargar comentario opcional.
+
+Notas de auditoria:
+
+- Baja y suspension quedan guardadas en campos especificos y en `historialControl`.
+- Reactivacion queda guardada en `fechaReactivacion`, `reactivadoPor`, `reactivadoPorUid`, `reactivacionComentario` y en `historialControl`.
+- El historial se ordena de mas reciente a mas antiguo.
 
 ## Exportaciones y descargas
 
@@ -462,7 +501,7 @@ Storage:
 
 ## Consideraciones para futuros cambios
 
-- `app/page.tsx` es grande y concentra mucha logica. Para cambios chicos conviene mantener el estilo actual; para cambios grandes puede convenir separar componentes, pero con cuidado.
+- `app/page.tsx` sigue concentrando la logica de datos y handlers, pero la UI principal ya esta separada en componentes presentacionales. Para cambios visuales, preferir tocar `app/components/*`; para cambios de datos o Firebase, revisar `page.tsx`.
 - Hay texto con caracteres mal codificados en algunos archivos (`GestiÃ³n`, `NÃºmero`, etc.). Si se toca texto visible, corregir encoding de forma consistente.
 - `useAuth.js` esta en JavaScript, no TypeScript.
 - El modelo de datos no esta tipado formalmente; si se agregan campos, documentarlos y revisar reglas.
@@ -470,7 +509,7 @@ Storage:
 - La UI usa estilos Tailwind inline. Seguir ese patron salvo que se haga una refactorizacion mayor.
 - Al modificar rutas API con Next 16, leer docs locales de Next antes.
 - Al trabajar con camara, probar en dispositivo real o navegador con permisos, porque desktop puede no reflejar el uso en campo.
-- No hay tests automatizados; al cerrar cambios conviene correr `npm run lint` y `npm run build`.
+- No hay tests automatizados; al cerrar cambios conviene correr `npm run lint` y `npx.cmd tsc --noEmit`. `npm run build` puede fallar localmente si faltan las variables `NEXT_PUBLIC_FIREBASE_*` porque Next intenta prerenderizar `/` e inicializa Firebase.
 
 ## Comportamiento esperado por rol
 
@@ -494,4 +533,3 @@ Para validar cambios manualmente:
    - Aprueba o registra error.
 5. Admin:
    - Puede suspender, dar de baja o reactivar segun el estado.
-
