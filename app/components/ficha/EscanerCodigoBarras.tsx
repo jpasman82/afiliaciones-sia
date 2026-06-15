@@ -24,6 +24,13 @@ type Props = {
   onApply: (campos: ReturnType<typeof parsedDniToFormFields>, parsed: ParsedDni) => void;
 };
 
+type ZoomControl = {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+};
+
 export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const marcoRef = useRef<HTMLDivElement>(null);
@@ -38,6 +45,8 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const [torchDisponible, setTorchDisponible] = useState(false);
   const [torchActivo, setTorchActivo] = useState(false);
   const [leyendoFoto, setLeyendoFoto] = useState(false);
+  const [zoomControl, setZoomControl] = useState<ZoomControl | null>(null);
+  const [enfoqueMsg, setEnfoqueMsg] = useState('');
 
   const aplicarResultado = useCallback((raw: string) => {
     const p = parseDniPdf417(raw);
@@ -75,7 +84,7 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
 
     (async () => {
       try {
-        await iniciarCamara(videoRef.current, streamRef, setTorchDisponible);
+        await iniciarCamara(videoRef.current, streamRef, setTorchDisponible, setZoomControl, setEnfoqueMsg);
         if (!activoRef.current) return;
         setEstado('escaneando');
         timerRef.current = window.setInterval(() => {
@@ -102,8 +111,10 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
     setIntentos(0);
     setTorchActivo(false);
     setLeyendoFoto(false);
+    setZoomControl(null);
+    setEnfoqueMsg('');
 
-    iniciarCamara(videoRef.current, streamRef, setTorchDisponible).then(() => {
+    iniciarCamara(videoRef.current, streamRef, setTorchDisponible, setZoomControl, setEnfoqueMsg).then(() => {
       setEstado('escaneando');
       timerRef.current = window.setInterval(() => {
         void intentarLeerFrame(false);
@@ -124,6 +135,35 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
       setTorchActivo(siguiente);
     } catch {
       setTorchDisponible(false);
+    }
+  };
+
+  const enfocarDesdeToque = async (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button,input')) return;
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    const rect = video.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    await enfocarCamara(video, { x, y }, setEnfoqueMsg);
+  };
+
+  const enfocarCentro = async () => {
+    await enfocarCamara(videoRef.current, { x: 0.5, y: 0.5 }, setEnfoqueMsg);
+  };
+
+  const cambiarZoom = async (value: number) => {
+    const track = obtenerVideoTrack(videoRef.current);
+    if (!track || !zoomControl) return;
+
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: value }] as any });
+      setZoomControl({ ...zoomControl, value });
+      setEnfoqueMsg('Zoom ajustado. Mantené el DNI un poco más lejos para que enfoque.');
+    } catch {
+      setEnfoqueMsg('Esta cámara no permitió ajustar el zoom.');
     }
   };
 
@@ -153,7 +193,10 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
         <button onClick={onClose} className="text-white font-bold px-3 py-1.5 bg-red-600 rounded text-sm">Cerrar</button>
       </div>
 
-      <div className={`flex-1 relative overflow-hidden flex items-center justify-center ${estado === 'parseado' ? 'hidden' : ''}`}>
+      <div
+        onPointerDown={(e) => void enfocarDesdeToque(e)}
+        className={`flex-1 relative overflow-hidden flex items-center justify-center ${estado === 'parseado' ? 'hidden' : ''}`}
+      >
         <video ref={videoRef} autoPlay playsInline muted className="absolute w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black/40 pointer-events-none"></div>
         <div ref={marcoRef} className="relative w-[94%] max-w-3xl aspect-[3.8/1] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none">
@@ -163,14 +206,39 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
           <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400"></div>
         </div>
 
-        <div className="absolute bottom-28 left-0 right-0 text-center text-white/80 text-sm font-medium px-4">
+        <div className={`${zoomControl ? 'bottom-40' : 'bottom-28'} absolute left-0 right-0 text-center text-white/80 text-sm font-medium px-4`}>
           {estado === 'iniciando' && 'Iniciando camara...'}
           {estado === 'escaneando' && `Mantene el codigo nitido, horizontal y ocupando el recuadro (${intentos} intentos)`}
           {estado === 'error' && <span className="text-rose-300">{errorMsg}</span>}
           {estado === 'escaneando' && errorMsg && <div className="mt-2 text-amber-200">{errorMsg}</div>}
+          {estado === 'escaneando' && enfoqueMsg && <div className="mt-2 text-emerald-200">{enfoqueMsg}</div>}
         </div>
 
+        {zoomControl && (
+          <div className="absolute bottom-24 left-4 right-4 mx-auto max-w-sm rounded-lg bg-black/45 px-4 py-3 backdrop-blur">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-semibold text-white/80">Zoom</span>
+              <input
+                type="range"
+                min={zoomControl.min}
+                max={zoomControl.max}
+                step={zoomControl.step}
+                value={zoomControl.value}
+                onChange={(e) => void cambiarZoom(Number(e.target.value))}
+                className="w-full accent-emerald-400"
+              />
+            </div>
+          </div>
+        )}
+
         <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-3 px-4">
+          <button
+            type="button"
+            onClick={() => void enfocarCentro()}
+            className="px-4 py-3 rounded-lg bg-white/15 text-white ring-1 ring-white/30 font-semibold text-sm backdrop-blur"
+          >
+            Enfocar
+          </button>
           {torchDisponible && (
             <button
               type="button"
@@ -266,10 +334,6 @@ function getCameraConstraints(): MediaStreamConstraints {
       width: { ideal: 2560 },
       height: { ideal: 1440 },
       frameRate: { ideal: 30 },
-      advanced: [
-        { focusMode: 'continuous' },
-        { exposureMode: 'continuous' },
-      ] as any,
     },
   };
 }
@@ -277,7 +341,9 @@ function getCameraConstraints(): MediaStreamConstraints {
 async function iniciarCamara(
   video: HTMLVideoElement | null,
   streamRef: React.MutableRefObject<MediaStream | null>,
-  setTorchDisponible: (disponible: boolean) => void
+  setTorchDisponible: (disponible: boolean) => void,
+  setZoomControl: (zoom: ZoomControl | null) => void,
+  setEnfoqueMsg: (msg: string) => void
 ) {
   if (!video) throw new Error('No se encontro el video de camara.');
 
@@ -290,18 +356,11 @@ async function iniciarCamara(
   if (!track) return;
 
   const capabilities = (track.getCapabilities?.() || {}) as any;
+  const settings = (track.getSettings?.() || {}) as any;
   setTorchDisponible(Boolean(capabilities.torch));
+  configurarZoom(capabilities, settings, setZoomControl);
 
-  try {
-    await track.applyConstraints({
-      advanced: [
-        { focusMode: 'continuous' },
-        { exposureMode: 'continuous' },
-      ] as any,
-    });
-  } catch {
-    // No todos los navegadores soportan controles de enfoque/exposicion.
-  }
+  await enfocarCamara(video, { x: 0.5, y: 0.5 }, setEnfoqueMsg, false);
 }
 
 function detenerEscaneo(
@@ -320,6 +379,64 @@ function detenerEscaneo(
 function obtenerVideoTrack(video: HTMLVideoElement | null): MediaStreamTrack | null {
   const stream = video?.srcObject instanceof MediaStream ? video.srcObject : null;
   return stream?.getVideoTracks()[0] || null;
+}
+
+async function enfocarCamara(
+  video: HTMLVideoElement | null,
+  punto: { x: number; y: number },
+  setEnfoqueMsg: (msg: string) => void,
+  mostrarMensaje = true
+) {
+  const track = obtenerVideoTrack(video);
+  if (!track) return;
+
+  const capabilities = (track.getCapabilities?.() || {}) as any;
+  const focusModes: string[] = capabilities.focusMode || [];
+  const advanced: any[] = [];
+
+  if (focusModes.includes('single-shot')) {
+    advanced.push({ focusMode: 'single-shot', pointsOfInterest: [punto] });
+  }
+
+  if (focusModes.includes('continuous')) {
+    advanced.push({ focusMode: 'continuous', pointsOfInterest: [punto] });
+  }
+
+  advanced.push({ exposureMode: 'continuous', pointsOfInterest: [punto] });
+
+  try {
+    await track.applyConstraints({ advanced } as any);
+    if (mostrarMensaje) {
+      setEnfoqueMsg('Enfoque solicitado. Si se ve borroso, aleja un poco el DNI y toca de nuevo.');
+    }
+  } catch {
+    if (mostrarMensaje) {
+      setEnfoqueMsg('Esta cámara no permite controlar el foco desde la web. Aleja un poco el DNI y usa zoom.');
+    }
+  }
+}
+
+function configurarZoom(
+  capabilities: any,
+  settings: any,
+  setZoomControl: (zoom: ZoomControl | null) => void
+) {
+  if (typeof capabilities.zoom !== 'object') {
+    setZoomControl(null);
+    return;
+  }
+
+  const min = Number(capabilities.zoom.min ?? 1);
+  const max = Number(capabilities.zoom.max ?? 1);
+  const step = Number(capabilities.zoom.step ?? 0.1);
+  const value = Number(settings.zoom ?? min);
+
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    setZoomControl(null);
+    return;
+  }
+
+  setZoomControl({ min, max, step, value });
 }
 
 function capturarMarco(video: HTMLVideoElement, marco: HTMLDivElement): HTMLCanvasElement {
