@@ -9,6 +9,7 @@ import { AppShell } from './components/shell/AppShell';
 import { RecordsView } from './components/records/RecordsView';
 import { FichaForm } from './components/ficha/FichaForm';
 import { FichaDetalle } from './components/ficha/FichaDetalle';
+import { EscanerCodigoBarras } from './components/ficha/EscanerCodigoBarras';
 import { ControlView } from './components/control/ControlView';
 import { UsuariosView } from './components/users/UsuariosView';
 import { Login, PerfilPendiente } from './components/auth/AuthScreens';
@@ -153,6 +154,8 @@ export default function Home() {
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
   const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
+  const [escanerBarcode, setEscanerBarcode] = useState(false);
+  const [barcodeAplicado, setBarcodeAplicado] = useState(false);
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
@@ -285,7 +288,8 @@ export default function Home() {
   if (loading) return <div className="p-10 text-center font-bold text-gray-900 text-lg">Iniciando SIA...</div>;
 
   if (!user) return <Login onLogin={loginConGoogle} />;
-  if (role === 'pendiente') {
+
+  if (role === 'pendiente') {
     return (
       <PerfilPendiente
         etapa={(userData as any)?.perfilCompleto ? 'espera' : 'form'}
@@ -551,6 +555,7 @@ export default function Home() {
       setEditandoId(null);
       setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
+      setBarcodeAplicado(false);
       cambiarTab('registros');
       
     } catch (error) {
@@ -586,6 +591,7 @@ export default function Home() {
     setEditandoId(null);
     setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
     setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
+    setBarcodeAplicado(false);
     cambiarTab('nueva');
   };
 
@@ -743,6 +749,19 @@ export default function Home() {
         />
       )}
 
+      {escanerBarcode && (
+        <EscanerCodigoBarras
+          onClose={() => setEscanerBarcode(false)}
+          onApply={(campos, parsed) => {
+            setFormData(prev => ({ ...prev, ...campos }));
+            setBarcodeAplicado(true);
+            setEscanerBarcode(false);
+            // Log para diagnóstico de variantes raras (queda en consola, no UI)
+            console.info('[DNI PDF417] raw:', parsed.raw, 'warnings:', parsed.warnings);
+          }}
+        />
+      )}
+
       {tab === 'registros' && (
         <RecordsView
           role={roleActual}
@@ -784,6 +803,10 @@ export default function Home() {
             onScanDorso: () => setCamaraActiva('dorso'),
             onPickFile: (file) => setArchivoUnico(file),
           }}
+          barcodeScan={tab === 'nueva' && !editandoId ? {
+            onOpen: () => setEscanerBarcode(true),
+            aplicado: barcodeAplicado,
+          } : undefined}
         />
       )}
 

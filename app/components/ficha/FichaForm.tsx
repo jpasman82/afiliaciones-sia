@@ -1,12 +1,10 @@
 // ============================================================================
 //  app/components/ficha/FichaForm.tsx — Nueva / Editar ficha (form en secciones)
-//  Diseñado para reusar tu estado actual:
-//   - formData            (tu useState)
-//   - onChange = handleChange (event-based, igual al tuyo)
-//   - onSubmit = guardarFicha
-//  El bloque DNI recibe callbacks para enganchar tu EscanerDocumento.
+//  - En "Nueva": muestra banner de atajo para escanear el código del DNI.
+//  - Orden de secciones: 1. Datos personales · 2. Domicilio · 3. Contacto
+//    · 4. Documentación (foto DNI al final).
+//  - El bloque DNI recibe callbacks para enganchar EscanerDocumento (cámara).
 // ============================================================================
-import { useState } from 'react';
 import { LOCALIDADES } from '../../lib/estados';
 import { Icon } from '../ui/Icon';
 import { Button } from '../ui/Button';
@@ -48,15 +46,26 @@ interface FichaFormProps {
     onScanDorso: () => void;
     onPickFile: (file: File) => void;
   };
+  /** Cuando está presente, se muestra el banner de "Escanear código del DNI"
+   *  arriba del formulario. En modo "editar" se omite (undefined). */
+  barcodeScan?: {
+    onOpen: () => void;
+    aplicado: boolean;  // ya se aplicó un escaneo en esta ficha
+  };
 }
 
-export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, dni }: FichaFormProps) {
+export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, dni, barcodeScan }: FichaFormProps) {
   return (
     <form onSubmit={onSubmit} className="max-w-4xl mx-auto pb-24 md:pb-8" data-screen-label={editando ? 'Editar ficha' : 'Nueva ficha'}>
       <button type="button" onClick={onCancel} className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 mb-4">
         <Icon name="arrowLeft" className="w-4 h-4" strokeWidth={2.2} /> {editando ? 'Cancelar edición' : 'Volver'}
       </button>
       <PageHeader title={editando ? 'Editar ficha' : 'Nueva ficha'} sub={editando ? `${formData.apellidos}, ${formData.nombres}` : 'Cargá los datos del afiliado'} />
+
+      {/* Banner de atajo: escanear código del DNI (solo en "nueva") */}
+      {barcodeScan && !editando && (
+        <BarcodeBanner onOpen={barcodeScan.onOpen} aplicado={barcodeScan.aplicado} />
+      )}
 
       <Card className="px-5 md:px-7 divide-y divide-slate-100">
         <FormSection n="1" title="Datos personales" sub="Identidad del afiliado">
@@ -75,11 +84,7 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
           </div>
         </FormSection>
 
-        <FormSection n="2" title="Documentación" sub="DNI: frente y dorso, o un archivo único">
-          <DniUploader dni={dni} />
-        </FormSection>
-
-        <FormSection n="3" title="Domicilio" sub="Dirección del afiliado">
+        <FormSection n="2" title="Domicilio" sub="Dirección del afiliado">
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Distrito"><Input name="distrito" value={formData.distrito} disabled className="bg-slate-50 text-slate-500" /></Field>
             <Field label="Localidad" required><Select name="localidad" required value={formData.localidad} onChange={onChange}><option value="">Seleccionar…</option>{LOCALIDADES.map(l => <option key={l}>{l}</option>)}</Select></Field>
@@ -92,12 +97,16 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
           </div>
         </FormSection>
 
-        <FormSection n="4" title="Contacto" sub="Datos de comunicación">
+        <FormSection n="3" title="Contacto" sub="Datos de comunicación">
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Celular"><Input name="celular" inputMode="tel" value={formData.celular} onChange={onChange} placeholder="11 5555 5555" /></Field>
             <Field label="Email"><Input name="mail" type="email" value={formData.mail} onChange={onChange} placeholder="correo@gmail.com" /></Field>
             <Field label="Observaciones" className="sm:col-span-2"><Textarea name="observaciones" rows={3} value={formData.observaciones} onChange={onChange} placeholder="Notas internas (opcional)" /></Field>
           </div>
+        </FormSection>
+
+        <FormSection n="4" title="Documentación" sub="Foto del DNI: frente y dorso, o un archivo único">
+          <DniUploader dni={dni} />
         </FormSection>
       </Card>
 
@@ -108,6 +117,51 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
         </div>
       </div>
     </form>
+  );
+}
+
+function BarcodeBanner({ onOpen, aplicado }: { onOpen: () => void; aplicado: boolean }) {
+  if (aplicado) {
+    return (
+      <div className="mb-5 flex items-center gap-3 rounded-xl bg-emerald-50 ring-1 ring-emerald-200 px-4 py-3">
+        <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+          <Icon name="check" className="w-5 h-5 text-emerald-600" strokeWidth={2.5} />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-emerald-900">Datos importados del DNI</p>
+          <p className="text-xs text-emerald-700 mt-0.5">Revisá los campos antes de continuar. Podés volver a escanear si hace falta.</p>
+        </div>
+        <button type="button" onClick={onOpen} className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 shrink-0">
+          Volver a escanear
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full mb-5 flex items-center gap-4 rounded-xl bg-gradient-to-br from-brand-50 to-brand-100/60 ring-1 ring-brand-200 px-4 py-4 text-left hover:from-brand-100 hover:to-brand-200/60 transition group"
+    >
+      <div className="w-11 h-11 rounded-xl bg-white ring-1 ring-brand-200 flex items-center justify-center shrink-0 group-hover:ring-brand-300 transition">
+        <BarcodeIcon className="w-6 h-6 text-brand-700" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-slate-900">Escanear código del DNI</p>
+        <p className="text-xs text-slate-600 mt-0.5">Apuntá al código de barras del dorso para autocompletar nombre, apellido, DNI, sexo y fecha de nacimiento.</p>
+      </div>
+      <Icon name="chevronR" className="w-5 h-5 text-brand-700 shrink-0" strokeWidth={2.2} />
+    </button>
+  );
+}
+
+function BarcodeIcon({ className = '' }: { className?: string }) {
+  // Ícono inline (no agrego al set de Icon.tsx para minimizar diff)
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M3.75 5.25v13.5M6.75 5.25v13.5M9.75 5.25v13.5M13.5 5.25v13.5M16.5 5.25v13.5M20.25 5.25v13.5" />
+    </svg>
   );
 }
 
