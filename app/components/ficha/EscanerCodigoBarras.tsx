@@ -6,8 +6,17 @@
 // ============================================================================
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { BrowserPDF417Reader, NotFoundException } from '@zxing/library';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  BarcodeFormat,
+  BinaryBitmap,
+  DecodeHintType,
+  HybridBinarizer,
+  HTMLCanvasElementLuminanceSource,
+  NotFoundException,
+  PDF417Reader,
+  type Result,
+} from '@zxing/library';
 import { parseDniPdf417, parsedDniToFormFields, type ParsedDni } from '../../lib/parseDniPdf417';
 
 type Props = {
@@ -18,7 +27,10 @@ type Props = {
 export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const marcoRef = useRef<HTMLDivElement>(null);
-  const readerRef = useRef<BrowserPDF417Reader | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const decodificandoRef = useRef(false);
+  const activoRef = useRef(true);
   const [estado, setEstado] = useState<'iniciando' | 'escaneando' | 'parseado' | 'error'>('iniciando');
   const [parsed, setParsed] = useState<ParsedDni | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -27,59 +39,63 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const [torchActivo, setTorchActivo] = useState(false);
   const [leyendoFoto, setLeyendoFoto] = useState(false);
 
-  const aplicarResultado = (raw: string, reader: BrowserPDF417Reader) => {
+  const aplicarResultado = useCallback((raw: string) => {
     const p = parseDniPdf417(raw);
     setParsed(p);
     setEstado('parseado');
     setLeyendoFoto(false);
-    reader.reset();
-  };
+    detenerEscaneo(timerRef, streamRef);
+  }, []);
+
+  const intentarLeerFrame = useCallback(async (mostrarError: boolean) => {
+    const video = videoRef.current;
+    const marco = marcoRef.current;
+    if (!video || !marco || video.readyState < 2 || decodificandoRef.current) return;
+
+    decodificandoRef.current = true;
+    setIntentos(prev => prev + 1);
+
+    try {
+      const raw = await decodificarCanvas(capturarMarco(video, marco));
+      aplicarResultado(raw);
+    } catch (e: any) {
+      if (mostrarError) {
+        setErrorMsg('No pude leer el codigo en esa toma. Acercalo, mejora la luz y proba de nuevo.');
+      }
+      if (!(e instanceof NotFoundException) && mostrarError) {
+        console.debug('[ZXing canvas]', e);
+      }
+    } finally {
+      decodificandoRef.current = false;
+    }
+  }, [aplicarResultado]);
 
   useEffect(() => {
-    const reader = new BrowserPDF417Reader(250);
-    readerRef.current = reader;
-    let cancelado = false;
+    activoRef.current = true;
 
     (async () => {
       try {
-        await reader.decodeFromConstraints(
-          getCameraConstraints(),
-          videoRef.current!,
-          (result, err) => {
-            if (cancelado) return;
-            setIntentos(prev => prev + 1);
-
-            if (result) {
-              aplicarResultado(result.getText(), reader);
-            }
-
-            if (err && !(err instanceof NotFoundException)) {
-              console.debug('[ZXing]', err);
-            }
-          }
-        );
-
-        if (!cancelado) {
-          setEstado('escaneando');
-          prepararCamara(videoRef.current, setTorchDisponible);
-        }
+        await iniciarCamara(videoRef.current, streamRef, setTorchDisponible);
+        if (!activoRef.current) return;
+        setEstado('escaneando');
+        timerRef.current = window.setInterval(() => {
+          void intentarLeerFrame(false);
+        }, 320);
       } catch (e: any) {
-        if (cancelado) return;
+        if (!activoRef.current) return;
         setErrorMsg(e?.message || 'No se pudo acceder a la camara.');
         setEstado('error');
       }
     })();
 
     return () => {
-      cancelado = true;
-      try {
-        reader.reset();
-      } catch {}
+      activoRef.current = false;
+      detenerEscaneo(timerRef, streamRef);
     };
-  }, []);
+  }, [intentarLeerFrame]);
 
   const reiniciar = () => {
-    readerRef.current?.reset();
+    detenerEscaneo(timerRef, streamRef);
     setParsed(null);
     setEstado('iniciando');
     setErrorMsg('');
@@ -87,26 +103,11 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
     setTorchActivo(false);
     setLeyendoFoto(false);
 
-    const reader = new BrowserPDF417Reader(250);
-    readerRef.current = reader;
-
-    reader.decodeFromConstraints(
-      getCameraConstraints(),
-      videoRef.current!,
-      (result, err) => {
-        setIntentos(prev => prev + 1);
-
-        if (result) {
-          aplicarResultado(result.getText(), reader);
-        }
-
-        if (err && !(err instanceof NotFoundException)) {
-          console.debug('[ZXing]', err);
-        }
-      }
-    ).then(() => {
+    iniciarCamara(videoRef.current, streamRef, setTorchDisponible).then(() => {
       setEstado('escaneando');
-      prepararCamara(videoRef.current, setTorchDisponible);
+      timerRef.current = window.setInterval(() => {
+        void intentarLeerFrame(false);
+      }, 320);
     }).catch((e: any) => {
       setErrorMsg(e?.message || 'No se pudo acceder a la camara.');
       setEstado('error');
@@ -127,23 +128,10 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   };
 
   const leerDesdeFoto = async () => {
-    const reader = readerRef.current;
-    const video = videoRef.current;
-    const marco = marcoRef.current;
-    if (!reader || !video || !marco || video.readyState < 2) return;
-
     setLeyendoFoto(true);
     setErrorMsg('');
-
     try {
-      const dataUrl = capturarMarco(video, marco);
-      const result = await reader.decodeFromImage(undefined, dataUrl);
-      aplicarResultado(result.getText(), reader);
-    } catch (e: any) {
-      if (!(e instanceof NotFoundException)) {
-        console.debug('[ZXing foto]', e);
-      }
-      setErrorMsg('No pude leer el codigo en esa toma. Acercalo, iluminalo mejor y proba de nuevo.');
+      await intentarLeerFrame(true);
     } finally {
       setLeyendoFoto(false);
     }
@@ -194,7 +182,7 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
           )}
           <button
             type="button"
-            onClick={leerDesdeFoto}
+            onClick={() => void leerDesdeFoto()}
             disabled={leyendoFoto || estado !== 'escaneando'}
             className="px-4 py-3 rounded-lg bg-white text-slate-900 font-semibold text-sm disabled:opacity-60"
           >
@@ -286,10 +274,18 @@ function getCameraConstraints(): MediaStreamConstraints {
   };
 }
 
-async function prepararCamara(
+async function iniciarCamara(
   video: HTMLVideoElement | null,
+  streamRef: React.MutableRefObject<MediaStream | null>,
   setTorchDisponible: (disponible: boolean) => void
 ) {
+  if (!video) throw new Error('No se encontro el video de camara.');
+
+  const stream = await navigator.mediaDevices.getUserMedia(getCameraConstraints());
+  streamRef.current = stream;
+  video.srcObject = stream;
+  await video.play();
+
   const track = obtenerVideoTrack(video);
   if (!track) return;
 
@@ -308,12 +304,25 @@ async function prepararCamara(
   }
 }
 
+function detenerEscaneo(
+  timerRef: React.MutableRefObject<number | null>,
+  streamRef: React.MutableRefObject<MediaStream | null>
+) {
+  if (timerRef.current) {
+    window.clearInterval(timerRef.current);
+    timerRef.current = null;
+  }
+
+  streamRef.current?.getTracks().forEach(track => track.stop());
+  streamRef.current = null;
+}
+
 function obtenerVideoTrack(video: HTMLVideoElement | null): MediaStreamTrack | null {
   const stream = video?.srcObject instanceof MediaStream ? video.srcObject : null;
   return stream?.getVideoTracks()[0] || null;
 }
 
-function capturarMarco(video: HTMLVideoElement, marco: HTMLDivElement): string {
+function capturarMarco(video: HTMLVideoElement, marco: HTMLDivElement): HTMLCanvasElement {
   const videoRect = video.getBoundingClientRect();
   const marcoRect = marco.getBoundingClientRect();
 
@@ -327,16 +336,64 @@ function capturarMarco(video: HTMLVideoElement, marco: HTMLDivElement): string {
   const sWidth = Math.min(video.videoWidth - sx, (marcoRect.width + margenX * 2) * scaleX);
   const sHeight = Math.min(video.videoHeight - sy, (marcoRect.height + margenY * 2) * scaleY);
 
+  const minWidth = 1600;
+  const upscale = sWidth < minWidth ? minWidth / sWidth : 1;
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(sWidth));
-  canvas.height = Math.max(1, Math.round(sHeight));
+  canvas.width = Math.max(1, Math.round(sWidth * upscale));
+  canvas.height = Math.max(1, Math.round(sHeight * upscale));
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return '';
+  if (!ctx) return canvas;
 
-  ctx.filter = 'grayscale(100%) contrast(1.7) brightness(1.08)';
   ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/jpeg', 0.95);
+  return mejorarContraste(canvas);
+}
+
+function mejorarContraste(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+
+  const ctx = out.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return canvas;
+
+  ctx.filter = 'grayscale(100%) contrast(1.8) brightness(1.08)';
+  ctx.drawImage(canvas, 0, 0);
+  return out;
+}
+
+async function decodificarCanvas(canvas: HTMLCanvasElement): Promise<string> {
+  const nativeResult = await decodificarConBarcodeDetector(canvas);
+  if (nativeResult) return nativeResult;
+
+  const hints = new Map();
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417]);
+  hints.set(DecodeHintType.TRY_HARDER, true);
+
+  const source = new HTMLCanvasElementLuminanceSource(canvas, true);
+  const bitmap = new BinaryBitmap(new HybridBinarizer(source));
+  const result: Result = new PDF417Reader().decode(bitmap, hints);
+  return result.getText();
+}
+
+async function decodificarConBarcodeDetector(canvas: HTMLCanvasElement): Promise<string | null> {
+  const Detector = (window as any).BarcodeDetector;
+  if (!Detector) return null;
+
+  try {
+    const formats = typeof Detector.getSupportedFormats === 'function'
+      ? await Detector.getSupportedFormats()
+      : ['pdf417'];
+
+    if (!formats.includes('pdf417')) return null;
+
+    const detector = new Detector({ formats: ['pdf417'] });
+    const barcodes = await detector.detect(canvas);
+    const match = barcodes.find((barcode: any) => barcode.rawValue);
+    return match?.rawValue || null;
+  } catch {
+    return null;
+  }
 }
 
 function Row({ label, value, mono, full }: { label: string; value: string; mono?: boolean; full?: boolean }) {
