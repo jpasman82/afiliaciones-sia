@@ -44,7 +44,6 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const [intentos, setIntentos] = useState(0);
   const [torchDisponible, setTorchDisponible] = useState(false);
   const [torchActivo, setTorchActivo] = useState(false);
-  const [leyendoFoto, setLeyendoFoto] = useState(false);
   const [zoomControl, setZoomControl] = useState<ZoomControl | null>(null);
   const [enfoqueMsg, setEnfoqueMsg] = useState('');
 
@@ -52,7 +51,6 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
     const p = parseDniPdf417(raw);
     setParsed(p);
     setEstado('parseado');
-    setLeyendoFoto(false);
     detenerEscaneo(timerRef, streamRef);
   }, []);
 
@@ -110,7 +108,6 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
     setErrorMsg('');
     setIntentos(0);
     setTorchActivo(false);
-    setLeyendoFoto(false);
     setZoomControl(null);
     setEnfoqueMsg('');
 
@@ -167,16 +164,6 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
     }
   };
 
-  const leerDesdeFoto = async () => {
-    setLeyendoFoto(true);
-    setErrorMsg('');
-    try {
-      await intentarLeerFrame(true);
-    } finally {
-      setLeyendoFoto(false);
-    }
-  };
-
   const aplicar = () => {
     if (!parsed) return;
     const campos = parsedDniToFormFields(parsed);
@@ -199,6 +186,7 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
       >
         <video ref={videoRef} autoPlay playsInline muted className="absolute w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black/40 pointer-events-none"></div>
+        <div className="absolute left-0 right-0 top-1/2 h-px bg-emerald-300/80 shadow-[0_0_12px_rgba(52,211,153,0.9)] pointer-events-none"></div>
         <div ref={marcoRef} className="relative w-[94%] max-w-3xl aspect-[3.8/1] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none">
           <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400"></div>
           <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400"></div>
@@ -248,14 +236,6 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
               {torchActivo ? 'Apagar luz' : 'Luz'}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => void leerDesdeFoto()}
-            disabled={leyendoFoto || estado !== 'escaneando'}
-            className="px-4 py-3 rounded-lg bg-white text-slate-900 font-semibold text-sm disabled:opacity-60"
-          >
-            {leyendoFoto ? 'Leyendo...' : 'Leer desde foto'}
-          </button>
         </div>
       </div>
 
@@ -443,15 +423,22 @@ function capturarMarco(video: HTMLVideoElement, marco: HTMLDivElement): HTMLCanv
   const videoRect = video.getBoundingClientRect();
   const marcoRect = marco.getBoundingClientRect();
 
-  const scaleX = video.videoWidth / videoRect.width;
-  const scaleY = video.videoHeight / videoRect.height;
+  const objectCoverScale = Math.max(
+    videoRect.width / video.videoWidth,
+    videoRect.height / video.videoHeight
+  );
+  const renderedWidth = video.videoWidth * objectCoverScale;
+  const renderedHeight = video.videoHeight * objectCoverScale;
+  const renderedLeft = videoRect.left + (videoRect.width - renderedWidth) / 2;
+  const renderedTop = videoRect.top + (videoRect.height - renderedHeight) / 2;
+
   const margenX = marcoRect.width * 0.08;
   const margenY = marcoRect.height * 0.18;
 
-  const sx = Math.max(0, (marcoRect.left - videoRect.left - margenX) * scaleX);
-  const sy = Math.max(0, (marcoRect.top - videoRect.top - margenY) * scaleY);
-  const sWidth = Math.min(video.videoWidth - sx, (marcoRect.width + margenX * 2) * scaleX);
-  const sHeight = Math.min(video.videoHeight - sy, (marcoRect.height + margenY * 2) * scaleY);
+  const sx = Math.max(0, (marcoRect.left - renderedLeft - margenX) / objectCoverScale);
+  const sy = Math.max(0, (marcoRect.top - renderedTop - margenY) / objectCoverScale);
+  const sWidth = Math.min(video.videoWidth - sx, (marcoRect.width + margenX * 2) / objectCoverScale);
+  const sHeight = Math.min(video.videoHeight - sy, (marcoRect.height + margenY * 2) / objectCoverScale);
 
   const minWidth = 1600;
   const upscale = sWidth < minWidth ? minWidth / sWidth : 1;
@@ -463,7 +450,7 @@ function capturarMarco(video: HTMLVideoElement, marco: HTMLDivElement): HTMLCanv
   if (!ctx) return canvas;
 
   ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
-  return mejorarContraste(canvas);
+  return canvas;
 }
 
 function mejorarContraste(canvas: HTMLCanvasElement): HTMLCanvasElement {
@@ -483,6 +470,14 @@ async function decodificarCanvas(canvas: HTMLCanvasElement): Promise<string> {
   const nativeResult = await decodificarConBarcodeDetector(canvas);
   if (nativeResult) return nativeResult;
 
+  try {
+    return decodificarConZxing(canvas);
+  } catch {}
+
+  return decodificarConZxing(mejorarContraste(canvas));
+}
+
+function decodificarConZxing(canvas: HTMLCanvasElement): string {
   const hints = new Map();
   hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417]);
   hints.set(DecodeHintType.TRY_HARDER, true);
