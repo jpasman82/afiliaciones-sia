@@ -47,10 +47,9 @@ interface FichaFormProps {
     onPickFile: (file: File) => void;
   };
   /** Cuando está presente, se muestra el banner de "Escanear código del DNI"
-   *  arriba del formulario. En modo "editar" se omite (undefined).
-   *  El banner abre directamente la cámara nativa para sacar foto. */
+   *  arriba del formulario. En modo "editar" se omite (undefined). */
   barcodeScan?: {
-    onFotoTomada: (file: File) => void;
+    onOpen: () => void;
     aplicado: boolean;  // ya se aplicó un escaneo en esta ficha
   };
 }
@@ -65,7 +64,7 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
 
       {/* Banner de atajo: escanear código del DNI (solo en "nueva") */}
       {barcodeScan && !editando && (
-        <BarcodeBanner onFotoTomada={barcodeScan.onFotoTomada} aplicado={barcodeScan.aplicado} />
+        <BarcodeBanner onOpen={barcodeScan.onOpen} aplicado={barcodeScan.aplicado} />
       )}
 
       <Card className="px-5 md:px-7 divide-y divide-slate-100">
@@ -121,48 +120,39 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
   );
 }
 
-function BarcodeBanner({ onFotoTomada, aplicado }: { onFotoTomada: (file: File) => void; aplicado: boolean }) {
-  // El banner entero es un <label> con un <input type="file" capture="environment"> oculto.
-  // Tocar el banner abre directamente la cámara nativa del celular (necesita gesto del
-  // usuario para disparar la cámara — esto lo respeta porque es un click directo en el label).
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) onFotoTomada(f);
-    e.target.value = ''; // permitir volver a sacar otra foto sin recargar el input
-  };
+function BarcodeBanner({ onOpen, aplicado }: { onOpen: () => void; aplicado: boolean }) {
+  if (aplicado) {
+    return (
+      <div className="mb-5 flex items-center gap-3 rounded-xl bg-emerald-50 ring-1 ring-emerald-200 px-4 py-3">
+        <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+          <Icon name="check" className="w-5 h-5 text-emerald-600" strokeWidth={2.5} />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-emerald-900">Datos importados del DNI</p>
+          <p className="text-xs text-emerald-700 mt-0.5">Revisá los campos antes de continuar. Podés volver a escanear si hace falta.</p>
+        </div>
+        <button type="button" onClick={onOpen} className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 shrink-0">
+          Volver a escanear
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <label className="block w-full mb-5 cursor-pointer">
-      <input
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleChange}
-      />
-      {aplicado ? (
-        <div className="flex items-center gap-3 rounded-xl bg-emerald-50 ring-1 ring-emerald-200 px-4 py-3">
-          <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-            <Icon name="check" className="w-5 h-5 text-emerald-600" strokeWidth={2.5} />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-emerald-900">Datos importados del DNI</p>
-            <p className="text-xs text-emerald-700 mt-0.5">Revisá los campos. Tocá para escanear otra foto si hace falta.</p>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-4 rounded-xl bg-gradient-to-br from-brand-50 to-brand-100/60 ring-1 ring-brand-200 px-4 py-4 hover:from-brand-100 hover:to-brand-200/60 transition group">
-          <div className="w-11 h-11 rounded-xl bg-white ring-1 ring-brand-200 flex items-center justify-center shrink-0 group-hover:ring-brand-300 transition">
-            <BarcodeIcon className="w-6 h-6 text-brand-700" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-slate-900">Escanear código del DNI</p>
-            <p className="text-xs text-slate-600 mt-0.5">Sacá foto del dorso y recortá el código de barras para autocompletar nombre, apellido, DNI, sexo y fecha de nacimiento.</p>
-          </div>
-          <Icon name="chevronR" className="w-5 h-5 text-brand-700 shrink-0" strokeWidth={2.2} />
-        </div>
-      )}
-    </label>
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full mb-5 flex items-center gap-4 rounded-xl bg-gradient-to-br from-brand-50 to-brand-100/60 ring-1 ring-brand-200 px-4 py-4 text-left hover:from-brand-100 hover:to-brand-200/60 transition group"
+    >
+      <div className="w-11 h-11 rounded-xl bg-white ring-1 ring-brand-200 flex items-center justify-center shrink-0 group-hover:ring-brand-300 transition">
+        <BarcodeIcon className="w-6 h-6 text-brand-700" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-slate-900">Escanear código del DNI</p>
+        <p className="text-xs text-slate-600 mt-0.5">Apuntá al código de barras del dorso. Si no se detecta en vivo, podés sacar una foto.</p>
+      </div>
+      <Icon name="chevronR" className="w-5 h-5 text-brand-700 shrink-0" strokeWidth={2.2} />
+    </button>
   );
 }
 

@@ -6,33 +6,44 @@
 // ============================================================================
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { BrowserPDF417Reader, DecodeHintType, NotFoundException } from '@zxing/library';
+import {
+  BrowserPDF417Reader,
+  PDF417Reader,
+  BinaryBitmap,
+  HybridBinarizer,
+  HTMLCanvasElementLuminanceSource,
+  DecodeHintType,
+  NotFoundException,
+} from '@zxing/library';
 import { parseDniPdf417, parsedDniToFormFields, type ParsedDni } from '../../lib/parseDniPdf417';
 
 type Props = {
-  initialFile: File;
   onClose: () => void;
   onApply: (campos: ReturnType<typeof parsedDniToFormFields>, parsed: ParsedDni) => void;
 };
 
-type Estado = 'recortando' | 'decodificando' | 'parseado' | 'sin_codigo';
+type Estado = 'escaneando' | 'recortando' | 'decodificando' | 'parseado' | 'sin_codigo';
 
-export function EscanerCodigoBarras({ initialFile, onClose, onApply }: Props) {
+export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
-  const [estado, setEstado] = useState<Estado>('recortando');
+  const [estado, setEstado] = useState<Estado>('escaneando');
   const [parsed, setParsed] = useState<ParsedDni | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
-  // Carga el archivo inicial como URL
+  // Cleanup del blob URL cuando se reemplaza o el componente se cierra
   useEffect(() => {
-    const url = URL.createObjectURL(initialFile);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setImgUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [initialFile]);
+    return () => { if (imgUrl) URL.revokeObjectURL(imgUrl); };
+  }, [imgUrl]);
 
-  // Cuando el usuario vuelve a sacar una foto desde dentro del cropper
-  const onRetakeFile = (file: File) => {
+  // Cuando el live-scan detectó un código (raw string del PDF417)
+  const onDecodedFromLive = (raw: string) => {
+    const p = parseDniPdf417(raw);
+    setParsed(p);
+    setEstado('parseado');
+  };
+
+  // Cuando el live-scan o el cropper sacan una foto (manual) → ir a cropper
+  const onPhotoTaken = (file: File) => {
     setImgUrl(prev => {
       if (prev) URL.revokeObjectURL(prev);
       return URL.createObjectURL(file);
@@ -79,6 +90,7 @@ export function EscanerCodigoBarras({ initialFile, onClose, onApply }: Props) {
 
   const subtitulo = (() => {
     switch (estado) {
+      case 'escaneando':    return 'Buscando código en vivo… o sacá una foto';
       case 'recortando':    return 'Ajustá el recuadro al código de barras (PDF417)';
       case 'decodificando': return 'Decodificando…';
       case 'parseado':      return 'Revisá los datos detectados';
@@ -96,6 +108,10 @@ export function EscanerCodigoBarras({ initialFile, onClose, onApply }: Props) {
         <button onClick={onClose} className="text-white font-bold px-3 py-1.5 bg-red-600 rounded text-sm shrink-0 ml-3">Cerrar</button>
       </div>
 
+      {estado === 'escaneando' && (
+        <LiveScan onDecoded={onDecodedFromLive} onTakePhoto={onPhotoTaken} />
+      )}
+
       {(estado === 'recortando' || estado === 'decodificando' || estado === 'sin_codigo') && imgUrl && (
         <Cropper
           imgUrl={imgUrl}
@@ -103,7 +119,7 @@ export function EscanerCodigoBarras({ initialFile, onClose, onApply }: Props) {
           decodingState={estado}
           errorMsg={errorMsg}
           onDecode={decodificarCanvas}
-          onRetakeFile={onRetakeFile}
+          onRetakeFile={onPhotoTaken}
         />
       )}
 
@@ -165,6 +181,178 @@ export function EscanerCodigoBarras({ initialFile, onClose, onApply }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+// ============================================================================
+//  LiveScan: cámara en vivo con loop de decode automático sobre frames.
+//  Usa el decoder de bajo nivel (PDF417Reader + HTMLCanvasElementLuminanceSource)
+//  para evitar el roundtrip por dataURL. Si en X intentos no engancha, el usuario
+//  tiene un botón siempre visible para sacar una foto y pasar al cropper.
+// ============================================================================
+
+function LiveScan({
+  onDecoded, onTakePhoto,
+}: {
+  onDecoded: (raw: string) => void;
+  onTakePhoto: (file: File) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [intentos, setIntentos] = useState(0);
+  const [videoRes, setVideoRes] = useState<string>('—');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [iniciando, setIniciando] = useState(true);
+
+  useEffect(() => {
+    let stopped = false;
+    let timeoutId: number | undefined;
+
+    const stop = () => {
+      stopped = true;
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+    };
+
+    const start = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width:  { ideal: 3840 },
+            height: { ideal: 2160 },
+          },
+        });
+        if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        setVideoRes(`${settings.width || '?'}×${settings.height || '?'}`);
+
+        // Autofocus continuo + zoom moderado si el dispositivo lo permite
+        try {
+          const caps = (track.getCapabilities?.() ?? {}) as MediaTrackCapabilities & {
+            focusMode?: string[]; zoom?: { min: number; max: number };
+          };
+          const advanced: any[] = [];
+          if (caps.focusMode?.includes('continuous')) advanced.push({ focusMode: 'continuous' });
+          if (caps.zoom && caps.zoom.max > (caps.zoom.min || 1)) {
+            advanced.push({ zoom: Math.min(2, caps.zoom.max) });
+          }
+          if (advanced.length) await track.applyConstraints({ advanced } as any);
+        } catch { /* sin focus/zoom, seguimos */ }
+
+        setIniciando(false);
+
+        // Decoder de bajo nivel (sincrónico, sin dataURL)
+        const reader = new PDF417Reader();
+        const hints = new Map();
+        hints.set(DecodeHintType.TRY_HARDER, true);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { setErrorMsg('Canvas 2D no disponible.'); return; }
+
+        let count = 0;
+        const tick = () => {
+          if (stopped) return;
+          const v = videoRef.current;
+          if (!v || v.videoWidth === 0) {
+            timeoutId = window.setTimeout(tick, 200);
+            return;
+          }
+          canvas.width = v.videoWidth;
+          canvas.height = v.videoHeight;
+          ctx.drawImage(v, 0, 0);
+
+          try {
+            const luminance = new HTMLCanvasElementLuminanceSource(canvas);
+            const bitmap = new BinaryBitmap(new HybridBinarizer(luminance));
+            const result = reader.decode(bitmap, hints);
+            if (!stopped) {
+              stop();
+              onDecoded(result.getText());
+            }
+            return;
+          } catch (e) {
+            if (!(e instanceof NotFoundException)) {
+              // Otros errores (ChecksumException, FormatException): seguimos intentando
+            }
+          }
+          count++;
+          if (count % 2 === 0) setIntentos(count);
+          timeoutId = window.setTimeout(tick, 300);
+        };
+        tick();
+      } catch (e: any) {
+        if (!stopped) {
+          setErrorMsg(e?.message || 'No se pudo acceder a la cámara.');
+          setIniciando(false);
+        }
+      }
+    };
+
+    start();
+    return stop;
+  }, [onDecoded]);
+
+  const onPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) onTakePhoto(f);
+    e.target.value = '';
+  };
+
+  return (
+    <>
+      <div className="flex-1 relative overflow-hidden flex items-center justify-center min-h-0 bg-black">
+        <video ref={videoRef} autoPlay playsInline muted className="absolute w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+        {/* Marco para el PDF417 */}
+        <div className="relative w-[92%] aspect-[3/1] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] pointer-events-none">
+          <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-green-400" />
+          <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-green-400" />
+          <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-green-400" />
+          <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-green-400" />
+        </div>
+
+        <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[10px] px-2 py-1 rounded">
+          {videoRes}
+        </div>
+
+        <div className="absolute bottom-3 left-0 right-0 text-center text-white text-sm font-medium px-4 pointer-events-none">
+          {iniciando && 'Iniciando cámara…'}
+          {!iniciando && !errorMsg && (
+            <span className="text-white/85">
+              Buscando código… <span className="text-white/55">({intentos})</span>
+            </span>
+          )}
+          {errorMsg && <span className="text-rose-300">{errorMsg}</span>}
+        </div>
+      </div>
+
+      <div className="bg-black p-3 md:p-4 shrink-0">
+        <label className="block w-full py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg text-center cursor-pointer active:bg-emerald-700">
+          📸 Sacar foto del código
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={onPhotoChange}
+          />
+        </label>
+        <p className="text-[11px] text-white/50 text-center mt-2">
+          Si no detecta automáticamente, sacá una foto y recortás el código.
+        </p>
+      </div>
+    </>
   );
 }
 
