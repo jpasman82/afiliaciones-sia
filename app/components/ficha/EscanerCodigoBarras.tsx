@@ -1,8 +1,8 @@
 // ============================================================================
 //  app/components/ficha/EscanerCodigoBarras.tsx
-//  Lector PDF417 del DNI por foto + recorte.
-//  Flujo: el usuario toma una foto con la cámara nativa, ajusta un recuadro
-//  para encerrar solo el código de barras, y decodificamos esa región.
+//  Modal de recorte + decodificación PDF417. Recibe la foto ya tomada (la
+//  cámara la abrió el banner de FichaForm directamente). Muestra el cropper,
+//  el usuario ajusta el recuadro, y decodificamos esa región.
 // ============================================================================
 'use client';
 import { useEffect, useRef, useState } from 'react';
@@ -10,29 +10,33 @@ import { BrowserPDF417Reader, DecodeHintType, NotFoundException } from '@zxing/l
 import { parseDniPdf417, parsedDniToFormFields, type ParsedDni } from '../../lib/parseDniPdf417';
 
 type Props = {
+  initialFile: File;
   onClose: () => void;
   onApply: (campos: ReturnType<typeof parsedDniToFormFields>, parsed: ParsedDni) => void;
 };
 
-type Estado = 'esperando_foto' | 'recortando' | 'decodificando' | 'parseado' | 'sin_codigo';
+type Estado = 'recortando' | 'decodificando' | 'parseado' | 'sin_codigo';
 
-export function EscanerCodigoBarras({ onClose, onApply }: Props) {
-  const [estado, setEstado] = useState<Estado>('esperando_foto');
+export function EscanerCodigoBarras({ initialFile, onClose, onApply }: Props) {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const [estado, setEstado] = useState<Estado>('recortando');
   const [parsed, setParsed] = useState<ParsedDni | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
-  // Liberar el blob URL cuando se cierra o cambia
+  // Carga el archivo inicial como URL
   useEffect(() => {
-    return () => {
-      if (imgUrl) URL.revokeObjectURL(imgUrl);
-    };
-  }, [imgUrl]);
-
-  const onFotoTomada = (file: File) => {
-    if (imgUrl) URL.revokeObjectURL(imgUrl);
-    const url = URL.createObjectURL(file);
+    const url = URL.createObjectURL(initialFile);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setImgUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [initialFile]);
+
+  // Cuando el usuario vuelve a sacar una foto desde dentro del cropper
+  const onRetakeFile = (file: File) => {
+    setImgUrl(prev => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
     setParsed(null);
     setErrorMsg('');
     setEstado('recortando');
@@ -53,6 +57,7 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
       setEstado('parseado');
     } catch (e) {
       if (e instanceof NotFoundException) {
+        setErrorMsg('No se detectó código en el área recortada. Ajustá el recuadro al PDF417 (rectángulo de barras finas) y reintentá.');
         setEstado('sin_codigo');
       } else {
         setErrorMsg((e as any)?.message || 'Error al decodificar.');
@@ -72,52 +77,25 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
     setEstado('recortando');
   };
 
+  const subtitulo = (() => {
+    switch (estado) {
+      case 'recortando':    return 'Ajustá el recuadro al código de barras (PDF417)';
+      case 'decodificando': return 'Decodificando…';
+      case 'parseado':      return 'Revisá los datos detectados';
+      case 'sin_codigo':    return 'Ajustá el recuadro y reintentá';
+    }
+  })();
+
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col">
       <div className="p-3 md:p-4 bg-black text-white flex justify-between items-center shrink-0">
         <div className="min-w-0">
           <h3 className="font-bold text-base">Escanear DNI</h3>
-          <p className="text-[11px] text-white/60 mt-0.5 truncate">
-            {estado === 'esperando_foto' && 'Tomá una foto del dorso del DNI'}
-            {estado === 'recortando' && 'Ajustá el recuadro al código de barras'}
-            {estado === 'decodificando' && 'Decodificando…'}
-            {estado === 'parseado' && 'Revisá los datos detectados'}
-            {estado === 'sin_codigo' && 'No se detectó código en el área recortada'}
-          </p>
+          <p className="text-[11px] text-white/60 mt-0.5 truncate">{subtitulo}</p>
         </div>
         <button onClick={onClose} className="text-white font-bold px-3 py-1.5 bg-red-600 rounded text-sm shrink-0 ml-3">Cerrar</button>
       </div>
 
-      {/* PASO 1: Esperar que el usuario tome la foto */}
-      {estado === 'esperando_foto' && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-white">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-600/20 flex items-center justify-center mb-5">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 text-emerald-400">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
-            </svg>
-          </div>
-          <p className="text-center mb-1 max-w-sm text-base font-semibold">Tomar foto del dorso del DNI</p>
-          <p className="text-center text-white/60 text-sm max-w-sm mb-6">
-            Acercate al PDF417 (el rectángulo de barras verticales) hasta que se vea nítido. Después podrás recortar para enmarcar solo el código.
-          </p>
-          <label className="block w-full max-w-sm py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg text-center cursor-pointer active:bg-emerald-700">
-            📷 Abrir cámara
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onFotoTomada(f);
-                e.target.value = '';
-              }}
-            />
-          </label>
-        </div>
-      )}
-
-      {/* PASO 2: Recortar */}
       {(estado === 'recortando' || estado === 'decodificando' || estado === 'sin_codigo') && imgUrl && (
         <Cropper
           imgUrl={imgUrl}
@@ -125,11 +103,10 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
           decodingState={estado}
           errorMsg={errorMsg}
           onDecode={decodificarCanvas}
-          onRetake={() => setEstado('esperando_foto')}
+          onRetakeFile={onRetakeFile}
         />
       )}
 
-      {/* PASO 3: Resultado */}
       {estado === 'parseado' && parsed && (
         <div className="flex-1 flex flex-col bg-slate-50 overflow-auto">
           <div className="flex-1 p-4 md:p-6 max-w-2xl mx-auto w-full">
@@ -175,7 +152,7 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
               onClick={volverARecorte}
               className="flex-1 py-3 rounded-lg bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm hover:bg-slate-50 transition"
             >
-              Reintentar
+              Ajustar recorte
             </button>
             <button
               onClick={aplicar}
@@ -192,105 +169,129 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
 }
 
 // ============================================================================
-//  Cropper: muestra una imagen y un recuadro arrastrable + redimensionable
+//  Cropper: imagen + recuadro arrastrable + redimensionable
+//  La clave del fix: el recuadro se posiciona dentro de un div que tiene
+//  EXACTAMENTE las dimensiones de la imagen mostrada, no del wrapper externo.
+//  Antes el div externo tenía letterbox (espacio negro) y el recuadro estaba
+//  limitado al área del IMG, pero el IMG no llenaba el wrapper → "sector".
 // ============================================================================
 
-type Box = { x: number; y: number; w: number; h: number }; // en píxeles del display
+type Box = { x: number; y: number; w: number; h: number };  // en coords del display
 type Corner = 'tl' | 'tr' | 'bl' | 'br';
 type DragMode = 'move' | Corner;
 
 function Cropper({
-  imgUrl, disabled, decodingState, errorMsg, onDecode, onRetake,
+  imgUrl, disabled, decodingState, errorMsg, onDecode, onRetakeFile,
 }: {
   imgUrl: string;
   disabled: boolean;
   decodingState: Estado;
   errorMsg: string;
   onDecode: (canvas: HTMLCanvasElement) => void;
-  onRetake: () => void;
+  onRetakeFile: (file: File) => void;
 }) {
-  const imgRef = useRef<HTMLImageElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [imgLoaded, setImgLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [displayed, setDisplayed] = useState<{ w: number; h: number } | null>(null);
   const [box, setBox] = useState<Box>({ x: 0, y: 0, w: 0, h: 0 });
-  const [dragMode, setDragMode] = useState<DragMode | null>(null);
-  const dragStart = useRef<{ px: number; py: number; box: Box } | null>(null);
+  const dragInfo = useRef<{ mode: DragMode; px: number; py: number; box: Box } | null>(null);
 
-  // Tamaño actual de la imagen renderizada (puede cambiar si la ventana redimensiona)
-  const calcularBoxInicial = () => {
+  // Calcula el tamaño real de la imagen mostrada (object-contain style),
+  // luego inicializa o ajusta el recuadro manteniendo proporciones.
+  const recalcular = (preservarBox = false) => {
     const img = imgRef.current;
-    if (!img) return;
-    const w = img.clientWidth;
-    const h = img.clientHeight;
-    if (w === 0 || h === 0) return;
-    // Recuadro inicial: ~85% del ancho, ~28% del alto, centrado (proporciones típicas del PDF417)
-    const bw = w * 0.85;
-    const bh = h * 0.28;
-    setBox({ x: (w - bw) / 2, y: (h - bh) / 2, w: bw, h: bh });
+    const wrap = wrapperRef.current;
+    if (!img || !wrap || !img.naturalWidth) return;
+
+    const wRect = wrap.getBoundingClientRect();
+    const aspect = img.naturalWidth / img.naturalHeight;
+    let w: number, h: number;
+    if (wRect.width / aspect <= wRect.height) {
+      w = wRect.width;
+      h = wRect.width / aspect;
+    } else {
+      h = wRect.height;
+      w = wRect.height * aspect;
+    }
+
+    setDisplayed(prev => {
+      // Si ya teníamos un display y queremos preservar la box, reescalar
+      if (prev && preservarBox && prev.w > 0 && prev.h > 0) {
+        const rx = box.x / prev.w, ry = box.y / prev.h;
+        const rw = box.w / prev.w, rh = box.h / prev.h;
+        setBox({ x: w * rx, y: h * ry, w: w * rw, h: h * rh });
+      } else {
+        // Box inicial: 85% ancho, 28% alto, centrado (proporciones tipo PDF417)
+        const bw = w * 0.85;
+        const bh = h * 0.28;
+        setBox({ x: (w - bw) / 2, y: (h - bh) / 2, w: bw, h: bh });
+      }
+      return { w, h };
+    });
   };
 
-  const onImgLoad = () => {
-    setImgLoaded(true);
-    calcularBoxInicial();
-  };
+  const onImgLoad = () => recalcular(false);
 
   useEffect(() => {
-    const onResize = () => calcularBoxInicial();
+    const onResize = () => recalcular(true);
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
     return () => {
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [box, displayed]);
 
+  // Inicia drag — usa listeners a nivel `document` para no perder eventos al
+  // arrastrar fuera del recuadro (los pointer-events sobre el wrapper se
+  // perdían cuando el dedo salía del área).
   const startDrag = (e: React.PointerEvent, mode: DragMode) => {
-    if (disabled) return;
+    if (disabled || !displayed) return;
     e.preventDefault();
     e.stopPropagation();
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    setDragMode(mode);
-    dragStart.current = { px: e.clientX, py: e.clientY, box: { ...box } };
-  };
+    dragInfo.current = { mode, px: e.clientX, py: e.clientY, box: { ...box } };
 
-  const onMove = (e: React.PointerEvent) => {
-    if (!dragMode || !dragStart.current) return;
-    e.preventDefault();
-    const img = imgRef.current;
-    if (!img) return;
-    const maxW = img.clientWidth;
-    const maxH = img.clientHeight;
-    const dx = e.clientX - dragStart.current.px;
-    const dy = e.clientY - dragStart.current.py;
-    const s = dragStart.current.box;
-    const MIN = 40;
+    const onMove = (ev: PointerEvent) => {
+      if (!dragInfo.current || !displayed) return;
+      ev.preventDefault();
+      const { mode, px, py, box: s } = dragInfo.current;
+      const dx = ev.clientX - px;
+      const dy = ev.clientY - py;
+      const maxW = displayed.w;
+      const maxH = displayed.h;
+      const MIN = 40;
 
-    let { x, y, w, h } = s;
-    if (dragMode === 'move') {
-      x = clamp(s.x + dx, 0, maxW - s.w);
-      y = clamp(s.y + dy, 0, maxH - s.h);
-    } else {
-      // Para resize, calculamos los bordes y reconstruimos la box
-      let left = s.x, top = s.y, right = s.x + s.w, bottom = s.y + s.h;
-      if (dragMode === 'tl' || dragMode === 'bl') left = clamp(s.x + dx, 0, right - MIN);
-      if (dragMode === 'tr' || dragMode === 'br') right = clamp(s.x + s.w + dx, left + MIN, maxW);
-      if (dragMode === 'tl' || dragMode === 'tr') top = clamp(s.y + dy, 0, bottom - MIN);
-      if (dragMode === 'bl' || dragMode === 'br') bottom = clamp(s.y + s.h + dy, top + MIN, maxH);
-      x = left; y = top; w = right - left; h = bottom - top;
-    }
-    setBox({ x, y, w, h });
-  };
-
-  const endDrag = () => {
-    setDragMode(null);
-    dragStart.current = null;
+      let x = s.x, y = s.y, w = s.w, h = s.h;
+      if (mode === 'move') {
+        x = clamp(s.x + dx, 0, maxW - s.w);
+        y = clamp(s.y + dy, 0, maxH - s.h);
+      } else {
+        let left = s.x, top = s.y, right = s.x + s.w, bottom = s.y + s.h;
+        if (mode === 'tl' || mode === 'bl') left   = clamp(s.x + dx, 0, right - MIN);
+        if (mode === 'tr' || mode === 'br') right  = clamp(s.x + s.w + dx, left + MIN, maxW);
+        if (mode === 'tl' || mode === 'tr') top    = clamp(s.y + dy, 0, bottom - MIN);
+        if (mode === 'bl' || mode === 'br') bottom = clamp(s.y + s.h + dy, top + MIN, maxH);
+        x = left; y = top; w = right - left; h = bottom - top;
+      }
+      setBox({ x, y, w, h });
+    };
+    const onUp = () => {
+      dragInfo.current = null;
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    };
+    document.addEventListener('pointermove', onMove, { passive: false });
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
   };
 
   const decodificar = () => {
     const img = imgRef.current;
-    if (!img) return;
-    const scaleX = img.naturalWidth / img.clientWidth;
-    const scaleY = img.naturalHeight / img.clientHeight;
+    if (!img || !displayed) return;
+    const scaleX = img.naturalWidth / displayed.w;
+    const scaleY = img.naturalHeight / displayed.h;
     const sx = box.x * scaleX;
     const sy = box.y * scaleY;
     const sw = box.w * scaleX;
@@ -304,69 +305,75 @@ function Cropper({
     onDecode(canvas);
   };
 
+  const onRetakeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) onRetakeFile(f);
+    e.target.value = '';
+  };
+
   return (
     <>
       <div
         ref={wrapperRef}
-        className="flex-1 relative bg-black overflow-hidden flex items-center justify-center min-h-0 touch-none select-none"
-        onPointerMove={onMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
+        className="flex-1 relative bg-black flex items-center justify-center min-h-0 overflow-hidden"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          ref={imgRef}
-          src={imgUrl}
-          alt="Foto del DNI"
-          onLoad={onImgLoad}
-          className="max-w-full max-h-full object-contain pointer-events-none"
-          draggable={false}
-        />
+        {/* Mensajes de estado superpuestos */}
+        {decodingState === 'decodificando' && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/70 text-white px-3 py-1.5 rounded-lg text-sm font-medium z-20">
+            Decodificando…
+          </div>
+        )}
+        {decodingState === 'sin_codigo' && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-amber-500/95 text-white px-3 py-1.5 rounded-lg text-xs font-medium max-w-[92%] text-center z-20">
+            {errorMsg}
+          </div>
+        )}
 
-        {imgLoaded && (
-          <>
-            {/* Mensaje de estado overlay */}
-            {decodingState === 'decodificando' && (
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/70 text-white px-3 py-1.5 rounded-lg text-sm font-medium z-10">
-                Decodificando…
-              </div>
-            )}
-            {decodingState === 'sin_codigo' && (
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-amber-500/90 text-white px-3 py-1.5 rounded-lg text-xs font-medium max-w-[90%] text-center z-10">
-                {errorMsg || 'No se detectó código en el área recortada. Ajustá el recuadro y reintentá.'}
-              </div>
-            )}
+        {/* Contenedor del tamaño EXACTO de la imagen mostrada */}
+        <div
+          className="relative touch-none select-none"
+          style={displayed ? { width: displayed.w, height: displayed.h } : { width: 1, height: 1, opacity: 0 }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            ref={imgRef}
+            src={imgUrl}
+            alt="Foto del DNI"
+            onLoad={onImgLoad}
+            draggable={false}
+            className="block w-full h-full pointer-events-none"
+          />
 
-            {/* Recuadro */}
+          {displayed && (
             <div
               className="absolute border-2 border-emerald-400 cursor-move"
               style={{ left: box.x, top: box.y, width: box.w, height: box.h, touchAction: 'none' }}
               onPointerDown={(e) => startDrag(e, 'move')}
             >
-              {/* Sombreado interior leve */}
               <div className="absolute inset-0 ring-1 ring-emerald-300/50 pointer-events-none" />
-              {/* Esquinas */}
               <CornerHandle pos="tl" onDown={(e) => startDrag(e, 'tl')} />
               <CornerHandle pos="tr" onDown={(e) => startDrag(e, 'tr')} />
               <CornerHandle pos="bl" onDown={(e) => startDrag(e, 'bl')} />
               <CornerHandle pos="br" onDown={(e) => startDrag(e, 'br')} />
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Acciones: stacked en portrait, en fila en landscape para no comer espacio vertical */}
       <div className="bg-black p-3 md:p-4 flex flex-col landscape:flex-row gap-2.5 shrink-0">
-        <button
-          onClick={onRetake}
-          disabled={disabled}
-          className="w-full landscape:flex-1 py-3 rounded-lg bg-white text-slate-900 font-semibold text-sm active:bg-slate-100 disabled:opacity-50"
-        >
+        <label className={`w-full landscape:flex-1 py-3 rounded-lg bg-white text-slate-900 font-semibold text-sm text-center cursor-pointer active:bg-slate-100 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
           ↺ Volver a tomar foto
-        </button>
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={onRetakeChange}
+          />
+        </label>
         <button
           onClick={decodificar}
-          disabled={disabled}
+          disabled={disabled || !displayed}
           className="w-full landscape:flex-1 py-3 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg active:bg-emerald-700 disabled:opacity-50"
         >
           ✂️ Decodificar área seleccionada
@@ -378,10 +385,10 @@ function Cropper({
 
 function CornerHandle({ pos, onDown }: { pos: Corner; onDown: (e: React.PointerEvent) => void }) {
   const positions: Record<Corner, string> = {
-    tl: '-top-3 -left-3 cursor-nwse-resize',
-    tr: '-top-3 -right-3 cursor-nesw-resize',
-    bl: '-bottom-3 -left-3 cursor-nesw-resize',
-    br: '-bottom-3 -right-3 cursor-nwse-resize',
+    tl: '-top-3.5 -left-3.5 cursor-nwse-resize',
+    tr: '-top-3.5 -right-3.5 cursor-nesw-resize',
+    bl: '-bottom-3.5 -left-3.5 cursor-nesw-resize',
+    br: '-bottom-3.5 -right-3.5 cursor-nwse-resize',
   };
   return (
     <div

@@ -155,6 +155,7 @@ export default function Home() {
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
   const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
   const [escanerBarcode, setEscanerBarcode] = useState(false);
+  const [barcodeFotoInicial, setBarcodeFotoInicial] = useState<File | null>(null);
   const [barcodeAplicado, setBarcodeAplicado] = useState(false);
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
@@ -749,13 +750,18 @@ export default function Home() {
         />
       )}
 
-      {escanerBarcode && (
+      {escanerBarcode && barcodeFotoInicial && (
         <EscanerCodigoBarras
-          onClose={() => setEscanerBarcode(false)}
+          initialFile={barcodeFotoInicial}
+          onClose={() => {
+            setEscanerBarcode(false);
+            setBarcodeFotoInicial(null);
+          }}
           onApply={(campos, parsed) => {
             setFormData(prev => ({ ...prev, ...campos }));
             setBarcodeAplicado(true);
             setEscanerBarcode(false);
+            setBarcodeFotoInicial(null);
             // Log para diagnóstico de variantes raras (queda en consola, no UI)
             console.info('[DNI PDF417] raw:', parsed.raw, 'warnings:', parsed.warnings);
           }}
@@ -804,7 +810,10 @@ export default function Home() {
             onPickFile: (file) => setArchivoUnico(file),
           }}
           barcodeScan={tab === 'nueva' && !editandoId ? {
-            onOpen: () => setEscanerBarcode(true),
+            onFotoTomada: (file) => {
+              setBarcodeFotoInicial(file);
+              setEscanerBarcode(true);
+            },
             aplicado: barcodeAplicado,
           } : undefined}
         />
