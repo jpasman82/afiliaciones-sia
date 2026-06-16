@@ -26,6 +26,8 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const [parsed, setParsed] = useState<ParsedDni | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [videoRes, setVideoRes] = useState<string>('—');
+  const [photoRes, setPhotoRes] = useState<string>('');
+  const [tieneImageCapture, setTieneImageCapture] = useState(false);
 
   // Inicia el stream de cámara (preview en vivo, sin decode automático)
   const iniciarCamara = async () => {
@@ -50,6 +52,8 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
       setVideoRes(`${settings.width || '?'}×${settings.height || '?'}`);
       // Aplicar autofocus continuo + zoom si el dispositivo soporta
       aplicarConstraintsAvanzadas(track);
+      // Probar disponibilidad de ImageCapture para foto de alta resolución
+      await detectarImageCapture(track);
       setEstado('listo');
     } catch (e: any) {
       setErrorMsg(e?.message || 'No se pudo acceder a la cámara.');
@@ -70,6 +74,50 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
       if (advanced.length) await track.applyConstraints({ advanced } as any);
     } catch (e) {
       console.debug('[camera] advanced constraints not applied', e);
+    }
+  };
+
+  // Detecta si ImageCapture está disponible y muestra la resolución máxima de foto
+  const detectarImageCapture = async (track: MediaStreamTrack) => {
+    const IC = (window as any).ImageCapture;
+    if (typeof IC === 'undefined') {
+      setTieneImageCapture(false);
+      return;
+    }
+    try {
+      const ic = new IC(track);
+      const caps = await ic.getPhotoCapabilities();
+      if (caps?.imageWidth?.max && caps?.imageHeight?.max) {
+        setPhotoRes(`${caps.imageWidth.max}×${caps.imageHeight.max}`);
+      }
+      setTieneImageCapture(true);
+    } catch (e) {
+      console.debug('[ImageCapture] not usable', e);
+      setTieneImageCapture(false);
+    }
+  };
+
+  // Toma una foto a la resolución máxima del sensor (vía ImageCapture).
+  // Devuelve null si la API no está disponible o falla.
+  const sacarFotoConImageCapture = async (): Promise<Blob | null> => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    const IC = (window as any).ImageCapture;
+    if (!track || typeof IC === 'undefined') return null;
+    try {
+      const ic = new IC(track);
+      // Pedir explícitamente la resolución máxima del sensor
+      let settings: any = undefined;
+      try {
+        const caps = await ic.getPhotoCapabilities();
+        if (caps?.imageWidth?.max && caps?.imageHeight?.max) {
+          settings = { imageWidth: caps.imageWidth.max, imageHeight: caps.imageHeight.max };
+        }
+      } catch { /* sin caps, takePhoto sin settings */ }
+      const blob: Blob = settings ? await ic.takePhoto(settings) : await ic.takePhoto();
+      return blob;
+    } catch (e) {
+      console.debug('[ImageCapture] takePhoto failed', e);
+      return null;
     }
   };
 
@@ -107,23 +155,39 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
     return reader;
   };
 
-  // Captura el frame actual del video a resolución completa y lo decodifica
+  // Captura un frame y lo decodifica. Prefiere ImageCapture (foto a resolución
+  // máxima del sensor) sobre canvas grab del video (limitado al stream).
   const capturarYDecodificar = async () => {
     const video = videoRef.current;
-    if (!video || video.videoWidth === 0) return;
+    if (!video) return;
     setEstado('decodificando');
 
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) { setEstado('listo'); return; }
-    ctx.drawImage(video, 0, 0);
+    let url: string;
+    let cleanup: () => void;
 
-    const dataUrl = canvas.toDataURL('image/png');
+    // 1) Intento con ImageCapture (Chrome/Android: resolución máxima de foto)
+    const blobIC = await sacarFotoConImageCapture();
+    if (blobIC) {
+      url = URL.createObjectURL(blobIC);
+      cleanup = () => URL.revokeObjectURL(url);
+    } else if (video.videoWidth > 0) {
+      // 2) Fallback: capturar frame del video al canvas (resolución del stream)
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { setEstado('listo'); return; }
+      ctx.drawImage(video, 0, 0);
+      url = canvas.toDataURL('image/png');
+      cleanup = () => { /* dataURL no necesita revoke */ };
+    } else {
+      setEstado('listo');
+      return;
+    }
+
     try {
       const reader = buildReader();
-      const result = await reader.decodeFromImageUrl(dataUrl);
+      const result = await reader.decodeFromImageUrl(url);
       const raw = result.getText();
       const p = parseDniPdf417(raw);
       setParsed(p);
@@ -136,6 +200,8 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
         setErrorMsg((e as any)?.message || 'Error al decodificar.');
         setEstado('error');
       }
+    } finally {
+      cleanup();
     }
   };
 
@@ -209,8 +275,9 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
             </div>
 
             {/* Diagnóstico */}
-            <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[10px] px-2 py-1 rounded">
-              {videoRes}
+            <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[10px] px-2 py-1 rounded leading-tight">
+              <div>Video: {videoRes}</div>
+              {tieneImageCapture && photoRes && <div>Foto: {photoRes}</div>}
             </div>
 
             {/* Estado overlay */}
@@ -227,12 +294,21 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
             <button
               onClick={capturarYDecodificar}
               disabled={estado === 'decodificando' || estado === 'iniciando'}
-              className="w-full py-3.5 rounded-lg bg-white text-slate-900 font-bold text-sm shadow-lg active:bg-slate-100 disabled:opacity-50"
+              className={`w-full py-3.5 rounded-lg font-bold text-sm shadow-lg disabled:opacity-50 ${
+                tieneImageCapture
+                  ? 'bg-emerald-600 text-white active:bg-emerald-700'
+                  : 'bg-white text-slate-900 active:bg-slate-100'
+              }`}
             >
               📸 Capturar y decodificar
+              {tieneImageCapture && <span className="block text-[10px] font-normal opacity-80 mt-0.5">Foto a resolución máxima del sensor</span>}
             </button>
 
-            <label className={`w-full py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg text-center cursor-pointer active:bg-emerald-700 ${estado === 'decodificando' ? 'opacity-50 pointer-events-none' : ''}`}>
+            <label className={`w-full py-3.5 rounded-lg font-bold text-sm shadow-lg text-center cursor-pointer ${
+              tieneImageCapture
+                ? 'bg-white text-slate-900 active:bg-slate-100'
+                : 'bg-emerald-600 text-white active:bg-emerald-700'
+            } ${estado === 'decodificando' ? 'opacity-50 pointer-events-none' : ''}`}>
               📷 Tomar foto con cámara nativa
               <input
                 type="file"
@@ -248,7 +324,9 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
             </label>
 
             <p className="text-[11px] text-white/50 text-center mt-0.5">
-              ¿No funciona el primero? Usá &quot;Tomar foto&quot; — abre la cámara del celular y usa la máxima resolución.
+              {tieneImageCapture
+                ? 'Si "Capturar" no detecta el código, probá "Tomar foto".'
+                : 'Si no detecta, probá "Tomar foto" (más confiable).'}
             </p>
           </div>
         </>
