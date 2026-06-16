@@ -1,11 +1,8 @@
 // ============================================================================
 //  app/components/ficha/EscanerCodigoBarras.tsx
-//  Lector PDF417 del DNI con captura explícita (sin decodificación continua).
-//  Dos rutas, ambas mucho más confiables que decodificar video en vivo:
-//    1) "Capturar ahora": toma el frame actual del video a resolución completa
-//       y lo decodifica como imagen fija.
-//    2) "Tomar foto": abre la cámara nativa del celular (máxima resolución
-//       del sensor + autofocus de la app de cámara) y decodifica la foto.
+//  Lector PDF417 del DNI por foto + recorte.
+//  Flujo: el usuario toma una foto con la cámara nativa, ajusta un recuadro
+//  para encerrar solo el código de barras, y decodificamos esa región.
 // ============================================================================
 'use client';
 import { useEffect, useRef, useState } from 'react';
@@ -17,333 +14,122 @@ type Props = {
   onApply: (campos: ReturnType<typeof parsedDniToFormFields>, parsed: ParsedDni) => void;
 };
 
-type Estado = 'iniciando' | 'listo' | 'decodificando' | 'parseado' | 'sin_codigo' | 'error';
+type Estado = 'esperando_foto' | 'recortando' | 'decodificando' | 'parseado' | 'sin_codigo';
 
 export function EscanerCodigoBarras({ onClose, onApply }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [estado, setEstado] = useState<Estado>('iniciando');
+  const [estado, setEstado] = useState<Estado>('esperando_foto');
+  const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedDni | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [videoRes, setVideoRes] = useState<string>('—');
-  const [photoRes, setPhotoRes] = useState<string>('');
-  const [tieneImageCapture, setTieneImageCapture] = useState(false);
 
-  // Inicia el stream de cámara (preview en vivo, sin decode automático)
-  const iniciarCamara = async () => {
+  // Liberar el blob URL cuando se cierra o cambia
+  useEffect(() => {
+    return () => {
+      if (imgUrl) URL.revokeObjectURL(imgUrl);
+    };
+  }, [imgUrl]);
+
+  const onFotoTomada = (file: File) => {
+    if (imgUrl) URL.revokeObjectURL(imgUrl);
+    const url = URL.createObjectURL(file);
+    setImgUrl(url);
+    setParsed(null);
     setErrorMsg('');
-    detenerCamara();
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width:  { ideal: 3840 },
-          height: { ideal: 2160 },
-        },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
-      }
-      // Mostrar la resolución real
-      const track = stream.getVideoTracks()[0];
-      const settings = track.getSettings();
-      setVideoRes(`${settings.width || '?'}×${settings.height || '?'}`);
-      // Aplicar autofocus continuo + zoom si el dispositivo soporta
-      aplicarConstraintsAvanzadas(track);
-      // Probar disponibilidad de ImageCapture para foto de alta resolución
-      await detectarImageCapture(track);
-      setEstado('listo');
-    } catch (e: any) {
-      setErrorMsg(e?.message || 'No se pudo acceder a la cámara.');
-      setEstado('error');
-    }
+    setEstado('recortando');
   };
 
-  const aplicarConstraintsAvanzadas = async (track: MediaStreamTrack) => {
-    try {
-      const caps = (track.getCapabilities?.() ?? {}) as MediaTrackCapabilities & {
-        focusMode?: string[]; zoom?: { min: number; max: number; step?: number };
-      };
-      const advanced: any[] = [];
-      if (caps.focusMode?.includes('continuous')) advanced.push({ focusMode: 'continuous' });
-      if (caps.zoom && caps.zoom.max > (caps.zoom.min || 1)) {
-        advanced.push({ zoom: Math.min(2, caps.zoom.max) });
-      }
-      if (advanced.length) await track.applyConstraints({ advanced } as any);
-    } catch (e) {
-      console.debug('[camera] advanced constraints not applied', e);
-    }
-  };
-
-  // Detecta si ImageCapture está disponible y muestra la resolución máxima de foto
-  const detectarImageCapture = async (track: MediaStreamTrack) => {
-    const IC = (window as any).ImageCapture;
-    if (typeof IC === 'undefined') {
-      setTieneImageCapture(false);
-      return;
-    }
-    try {
-      const ic = new IC(track);
-      const caps = await ic.getPhotoCapabilities();
-      if (caps?.imageWidth?.max && caps?.imageHeight?.max) {
-        setPhotoRes(`${caps.imageWidth.max}×${caps.imageHeight.max}`);
-      }
-      setTieneImageCapture(true);
-    } catch (e) {
-      console.debug('[ImageCapture] not usable', e);
-      setTieneImageCapture(false);
-    }
-  };
-
-  // Toma una foto a la resolución máxima del sensor (vía ImageCapture).
-  // Devuelve null si la API no está disponible o falla.
-  const sacarFotoConImageCapture = async (): Promise<Blob | null> => {
-    const track = streamRef.current?.getVideoTracks()[0];
-    const IC = (window as any).ImageCapture;
-    if (!track || typeof IC === 'undefined') return null;
-    try {
-      const ic = new IC(track);
-      // Pedir explícitamente la resolución máxima del sensor
-      let settings: any = undefined;
-      try {
-        const caps = await ic.getPhotoCapabilities();
-        if (caps?.imageWidth?.max && caps?.imageHeight?.max) {
-          settings = { imageWidth: caps.imageWidth.max, imageHeight: caps.imageHeight.max };
-        }
-      } catch { /* sin caps, takePhoto sin settings */ }
-      const blob: Blob = settings ? await ic.takePhoto(settings) : await ic.takePhoto();
-      return blob;
-    } catch (e) {
-      console.debug('[ImageCapture] takePhoto failed', e);
-      return null;
-    }
-  };
-
-  const detenerCamara = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) videoRef.current.srcObject = null;
-  };
-
-  // Tap-to-focus
-  const onVideoTap = async () => {
-    const track = streamRef.current?.getVideoTracks()[0];
-    if (!track) return;
-    try {
-      const caps = (track.getCapabilities?.() ?? {}) as any;
-      if (caps.focusMode?.includes('single-shot')) {
-        await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] } as any);
-        setTimeout(() => {
-          if (caps.focusMode?.includes('continuous')) {
-            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] } as any).catch(() => {});
-          }
-        }, 1500);
-      }
-    } catch { /* ignorar */ }
-  };
-
-  // Construye un reader con TRY_HARDER
-  const buildReader = () => {
-    const reader = new BrowserPDF417Reader();
-    const hints = new Map();
-    hints.set(DecodeHintType.TRY_HARDER, true);
-    (reader as any).hints = hints;
-    return reader;
-  };
-
-  // Captura un frame y lo decodifica. Prefiere ImageCapture (foto a resolución
-  // máxima del sensor) sobre canvas grab del video (limitado al stream).
-  const capturarYDecodificar = async () => {
-    const video = videoRef.current;
-    if (!video) return;
+  const decodificarCanvas = async (canvas: HTMLCanvasElement) => {
     setEstado('decodificando');
-
-    let url: string;
-    let cleanup: () => void;
-
-    // 1) Intento con ImageCapture (Chrome/Android: resolución máxima de foto)
-    const blobIC = await sacarFotoConImageCapture();
-    if (blobIC) {
-      url = URL.createObjectURL(blobIC);
-      cleanup = () => URL.revokeObjectURL(url);
-    } else if (video.videoWidth > 0) {
-      // 2) Fallback: capturar frame del video al canvas (resolución del stream)
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { setEstado('listo'); return; }
-      ctx.drawImage(video, 0, 0);
-      url = canvas.toDataURL('image/png');
-      cleanup = () => { /* dataURL no necesita revoke */ };
-    } else {
-      setEstado('listo');
-      return;
-    }
-
+    const dataUrl = canvas.toDataURL('image/png');
     try {
-      const reader = buildReader();
-      const result = await reader.decodeFromImageUrl(url);
+      const reader = new BrowserPDF417Reader();
+      const hints = new Map();
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      (reader as any).hints = hints;
+      const result = await reader.decodeFromImageUrl(dataUrl);
       const raw = result.getText();
       const p = parseDniPdf417(raw);
       setParsed(p);
       setEstado('parseado');
-      detenerCamara();
     } catch (e) {
       if (e instanceof NotFoundException) {
         setEstado('sin_codigo');
       } else {
         setErrorMsg((e as any)?.message || 'Error al decodificar.');
-        setEstado('error');
-      }
-    } finally {
-      cleanup();
-    }
-  };
-
-  // Decodifica una foto tomada con la cámara nativa
-  const decodificarFoto = async (file: File) => {
-    setEstado('decodificando');
-    const url = URL.createObjectURL(file);
-    try {
-      const reader = buildReader();
-      const result = await reader.decodeFromImageUrl(url);
-      const raw = result.getText();
-      const p = parseDniPdf417(raw);
-      setParsed(p);
-      setEstado('parseado');
-      detenerCamara();
-    } catch (e) {
-      if (e instanceof NotFoundException) {
         setEstado('sin_codigo');
-      } else {
-        setErrorMsg((e as any)?.message || 'No se pudo procesar la imagen.');
-        setEstado('error');
       }
-    } finally {
-      URL.revokeObjectURL(url);
     }
   };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    iniciarCamara();
-    return () => detenerCamara();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const aplicar = () => {
     if (!parsed) return;
     onApply(parsedDniToFormFields(parsed), parsed);
   };
 
-  const reintentar = () => {
+  const volverARecorte = () => {
     setParsed(null);
     setErrorMsg('');
-    setEstado('iniciando');
-    iniciarCamara();
+    setEstado('recortando');
   };
-
-  const mostrandoCamara = estado === 'iniciando' || estado === 'listo' || estado === 'decodificando' || estado === 'sin_codigo';
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col">
-      <div className="p-4 bg-black text-white flex justify-between items-center z-10 shrink-0">
+      <div className="p-3 md:p-4 bg-black text-white flex justify-between items-center shrink-0">
         <div className="min-w-0">
           <h3 className="font-bold text-base">Escanear DNI</h3>
-          <p className="text-[11px] text-white/60 mt-0.5 truncate">PDF417 del dorso (rectángulo de barras verticales finas)</p>
+          <p className="text-[11px] text-white/60 mt-0.5 truncate">
+            {estado === 'esperando_foto' && 'Tomá una foto del dorso del DNI'}
+            {estado === 'recortando' && 'Ajustá el recuadro al código de barras'}
+            {estado === 'decodificando' && 'Decodificando…'}
+            {estado === 'parseado' && 'Revisá los datos detectados'}
+            {estado === 'sin_codigo' && 'No se detectó código en el área recortada'}
+          </p>
         </div>
         <button onClick={onClose} className="text-white font-bold px-3 py-1.5 bg-red-600 rounded text-sm shrink-0 ml-3">Cerrar</button>
       </div>
 
-      {mostrandoCamara && (
-        <>
-          {/* Video preview */}
-          <div className="flex-1 relative overflow-hidden flex items-center justify-center min-h-0" onClick={onVideoTap}>
-            <video ref={videoRef} autoPlay playsInline muted className="absolute w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-black/40 pointer-events-none" />
-            {/* Marco para el PDF417 (rectángulo ancho) */}
-            <div className="relative w-[92%] aspect-[3/1] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] pointer-events-none">
-              <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-green-400" />
-              <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-green-400" />
-              <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-green-400" />
-              <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-green-400" />
-            </div>
-
-            {/* Diagnóstico */}
-            <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[10px] px-2 py-1 rounded leading-tight">
-              <div>Video: {videoRes}</div>
-              {tieneImageCapture && photoRes && <div>Foto: {photoRes}</div>}
-            </div>
-
-            {/* Estado overlay */}
-            <div className="absolute bottom-3 left-0 right-0 text-center text-white text-sm font-medium px-4 pointer-events-none">
-              {estado === 'iniciando' && 'Iniciando cámara…'}
-              {estado === 'listo' && <span className="text-white/80">Centrá el código y tocá una opción</span>}
-              {estado === 'decodificando' && <span className="text-white bg-black/60 px-3 py-1.5 rounded-lg">Decodificando…</span>}
-              {estado === 'sin_codigo' && <span className="text-amber-300 bg-black/70 px-3 py-1.5 rounded-lg">No se detectó código. Probá acercar más, mejor luz, o &quot;Tomar foto&quot;.</span>}
-            </div>
-          </div>
-
-          {/* Acciones */}
-          <div className="bg-black p-4 flex flex-col gap-2.5 shrink-0">
-            <button
-              onClick={capturarYDecodificar}
-              disabled={estado === 'decodificando' || estado === 'iniciando'}
-              className={`w-full py-3.5 rounded-lg font-bold text-sm shadow-lg disabled:opacity-50 ${
-                tieneImageCapture
-                  ? 'bg-emerald-600 text-white active:bg-emerald-700'
-                  : 'bg-white text-slate-900 active:bg-slate-100'
-              }`}
-            >
-              📸 Capturar y decodificar
-              {tieneImageCapture && <span className="block text-[10px] font-normal opacity-80 mt-0.5">Foto a resolución máxima del sensor</span>}
-            </button>
-
-            <label className={`w-full py-3.5 rounded-lg font-bold text-sm shadow-lg text-center cursor-pointer ${
-              tieneImageCapture
-                ? 'bg-white text-slate-900 active:bg-slate-100'
-                : 'bg-emerald-600 text-white active:bg-emerald-700'
-            } ${estado === 'decodificando' ? 'opacity-50 pointer-events-none' : ''}`}>
-              📷 Tomar foto con cámara nativa
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) decodificarFoto(f);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-
-            <p className="text-[11px] text-white/50 text-center mt-0.5">
-              {tieneImageCapture
-                ? 'Si "Capturar" no detecta el código, probá "Tomar foto".'
-                : 'Si no detecta, probá "Tomar foto" (más confiable).'}
-            </p>
-          </div>
-        </>
-      )}
-
-      {/* Error con cámara */}
-      {estado === 'error' && (
+      {/* PASO 1: Esperar que el usuario tome la foto */}
+      {estado === 'esperando_foto' && (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-white">
-          <p className="text-rose-300 text-center mb-6 max-w-sm">{errorMsg}</p>
-          <div className="flex gap-3 max-w-md w-full">
-            <button onClick={reintentar} className="flex-1 py-3 bg-white text-slate-900 font-semibold rounded-lg">Reintentar</button>
-            <button onClick={onClose} className="flex-1 py-3 bg-gray-700 text-white font-semibold rounded-lg">Cerrar</button>
+          <div className="w-16 h-16 rounded-2xl bg-emerald-600/20 flex items-center justify-center mb-5">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 text-emerald-400">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
+            </svg>
           </div>
+          <p className="text-center mb-1 max-w-sm text-base font-semibold">Tomar foto del dorso del DNI</p>
+          <p className="text-center text-white/60 text-sm max-w-sm mb-6">
+            Acercate al PDF417 (el rectángulo de barras verticales) hasta que se vea nítido. Después podrás recortar para enmarcar solo el código.
+          </p>
+          <label className="block w-full max-w-sm py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg text-center cursor-pointer active:bg-emerald-700">
+            📷 Abrir cámara
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onFotoTomada(f);
+                e.target.value = '';
+              }}
+            />
+          </label>
         </div>
       )}
 
-      {/* Resultado parseado */}
+      {/* PASO 2: Recortar */}
+      {(estado === 'recortando' || estado === 'decodificando' || estado === 'sin_codigo') && imgUrl && (
+        <Cropper
+          imgUrl={imgUrl}
+          disabled={estado === 'decodificando'}
+          decodingState={estado}
+          errorMsg={errorMsg}
+          onDecode={decodificarCanvas}
+          onRetake={() => setEstado('esperando_foto')}
+        />
+      )}
+
+      {/* PASO 3: Resultado */}
       {estado === 'parseado' && parsed && (
         <div className="flex-1 flex flex-col bg-slate-50 overflow-auto">
           <div className="flex-1 p-4 md:p-6 max-w-2xl mx-auto w-full">
@@ -384,9 +170,9 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
             </div>
           </div>
 
-          <div className="p-4 bg-white border-t border-slate-200 flex gap-3 max-w-2xl mx-auto w-full shrink-0">
+          <div className="p-3 md:p-4 bg-white border-t border-slate-200 flex gap-3 max-w-2xl mx-auto w-full shrink-0">
             <button
-              onClick={reintentar}
+              onClick={volverARecorte}
               className="flex-1 py-3 rounded-lg bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm hover:bg-slate-50 transition"
             >
               Reintentar
@@ -403,6 +189,211 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
       )}
     </div>
   );
+}
+
+// ============================================================================
+//  Cropper: muestra una imagen y un recuadro arrastrable + redimensionable
+// ============================================================================
+
+type Box = { x: number; y: number; w: number; h: number }; // en píxeles del display
+type Corner = 'tl' | 'tr' | 'bl' | 'br';
+type DragMode = 'move' | Corner;
+
+function Cropper({
+  imgUrl, disabled, decodingState, errorMsg, onDecode, onRetake,
+}: {
+  imgUrl: string;
+  disabled: boolean;
+  decodingState: Estado;
+  errorMsg: string;
+  onDecode: (canvas: HTMLCanvasElement) => void;
+  onRetake: () => void;
+}) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [box, setBox] = useState<Box>({ x: 0, y: 0, w: 0, h: 0 });
+  const [dragMode, setDragMode] = useState<DragMode | null>(null);
+  const dragStart = useRef<{ px: number; py: number; box: Box } | null>(null);
+
+  // Tamaño actual de la imagen renderizada (puede cambiar si la ventana redimensiona)
+  const calcularBoxInicial = () => {
+    const img = imgRef.current;
+    if (!img) return;
+    const w = img.clientWidth;
+    const h = img.clientHeight;
+    if (w === 0 || h === 0) return;
+    // Recuadro inicial: ~85% del ancho, ~28% del alto, centrado (proporciones típicas del PDF417)
+    const bw = w * 0.85;
+    const bh = h * 0.28;
+    setBox({ x: (w - bw) / 2, y: (h - bh) / 2, w: bw, h: bh });
+  };
+
+  const onImgLoad = () => {
+    setImgLoaded(true);
+    calcularBoxInicial();
+  };
+
+  useEffect(() => {
+    const onResize = () => calcularBoxInicial();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+
+  const startDrag = (e: React.PointerEvent, mode: DragMode) => {
+    if (disabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    setDragMode(mode);
+    dragStart.current = { px: e.clientX, py: e.clientY, box: { ...box } };
+  };
+
+  const onMove = (e: React.PointerEvent) => {
+    if (!dragMode || !dragStart.current) return;
+    e.preventDefault();
+    const img = imgRef.current;
+    if (!img) return;
+    const maxW = img.clientWidth;
+    const maxH = img.clientHeight;
+    const dx = e.clientX - dragStart.current.px;
+    const dy = e.clientY - dragStart.current.py;
+    const s = dragStart.current.box;
+    const MIN = 40;
+
+    let { x, y, w, h } = s;
+    if (dragMode === 'move') {
+      x = clamp(s.x + dx, 0, maxW - s.w);
+      y = clamp(s.y + dy, 0, maxH - s.h);
+    } else {
+      // Para resize, calculamos los bordes y reconstruimos la box
+      let left = s.x, top = s.y, right = s.x + s.w, bottom = s.y + s.h;
+      if (dragMode === 'tl' || dragMode === 'bl') left = clamp(s.x + dx, 0, right - MIN);
+      if (dragMode === 'tr' || dragMode === 'br') right = clamp(s.x + s.w + dx, left + MIN, maxW);
+      if (dragMode === 'tl' || dragMode === 'tr') top = clamp(s.y + dy, 0, bottom - MIN);
+      if (dragMode === 'bl' || dragMode === 'br') bottom = clamp(s.y + s.h + dy, top + MIN, maxH);
+      x = left; y = top; w = right - left; h = bottom - top;
+    }
+    setBox({ x, y, w, h });
+  };
+
+  const endDrag = () => {
+    setDragMode(null);
+    dragStart.current = null;
+  };
+
+  const decodificar = () => {
+    const img = imgRef.current;
+    if (!img) return;
+    const scaleX = img.naturalWidth / img.clientWidth;
+    const scaleY = img.naturalHeight / img.clientHeight;
+    const sx = box.x * scaleX;
+    const sy = box.y * scaleY;
+    const sw = box.w * scaleX;
+    const sh = box.h * scaleY;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(sw);
+    canvas.height = Math.round(sh);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    onDecode(canvas);
+  };
+
+  return (
+    <>
+      <div
+        ref={wrapperRef}
+        className="flex-1 relative bg-black overflow-hidden flex items-center justify-center min-h-0 touch-none select-none"
+        onPointerMove={onMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          ref={imgRef}
+          src={imgUrl}
+          alt="Foto del DNI"
+          onLoad={onImgLoad}
+          className="max-w-full max-h-full object-contain pointer-events-none"
+          draggable={false}
+        />
+
+        {imgLoaded && (
+          <>
+            {/* Mensaje de estado overlay */}
+            {decodingState === 'decodificando' && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/70 text-white px-3 py-1.5 rounded-lg text-sm font-medium z-10">
+                Decodificando…
+              </div>
+            )}
+            {decodingState === 'sin_codigo' && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-amber-500/90 text-white px-3 py-1.5 rounded-lg text-xs font-medium max-w-[90%] text-center z-10">
+                {errorMsg || 'No se detectó código en el área recortada. Ajustá el recuadro y reintentá.'}
+              </div>
+            )}
+
+            {/* Recuadro */}
+            <div
+              className="absolute border-2 border-emerald-400 cursor-move"
+              style={{ left: box.x, top: box.y, width: box.w, height: box.h, touchAction: 'none' }}
+              onPointerDown={(e) => startDrag(e, 'move')}
+            >
+              {/* Sombreado interior leve */}
+              <div className="absolute inset-0 ring-1 ring-emerald-300/50 pointer-events-none" />
+              {/* Esquinas */}
+              <CornerHandle pos="tl" onDown={(e) => startDrag(e, 'tl')} />
+              <CornerHandle pos="tr" onDown={(e) => startDrag(e, 'tr')} />
+              <CornerHandle pos="bl" onDown={(e) => startDrag(e, 'bl')} />
+              <CornerHandle pos="br" onDown={(e) => startDrag(e, 'br')} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Acciones: stacked en portrait, en fila en landscape para no comer espacio vertical */}
+      <div className="bg-black p-3 md:p-4 flex flex-col landscape:flex-row gap-2.5 shrink-0">
+        <button
+          onClick={onRetake}
+          disabled={disabled}
+          className="w-full landscape:flex-1 py-3 rounded-lg bg-white text-slate-900 font-semibold text-sm active:bg-slate-100 disabled:opacity-50"
+        >
+          ↺ Volver a tomar foto
+        </button>
+        <button
+          onClick={decodificar}
+          disabled={disabled}
+          className="w-full landscape:flex-1 py-3 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg active:bg-emerald-700 disabled:opacity-50"
+        >
+          ✂️ Decodificar área seleccionada
+        </button>
+      </div>
+    </>
+  );
+}
+
+function CornerHandle({ pos, onDown }: { pos: Corner; onDown: (e: React.PointerEvent) => void }) {
+  const positions: Record<Corner, string> = {
+    tl: '-top-3 -left-3 cursor-nwse-resize',
+    tr: '-top-3 -right-3 cursor-nesw-resize',
+    bl: '-bottom-3 -left-3 cursor-nesw-resize',
+    br: '-bottom-3 -right-3 cursor-nwse-resize',
+  };
+  return (
+    <div
+      className={`absolute w-7 h-7 bg-emerald-400 rounded-full border-2 border-white shadow-lg ${positions[pos]}`}
+      style={{ touchAction: 'none' }}
+      onPointerDown={onDown}
+    />
+  );
+}
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
 }
 
 function Row({ label, value, mono, full }: { label: string; value: string; mono?: boolean; full?: boolean }) {
