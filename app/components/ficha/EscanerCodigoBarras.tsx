@@ -1,22 +1,16 @@
 // ============================================================================
 //  app/components/ficha/EscanerCodigoBarras.tsx
-//  Lector PDF417 del DNI usando ZXing. Funciona dentro del navegador, sin
-//  servicios externos. Despues de leer, muestra un panel con los datos
-//  parseados para que el usuario los revise antes de aplicarlos al formulario.
+//  Lector PDF417 del DNI. Estrategia híbrida:
+//    1) Cámara en vivo con BrowserPDF417Reader (lector especializado).
+//       Aplica autofocus continuo + zoom cuando el dispositivo lo soporta.
+//       Tap-to-focus al tocar la pantalla.
+//    2) Fallback: "Tomar foto del código" abre la cámara nativa del celular,
+//       toma una foto fija (máxima resolución y mejor enfoque) y la decodifica.
+//       Útil cuando el video en vivo no engancha.
 // ============================================================================
 'use client';
-
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  BarcodeFormat,
-  BinaryBitmap,
-  DecodeHintType,
-  HybridBinarizer,
-  HTMLCanvasElementLuminanceSource,
-  NotFoundException,
-  PDF417Reader,
-  type Result,
-} from '@zxing/library';
+import { useEffect, useRef, useState } from 'react';
+import { BrowserPDF417Reader, NotFoundException } from '@zxing/library';
 import { parseDniPdf417, parsedDniToFormFields, type ParsedDni } from '../../lib/parseDniPdf417';
 
 type Props = {
@@ -24,221 +18,237 @@ type Props = {
   onApply: (campos: ReturnType<typeof parsedDniToFormFields>, parsed: ParsedDni) => void;
 };
 
-type ZoomControl = {
-  min: number;
-  max: number;
-  step: number;
-  value: number;
-};
+type Estado = 'iniciando' | 'escaneando' | 'parseado' | 'error' | 'decodificando_foto' | 'foto_sin_codigo';
 
 export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const marcoRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const timerRef = useRef<number | null>(null);
-  const decodificandoRef = useRef(false);
-  const activoRef = useRef(true);
-  const [estado, setEstado] = useState<'iniciando' | 'escaneando' | 'parseado' | 'error'>('iniciando');
+  const readerRef = useRef<BrowserPDF417Reader | null>(null);
+  const intentosRef = useRef<number>(0);
+  const [estado, setEstado] = useState<Estado>('iniciando');
   const [parsed, setParsed] = useState<ParsedDni | null>(null);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState<string>('');
   const [intentos, setIntentos] = useState(0);
-  const [torchDisponible, setTorchDisponible] = useState(false);
-  const [torchActivo, setTorchActivo] = useState(false);
-  const [zoomControl, setZoomControl] = useState<ZoomControl | null>(null);
-  const [enfoqueMsg, setEnfoqueMsg] = useState('');
 
-  const aplicarResultado = useCallback((raw: string) => {
-    const p = parseDniPdf417(raw);
-    setParsed(p);
-    setEstado('parseado');
-    detenerEscaneo(timerRef, streamRef);
-  }, []);
+  // Arranca / reinicia el escaneo en vivo.
+  // Si `esReset` es true, primero limpia el estado visible (botón "Reintentar").
+  const iniciarEscaneo = async (esReset = false) => {
+    if (esReset) {
+      setParsed(null);
+      setErrorMsg('');
+      setEstado('iniciando');
+      setIntentos(0);
+    }
+    intentosRef.current = 0;
 
-  const intentarLeerFrame = useCallback(async (mostrarError: boolean) => {
-    const video = videoRef.current;
-    const marco = marcoRef.current;
-    if (!video || !marco || video.readyState < 2 || decodificandoRef.current) return;
+    try { readerRef.current?.reset(); } catch {}
 
-    decodificandoRef.current = true;
-    setIntentos(prev => prev + 1);
+    const reader = new BrowserPDF417Reader(150); // tiempo entre intentos (ms)
+    readerRef.current = reader;
 
     try {
-      const raw = await decodificarCanvas(capturarMarco(video, marco));
-      aplicarResultado(raw);
-    } catch (e: any) {
-      if (mostrarError) {
-        setErrorMsg('No pude leer el codigo en esa toma. Acercalo, mejora la luz y proba de nuevo.');
-      }
-      if (!(e instanceof NotFoundException) && mostrarError) {
-        console.debug('[ZXing canvas]', e);
-      }
-    } finally {
-      decodificandoRef.current = false;
-    }
-  }, [aplicarResultado]);
-
-  useEffect(() => {
-    activoRef.current = true;
-
-    (async () => {
-      try {
-        await iniciarCamara(videoRef.current, streamRef, setTorchDisponible, setZoomControl, setEnfoqueMsg);
-        if (!activoRef.current) return;
-        setEstado('escaneando');
-        timerRef.current = window.setInterval(() => {
-          void intentarLeerFrame(false);
-        }, 320);
-      } catch (e: any) {
-        if (!activoRef.current) return;
-        setErrorMsg(e?.message || 'No se pudo acceder a la camara.');
-        setEstado('error');
-      }
-    })();
-
-    return () => {
-      activoRef.current = false;
-      detenerEscaneo(timerRef, streamRef);
-    };
-  }, [intentarLeerFrame]);
-
-  const reiniciar = () => {
-    detenerEscaneo(timerRef, streamRef);
-    setParsed(null);
-    setEstado('iniciando');
-    setErrorMsg('');
-    setIntentos(0);
-    setTorchActivo(false);
-    setZoomControl(null);
-    setEnfoqueMsg('');
-
-    iniciarCamara(videoRef.current, streamRef, setTorchDisponible, setZoomControl, setEnfoqueMsg).then(() => {
+      await reader.decodeFromConstraints(
+        {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width:  { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+        },
+        videoRef.current!,
+        (result, err) => {
+          if (result) {
+            const raw = result.getText();
+            const p = parseDniPdf417(raw);
+            setParsed(p);
+            setEstado('parseado');
+            try { reader.reset(); } catch {}
+            return;
+          }
+          if (err && !(err instanceof NotFoundException)) {
+            console.debug('[ZXing]', err);
+          }
+          // Cada vez que el callback corre sin result, es un intento
+          intentosRef.current += 1;
+          if (intentosRef.current % 5 === 0) setIntentos(intentosRef.current);
+        }
+      );
       setEstado('escaneando');
-      timerRef.current = window.setInterval(() => {
-        void intentarLeerFrame(false);
-      }, 320);
-    }).catch((e: any) => {
-      setErrorMsg(e?.message || 'No se pudo acceder a la camara.');
+      // Una vez que el stream está activo, aplicamos focus + zoom si el dispositivo soporta
+      aplicarConstraintsAvanzadas();
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'No se pudo acceder a la cámara.');
       setEstado('error');
-    });
+    }
   };
 
-  const cambiarLinterna = async () => {
-    const track = obtenerVideoTrack(videoRef.current);
+  // Aplica autofocus continuo y zoom 2x si están disponibles
+  const aplicarConstraintsAvanzadas = async () => {
+    const video = videoRef.current;
+    if (!video || !(video.srcObject instanceof MediaStream)) return;
+    const track = video.srcObject.getVideoTracks()[0];
     if (!track) return;
 
-    const siguiente = !torchActivo;
     try {
-      await track.applyConstraints({ advanced: [{ torch: siguiente }] as any });
-      setTorchActivo(siguiente);
-    } catch {
-      setTorchDisponible(false);
+      const caps = (track.getCapabilities?.() ?? {}) as MediaTrackCapabilities & {
+        focusMode?: string[]; zoom?: { min: number; max: number; step?: number };
+      };
+      const advanced: any[] = [];
+      if (caps.focusMode?.includes('continuous')) {
+        advanced.push({ focusMode: 'continuous' });
+      }
+      if (caps.zoom) {
+        // Zoom moderado para que el PDF417 ocupe más píxeles
+        const z = Math.min(2, caps.zoom.max);
+        if (z > (caps.zoom.min || 1)) advanced.push({ zoom: z });
+      }
+      if (advanced.length) {
+        await track.applyConstraints({ advanced } as any);
+      }
+    } catch (e) {
+      console.debug('[camera] advanced constraints not applied', e);
     }
   };
 
-  const enfocarDesdeToque = async (e: React.PointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('button,input')) return;
-
+  // Tap-to-focus: dispara enfoque puntual al tocar el video
+  const onVideoTap = async () => {
     const video = videoRef.current;
-    if (!video) return;
-
-    const rect = video.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    await enfocarCamara(video, { x, y }, setEnfoqueMsg);
-  };
-
-  const enfocarCentro = async () => {
-    await enfocarCamara(videoRef.current, { x: 0.5, y: 0.5 }, setEnfoqueMsg);
-  };
-
-  const cambiarZoom = async (value: number) => {
-    const track = obtenerVideoTrack(videoRef.current);
-    if (!track || !zoomControl) return;
-
+    if (!video || !(video.srcObject instanceof MediaStream)) return;
+    const track = video.srcObject.getVideoTracks()[0];
+    if (!track) return;
     try {
-      await track.applyConstraints({ advanced: [{ zoom: value }] as any });
-      setZoomControl({ ...zoomControl, value });
-      setEnfoqueMsg('Zoom ajustado. Mantené el DNI un poco más lejos para que enfoque.');
+      const caps = (track.getCapabilities?.() ?? {}) as any;
+      if (caps.focusMode?.includes('single-shot')) {
+        await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] } as any);
+        // Volver a continuo después
+        setTimeout(() => {
+          if (caps.focusMode?.includes('continuous')) {
+            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] } as any).catch(() => {});
+          }
+        }, 1500);
+      } else if (caps.focusMode?.includes('manual') || caps.focusDistance) {
+        // No hacemos nada custom; algunos browsers re-enfocan solo al recibir un applyConstraints
+        await track.applyConstraints({ advanced: [{}] } as any);
+      }
     } catch {
-      setEnfoqueMsg('Esta cámara no permitió ajustar el zoom.');
+      /* ignorar */
     }
   };
+
+  // Decodifica una foto subida (fallback cuando el video no engancha)
+  const decodificarFoto = async (file: File) => {
+    setEstado('decodificando_foto');
+    try { readerRef.current?.reset(); } catch {}
+    const url = URL.createObjectURL(file);
+    try {
+      const reader = new BrowserPDF417Reader();
+      const result = await reader.decodeFromImageUrl(url);
+      const raw = result.getText();
+      const p = parseDniPdf417(raw);
+      setParsed(p);
+      setEstado('parseado');
+    } catch (e) {
+      if (e instanceof NotFoundException) {
+        setEstado('foto_sin_codigo');
+      } else {
+        setErrorMsg((e as any)?.message || 'No se pudo procesar la imagen.');
+        setEstado('error');
+      }
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    iniciarEscaneo();
+    return () => {
+      try { readerRef.current?.reset(); } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const aplicar = () => {
     if (!parsed) return;
-    const campos = parsedDniToFormFields(parsed);
-    onApply(campos, parsed);
+    onApply(parsedDniToFormFields(parsed), parsed);
   };
+
+  const mostrandoVideo = estado === 'iniciando' || estado === 'escaneando' || estado === 'error' || estado === 'decodificando_foto' || estado === 'foto_sin_codigo';
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col">
       <div className="p-4 bg-black text-white flex justify-between items-center z-10">
-        <div>
-          <h3 className="font-bold text-lg">Escanear codigo del DNI</h3>
-          <p className="text-xs text-white/60 mt-0.5">Apunta al codigo de barras del dorso (PDF417)</p>
+        <div className="min-w-0">
+          <h3 className="font-bold text-lg">Escanear código del DNI</h3>
+          <p className="text-xs text-white/60 mt-0.5 truncate">Apuntá al PDF417 del dorso (el rectángulo de barras finas)</p>
         </div>
-        <button onClick={onClose} className="text-white font-bold px-3 py-1.5 bg-red-600 rounded text-sm">Cerrar</button>
+        <button onClick={onClose} className="text-white font-bold px-3 py-1.5 bg-red-600 rounded text-sm shrink-0 ml-3">Cerrar</button>
       </div>
 
-      <div
-        onPointerDown={(e) => void enfocarDesdeToque(e)}
-        className={`flex-1 relative overflow-hidden flex items-center justify-center ${estado === 'parseado' ? 'hidden' : ''}`}
-      >
-        <video ref={videoRef} autoPlay playsInline muted className="absolute w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-black/40 pointer-events-none"></div>
-        <div className="absolute left-0 right-0 top-1/2 h-px bg-emerald-300/80 shadow-[0_0_12px_rgba(52,211,153,0.9)] pointer-events-none"></div>
-        <div ref={marcoRef} className="relative w-[94%] max-w-3xl aspect-[3.8/1] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] pointer-events-none">
-          <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400"></div>
-          <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400"></div>
-          <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400"></div>
-          <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400"></div>
-        </div>
+      {/* Vista del video + overlay */}
+      {mostrandoVideo && (
+        <div className="flex-1 relative overflow-hidden flex items-center justify-center" onClick={onVideoTap}>
+          <video ref={videoRef} autoPlay playsInline muted className="absolute w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+          {/* Marco para el PDF417 (más ancho que alto) */}
+          <div className="relative w-[90%] aspect-[3/1] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] pointer-events-none overflow-hidden">
+            <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400" />
+            <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400" />
+            <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400" />
+            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400" />
+            {/* Línea animada de escaneo */}
+            {estado === 'escaneando' && (
+              <div className="absolute left-2 right-2 h-[2px] bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)] animate-scanline" />
+            )}
+          </div>
 
-        <div className={`${zoomControl ? 'bottom-40' : 'bottom-28'} absolute left-0 right-0 text-center text-white/80 text-sm font-medium px-4`}>
-          {estado === 'iniciando' && 'Iniciando camara...'}
-          {estado === 'escaneando' && `Mantene el codigo nitido, horizontal y ocupando el recuadro (${intentos} intentos)`}
-          {estado === 'error' && <span className="text-rose-300">{errorMsg}</span>}
-          {estado === 'escaneando' && errorMsg && <div className="mt-2 text-amber-200">{errorMsg}</div>}
-          {estado === 'escaneando' && enfoqueMsg && <div className="mt-2 text-emerald-200">{enfoqueMsg}</div>}
-        </div>
-
-        {zoomControl && (
-          <div className="absolute bottom-24 left-4 right-4 mx-auto max-w-sm rounded-lg bg-black/45 px-4 py-3 backdrop-blur">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-semibold text-white/80">Zoom</span>
-              <input
-                type="range"
-                min={zoomControl.min}
-                max={zoomControl.max}
-                step={zoomControl.step}
-                value={zoomControl.value}
-                onChange={(e) => void cambiarZoom(Number(e.target.value))}
-                className="w-full accent-emerald-400"
-              />
+          {/* Status bar inferior */}
+          <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 pt-3 bg-gradient-to-t from-black/80 to-transparent">
+            <div className="max-w-md mx-auto text-center text-white text-sm">
+              {estado === 'iniciando' && <p>Iniciando cámara…</p>}
+              {estado === 'escaneando' && (
+                <p className="text-white/80">
+                  Escaneando… <span className="text-white/50">({intentos} intentos)</span>
+                  <br />
+                  <span className="text-xs text-white/60">Tocá la pantalla para enfocar. Acercá hasta que las barras se vean nítidas.</span>
+                </p>
+              )}
+              {estado === 'decodificando_foto' && <p>Procesando foto…</p>}
+              {estado === 'foto_sin_codigo' && <p className="text-amber-300">No se detectó código en la foto. Probá con otra más cercana o nítida.</p>}
+              {estado === 'error' && <p className="text-rose-300">{errorMsg}</p>}
             </div>
           </div>
-        )}
-
-        <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-3 px-4">
-          <button
-            type="button"
-            onClick={() => void enfocarCentro()}
-            className="px-4 py-3 rounded-lg bg-white/15 text-white ring-1 ring-white/30 font-semibold text-sm backdrop-blur"
-          >
-            Enfocar
-          </button>
-          {torchDisponible && (
-            <button
-              type="button"
-              onClick={cambiarLinterna}
-              className="px-4 py-3 rounded-lg bg-white/15 text-white ring-1 ring-white/30 font-semibold text-sm backdrop-blur"
-            >
-              {torchActivo ? 'Apagar luz' : 'Luz'}
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
+      {/* Barra inferior con acciones cuando está escaneando */}
+      {(estado === 'escaneando' || estado === 'foto_sin_codigo') && (
+        <div className="bg-black p-4 z-10">
+          <label className="block max-w-md mx-auto py-3 px-4 rounded-lg bg-white text-slate-900 font-semibold text-sm text-center cursor-pointer active:bg-slate-100">
+            📷 No detecta? Tomar foto del código
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) decodificarFoto(f);
+                e.target.value = ''; // permitir reintentar con la misma cámara
+              }}
+            />
+          </label>
+        </div>
+      )}
+
+      {/* Estado de error: opciones de reintento */}
+      {estado === 'error' && (
+        <div className="bg-black p-4 flex gap-3 max-w-md mx-auto w-full">
+          <button onClick={() => iniciarEscaneo(true)} className="flex-1 py-3 bg-white text-slate-900 font-semibold rounded-lg">Reintentar</button>
+          <button onClick={onClose} className="flex-1 py-3 bg-gray-700 text-white font-semibold rounded-lg">Cerrar</button>
+        </div>
+      )}
+
+      {/* Panel de resultado parseado */}
       {estado === 'parseado' && parsed && (
         <div className="flex-1 flex flex-col bg-slate-50 overflow-auto">
           <div className="flex-1 p-4 md:p-6 max-w-2xl mx-auto w-full">
@@ -273,7 +283,7 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
               )}
 
               <details className="mt-4">
-                <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-700">Ver texto crudo del codigo</summary>
+                <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-700">Ver texto crudo del código</summary>
                 <pre className="mt-2 p-3 rounded-lg bg-slate-900 text-slate-100 text-[11px] overflow-x-auto whitespace-pre-wrap break-all">{parsed.raw}</pre>
               </details>
             </div>
@@ -281,7 +291,7 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
 
           <div className="p-4 bg-white border-t border-slate-200 flex gap-3 max-w-2xl mx-auto w-full">
             <button
-              onClick={reiniciar}
+              onClick={() => iniciarEscaneo(true)}
               className="flex-1 py-3 rounded-lg bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm hover:bg-slate-50 transition"
             >
               Reintentar
@@ -296,216 +306,8 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
           </div>
         </div>
       )}
-
-      {estado === 'error' && (
-        <div className="h-32 bg-black flex items-center justify-center gap-3 px-4">
-          <button onClick={reiniciar} className="flex-1 max-w-xs py-3 bg-white text-slate-900 font-semibold rounded-lg">Reintentar</button>
-          <button onClick={onClose} className="flex-1 max-w-xs py-3 bg-gray-700 text-white font-semibold rounded-lg">Cerrar</button>
-        </div>
-      )}
     </div>
   );
-}
-
-function getCameraConstraints(): MediaStreamConstraints {
-  return {
-    video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 2560 },
-      height: { ideal: 1440 },
-      frameRate: { ideal: 30 },
-    },
-  };
-}
-
-async function iniciarCamara(
-  video: HTMLVideoElement | null,
-  streamRef: React.MutableRefObject<MediaStream | null>,
-  setTorchDisponible: (disponible: boolean) => void,
-  setZoomControl: (zoom: ZoomControl | null) => void,
-  setEnfoqueMsg: (msg: string) => void
-) {
-  if (!video) throw new Error('No se encontro el video de camara.');
-
-  const stream = await navigator.mediaDevices.getUserMedia(getCameraConstraints());
-  streamRef.current = stream;
-  video.srcObject = stream;
-  await video.play();
-
-  const track = obtenerVideoTrack(video);
-  if (!track) return;
-
-  const capabilities = (track.getCapabilities?.() || {}) as any;
-  const settings = (track.getSettings?.() || {}) as any;
-  setTorchDisponible(Boolean(capabilities.torch));
-  configurarZoom(capabilities, settings, setZoomControl);
-
-  await enfocarCamara(video, { x: 0.5, y: 0.5 }, setEnfoqueMsg, false);
-}
-
-function detenerEscaneo(
-  timerRef: React.MutableRefObject<number | null>,
-  streamRef: React.MutableRefObject<MediaStream | null>
-) {
-  if (timerRef.current) {
-    window.clearInterval(timerRef.current);
-    timerRef.current = null;
-  }
-
-  streamRef.current?.getTracks().forEach(track => track.stop());
-  streamRef.current = null;
-}
-
-function obtenerVideoTrack(video: HTMLVideoElement | null): MediaStreamTrack | null {
-  const stream = video?.srcObject instanceof MediaStream ? video.srcObject : null;
-  return stream?.getVideoTracks()[0] || null;
-}
-
-async function enfocarCamara(
-  video: HTMLVideoElement | null,
-  punto: { x: number; y: number },
-  setEnfoqueMsg: (msg: string) => void,
-  mostrarMensaje = true
-) {
-  const track = obtenerVideoTrack(video);
-  if (!track) return;
-
-  const capabilities = (track.getCapabilities?.() || {}) as any;
-  const focusModes: string[] = capabilities.focusMode || [];
-  const advanced: any[] = [];
-
-  if (focusModes.includes('single-shot')) {
-    advanced.push({ focusMode: 'single-shot', pointsOfInterest: [punto] });
-  }
-
-  if (focusModes.includes('continuous')) {
-    advanced.push({ focusMode: 'continuous', pointsOfInterest: [punto] });
-  }
-
-  advanced.push({ exposureMode: 'continuous', pointsOfInterest: [punto] });
-
-  try {
-    await track.applyConstraints({ advanced } as any);
-    if (mostrarMensaje) {
-      setEnfoqueMsg('Enfoque solicitado. Si se ve borroso, aleja un poco el DNI y toca de nuevo.');
-    }
-  } catch {
-    if (mostrarMensaje) {
-      setEnfoqueMsg('Esta cámara no permite controlar el foco desde la web. Aleja un poco el DNI y usa zoom.');
-    }
-  }
-}
-
-function configurarZoom(
-  capabilities: any,
-  settings: any,
-  setZoomControl: (zoom: ZoomControl | null) => void
-) {
-  if (typeof capabilities.zoom !== 'object') {
-    setZoomControl(null);
-    return;
-  }
-
-  const min = Number(capabilities.zoom.min ?? 1);
-  const max = Number(capabilities.zoom.max ?? 1);
-  const step = Number(capabilities.zoom.step ?? 0.1);
-  const value = Number(settings.zoom ?? min);
-
-  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-    setZoomControl(null);
-    return;
-  }
-
-  setZoomControl({ min, max, step, value });
-}
-
-function capturarMarco(video: HTMLVideoElement, marco: HTMLDivElement): HTMLCanvasElement {
-  const videoRect = video.getBoundingClientRect();
-  const marcoRect = marco.getBoundingClientRect();
-
-  const objectCoverScale = Math.max(
-    videoRect.width / video.videoWidth,
-    videoRect.height / video.videoHeight
-  );
-  const renderedWidth = video.videoWidth * objectCoverScale;
-  const renderedHeight = video.videoHeight * objectCoverScale;
-  const renderedLeft = videoRect.left + (videoRect.width - renderedWidth) / 2;
-  const renderedTop = videoRect.top + (videoRect.height - renderedHeight) / 2;
-
-  const margenX = marcoRect.width * 0.08;
-  const margenY = marcoRect.height * 0.18;
-
-  const sx = Math.max(0, (marcoRect.left - renderedLeft - margenX) / objectCoverScale);
-  const sy = Math.max(0, (marcoRect.top - renderedTop - margenY) / objectCoverScale);
-  const sWidth = Math.min(video.videoWidth - sx, (marcoRect.width + margenX * 2) / objectCoverScale);
-  const sHeight = Math.min(video.videoHeight - sy, (marcoRect.height + margenY * 2) / objectCoverScale);
-
-  const minWidth = 1600;
-  const upscale = sWidth < minWidth ? minWidth / sWidth : 1;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(sWidth * upscale));
-  canvas.height = Math.max(1, Math.round(sHeight * upscale));
-
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return canvas;
-
-  ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
-  return canvas;
-}
-
-function mejorarContraste(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  const out = document.createElement('canvas');
-  out.width = canvas.width;
-  out.height = canvas.height;
-
-  const ctx = out.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return canvas;
-
-  ctx.filter = 'grayscale(100%) contrast(1.8) brightness(1.08)';
-  ctx.drawImage(canvas, 0, 0);
-  return out;
-}
-
-async function decodificarCanvas(canvas: HTMLCanvasElement): Promise<string> {
-  const nativeResult = await decodificarConBarcodeDetector(canvas);
-  if (nativeResult) return nativeResult;
-
-  try {
-    return decodificarConZxing(canvas);
-  } catch {}
-
-  return decodificarConZxing(mejorarContraste(canvas));
-}
-
-function decodificarConZxing(canvas: HTMLCanvasElement): string {
-  const hints = new Map();
-  hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417]);
-  hints.set(DecodeHintType.TRY_HARDER, true);
-
-  const source = new HTMLCanvasElementLuminanceSource(canvas, true);
-  const bitmap = new BinaryBitmap(new HybridBinarizer(source));
-  const result: Result = new PDF417Reader().decode(bitmap, hints);
-  return result.getText();
-}
-
-async function decodificarConBarcodeDetector(canvas: HTMLCanvasElement): Promise<string | null> {
-  const Detector = (window as any).BarcodeDetector;
-  if (!Detector) return null;
-
-  try {
-    const formats = typeof Detector.getSupportedFormats === 'function'
-      ? await Detector.getSupportedFormats()
-      : ['pdf417'];
-
-    if (!formats.includes('pdf417')) return null;
-
-    const detector = new Detector({ formats: ['pdf417'] });
-    const barcodes = await detector.detect(canvas);
-    const match = barcodes.find((barcode: any) => barcode.rawValue);
-    return match?.rawValue || null;
-  } catch {
-    return null;
-  }
 }
 
 function Row({ label, value, mono, full }: { label: string; value: string; mono?: boolean; full?: boolean }) {
@@ -513,7 +315,7 @@ function Row({ label, value, mono, full }: { label: string; value: string; mono?
     <div className={full ? 'col-span-2' : ''}>
       <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
       <dd className={`text-sm text-slate-900 ${mono ? 'tnum font-mono' : 'font-medium'} ${value ? '' : 'text-slate-400 italic'}`}>
-        {value || '-'}
+        {value || '—'}
       </dd>
     </div>
   );
