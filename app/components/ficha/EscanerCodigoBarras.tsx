@@ -1,24 +1,15 @@
 // ============================================================================
-//  app/components/ficha/EscanerCodigoBarras.tsx
+// app/components/ficha/EscanerCodigoBarras.tsx
 //
-//  SIN ESCANEO EN VIVO.
-//
-//  Flujo:
-//  1) La cámara se usa solamente como visor para enfocar el PDF417.
-//  2) El usuario ubica el código dentro del recuadro.
-//  3) Toca "Sacar foto y leer".
-//  4) Se toma una foto.
-//  5) Se cierra la cámara.
-//  6) La lectura se hace desde la foto capturada.
-//
-//  Importante:
-//  - No usa decodeFromVideoDevice.
-//  - No lee frames continuamente.
-//  - Solo decodifica una imagen ya capturada.
+// Flujo:
+// 1) Cámara SOLO para sacar una foto.
+// 2) Se muestra la foto.
+// 3) El usuario marca con el dedo/mouse la zona donde está el PDF417.
+// 4) Se escanea únicamente ese recorte.
 // ============================================================================
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { BrowserPDF417Reader, DecodeHintType, NotFoundException } from '@zxing/library';
 import { parseDniPdf417, parsedDniToFormFields, type ParsedDni } from '../../lib/parseDniPdf417';
 
@@ -27,36 +18,29 @@ type Props = {
   onApply: (campos: ReturnType<typeof parsedDniToFormFields>, parsed: ParsedDni) => void;
 };
 
-type Estado = 'camara' | 'decodificando' | 'parseado' | 'sin_codigo';
+type Estado = 'camara' | 'seleccionar' | 'leyendo' | 'parseado' | 'error';
 
-type ImageVariant = {
-  label: string;
-  blob: Blob;
+type Crop = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 };
 
-type CameraCapabilities = MediaTrackCapabilities & {
-  focusMode?: string[];
-  zoom?: { min: number; max: number };
+const CROP_INICIAL: Crop = {
+  x: 0.06,
+  y: 0.38,
+  w: 0.88,
+  h: 0.22,
 };
-
-type PhotoCapabilities = {
-  imageWidth?: { max?: number };
-  imageHeight?: { max?: number };
-};
-
-type ImageCaptureLike = {
-  takePhoto: (settings?: { imageWidth?: number; imageHeight?: number }) => Promise<Blob>;
-  getPhotoCapabilities?: () => Promise<PhotoCapabilities>;
-};
-
-type ImageCaptureConstructor = new (track: MediaStreamTrack) => ImageCaptureLike;
 
 export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const [estado, setEstado] = useState<Estado>('camara');
-  const [parsed, setParsed] = useState<ParsedDni | null>(null);
-  const [errorMsg, setErrorMsg] = useState('');
   const [fotoBlob, setFotoBlob] = useState<Blob | null>(null);
   const [fotoUrl, setFotoUrl] = useState('');
+  const [crop, setCrop] = useState<Crop>(CROP_INICIAL);
+  const [parsed, setParsed] = useState<ParsedDni | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const fotoUrlRef = useRef('');
 
@@ -68,87 +52,71 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
     };
   }, []);
 
-  const limpiarFotoAnterior = () => {
-    if (fotoUrlRef.current) {
-      URL.revokeObjectURL(fotoUrlRef.current);
-      fotoUrlRef.current = '';
-    }
-
-    setFotoUrl('');
-    setFotoBlob(null);
-  };
-
-  const guardarFotoYLeer = (blob: Blob) => {
+  const cargarFoto = (blob: Blob) => {
     if (fotoUrlRef.current) {
       URL.revokeObjectURL(fotoUrlRef.current);
     }
 
     const url = URL.createObjectURL(blob);
-
     fotoUrlRef.current = url;
+
     setFotoBlob(blob);
     setFotoUrl(url);
+    setCrop(CROP_INICIAL);
     setParsed(null);
     setErrorMsg('');
-    setEstado('decodificando');
-
-    // Acá empieza la lectura, pero desde la foto/blob.
-    // No se lee desde el video ni desde el stream de la cámara.
-    void leerDesdeFoto(blob);
+    setEstado('seleccionar');
   };
 
-  const leerDesdeFoto = async (blob: Blob) => {
-    setEstado('decodificando');
-    setErrorMsg('');
-
-    try {
-      const variants = await crearVariantesParaPdf417(blob);
-      let lastError: unknown = null;
-
-      for (const variant of variants) {
-        try {
-          const raw = await decodificarImagen(variant.blob);
-          const p = parseDniPdf417(raw);
-
-          console.info(`[DNI PDF417] leído desde foto: ${variant.label}`);
-
-          setParsed(p);
-          setEstado('parseado');
-          return;
-        } catch (e) {
-          lastError = e;
-        }
-      }
-
-      throw lastError ?? new NotFoundException();
-    } catch (e) {
-      if (esNotFoundException(e)) {
-        setErrorMsg(
-          'No se detectó el código en la foto. Probá sacar otra foto más cerca, con buena luz y con todo el código dentro del recuadro.',
-        );
-      } else {
-        setErrorMsg((e as Error)?.message || 'Error al leer el código desde la foto.');
-      }
-
-      setEstado('sin_codigo');
+  const sacarOtraFoto = () => {
+    if (fotoUrlRef.current) {
+      URL.revokeObjectURL(fotoUrlRef.current);
+      fotoUrlRef.current = '';
     }
-  };
 
-  const cargarFotoNativa = (file: File | undefined) => {
-    if (!file) return;
-    guardarFotoYLeer(file);
-  };
-
-  const reintentar = () => {
-    limpiarFotoAnterior();
+    setFotoBlob(null);
+    setFotoUrl('');
+    setCrop(CROP_INICIAL);
     setParsed(null);
     setErrorMsg('');
     setEstado('camara');
   };
 
-  const releerMismaFoto = () => {
+  const leerZonaMarcada = async () => {
     if (!fotoBlob) return;
-    void leerDesdeFoto(fotoBlob);
+
+    setEstado('leyendo');
+    setErrorMsg('');
+
+    try {
+      const recortes = await crearRecortesParaLeer(fotoBlob, crop);
+      let ultimoError: unknown = null;
+
+      for (const recorte of recortes) {
+        try {
+          const raw = await decodificarImagen(recorte);
+          const p = parseDniPdf417(raw);
+
+          setParsed(p);
+          setEstado('parseado');
+          return;
+        } catch (e) {
+          ultimoError = e;
+        }
+      }
+
+      throw ultimoError ?? new NotFoundException();
+    } catch (e) {
+      if (esNotFoundException(e)) {
+        setErrorMsg(
+          'No se leyó el código. Ajustá el recuadro para que incluya solo el PDF417 y probá de nuevo.',
+        );
+      } else {
+        setErrorMsg((e as Error)?.message || 'No se pudo leer el código.');
+      }
+
+      setEstado('error');
+    }
   };
 
   const aplicar = () => {
@@ -157,16 +125,11 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   };
 
   const subtitulo = (() => {
-    switch (estado) {
-      case 'camara':
-        return 'Ubicá el código dentro del recuadro y sacá la foto';
-      case 'decodificando':
-        return 'Leyendo el código desde la foto capturada';
-      case 'parseado':
-        return 'Revisá los datos detectados';
-      case 'sin_codigo':
-        return 'No se detectó el código en la foto';
-    }
+    if (estado === 'camara') return 'Sacá una foto del dorso del DNI';
+    if (estado === 'seleccionar') return 'Marcá con el dedo la zona del código de barras';
+    if (estado === 'leyendo') return 'Leyendo únicamente la zona marcada';
+    if (estado === 'error') return 'No se pudo leer el recorte';
+    return 'Revisá los datos detectados';
   })();
 
   return (
@@ -185,21 +148,18 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
         </button>
       </div>
 
-      {estado === 'camara' && (
-        <CamaraSoloParaSacarFoto
-          onPhoto={guardarFotoYLeer}
-          onNativePhoto={cargarFotoNativa}
-        />
-      )}
+      {estado === 'camara' && <CamaraFoto onPhoto={cargarFoto} />}
 
-      {(estado === 'decodificando' || estado === 'sin_codigo') && fotoUrl && (
-        <FotoCapturada
-          estado={estado}
+      {(estado === 'seleccionar' || estado === 'leyendo' || estado === 'error') && fotoUrl && (
+        <SeleccionarRecorte
           fotoUrl={fotoUrl}
-          errorMsg={errorMsg}
-          onRetry={reintentar}
-          onReadAgain={releerMismaFoto}
-          onNativePhoto={cargarFotoNativa}
+          crop={crop}
+          setCrop={setCrop}
+          leyendo={estado === 'leyendo'}
+          errorMsg={estado === 'error' ? errorMsg : ''}
+          onLeer={leerZonaMarcada}
+          onOtraFoto={sacarOtraFoto}
+          onPhoto={cargarFoto}
         />
       )}
 
@@ -260,7 +220,7 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
 
           <div className="p-3 md:p-4 bg-white border-t border-slate-200 flex gap-3 max-w-2xl mx-auto w-full shrink-0">
             <button
-              onClick={reintentar}
+              onClick={sacarOtraFoto}
               className="flex-1 py-3 rounded-lg bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm hover:bg-slate-50 transition"
             >
               Sacar otra foto
@@ -280,38 +240,22 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   );
 }
 
-// ============================================================================
-//  Cámara SOLO como visor para sacar una foto.
-//  No hay lectura en vivo del stream.
-// ============================================================================
-
-function CamaraSoloParaSacarFoto({
-  onPhoto,
-  onNativePhoto,
-}: {
-  onPhoto: (blob: Blob) => void;
-  onNativePhoto: (file: File | undefined) => void;
-}) {
+function CamaraFoto({ onPhoto }: { onPhoto: (blob: Blob) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const nativePhotoInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [iniciando, setIniciando] = useState(true);
   const [tomandoFoto, setTomandoFoto] = useState(false);
-  const [cameraError, setCameraError] = useState('');
-  const [videoRes, setVideoRes] = useState('—');
-  const [photoRes, setPhotoRes] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    let stopped = false;
+    let cancelled = false;
 
     const stop = () => {
-      stopped = true;
-
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
+      cancelled = true;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     };
 
     const start = async () => {
@@ -324,7 +268,7 @@ function CamaraSoloParaSacarFoto({
           },
         });
 
-        if (stopped) {
+        if (cancelled) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
@@ -337,17 +281,12 @@ function CamaraSoloParaSacarFoto({
         }
 
         const track = stream.getVideoTracks()[0];
-        const settings = track.getSettings();
-
-        setVideoRes(`${settings.width || '?'}×${settings.height || '?'}`);
-
-        await aplicarMejorasDeCamara(track);
-        await detectarResolucionDeFoto(track, setPhotoRes);
+        await intentarAutoFocus(track);
 
         setIniciando(false);
       } catch (e) {
-        if (!stopped) {
-          setCameraError((e as Error)?.message || 'No se pudo acceder a la cámara.');
+        if (!cancelled) {
+          setError((e as Error)?.message || 'No se pudo abrir la cámara.');
           setIniciando(false);
         }
       }
@@ -358,37 +297,33 @@ function CamaraSoloParaSacarFoto({
     return stop;
   }, []);
 
-  const capturarFoto = async () => {
+  const capturar = async () => {
+    if (tomandoFoto) return;
+
     const video = videoRef.current;
     const track = streamRef.current?.getVideoTracks()[0];
 
-    if (!video || !track || tomandoFoto) return;
+    if (!video || !track) return;
 
     setTomandoFoto(true);
-    setCameraError('');
+    setError('');
 
     try {
       const blob = await sacarFoto(track, video);
 
-      // Cerramos la cámara apenas tenemos la foto.
-      // Desde este punto, la lectura ya no depende de la cámara.
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
 
       onPhoto(blob);
     } catch (e) {
-      setCameraError((e as Error)?.message || 'No se pudo sacar la foto.');
+      setError((e as Error)?.message || 'No se pudo sacar la foto.');
       setTomandoFoto(false);
     }
   };
 
-  const disabled = iniciando || tomandoFoto || !!cameraError;
-
   return (
     <>
-      <div className="flex-1 relative overflow-hidden flex items-center justify-center min-h-0 bg-black">
+      <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center">
         <video
           ref={videoRef}
           autoPlay
@@ -397,42 +332,26 @@ function CamaraSoloParaSacarFoto({
           className="absolute w-full h-full object-cover"
         />
 
-        <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+        <div className="absolute inset-0 bg-black/20" />
 
-        <div className="relative w-[92%] aspect-[3/1] border-4 border-white rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] pointer-events-none">
-          <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-green-400" />
-          <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-green-400" />
-          <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-green-400" />
-          <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-green-400" />
+        <div className="absolute left-3 right-3 bottom-4 text-center pointer-events-none">
+          {iniciando && <span className="text-white/80 text-sm">Iniciando cámara…</span>}
 
-          <div className="absolute -top-8 left-0 right-0 text-center text-white text-xs font-semibold">
-            Alineá el código PDF417 dentro del recuadro
-          </div>
-        </div>
-
-        <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[10px] px-2 py-1 rounded leading-tight">
-          <div>Video: {videoRes}</div>
-          {photoRes && <div>Foto: {photoRes}</div>}
-        </div>
-
-        <div className="absolute bottom-3 left-0 right-0 text-center text-sm font-medium px-4 pointer-events-none">
-          {iniciando && <span className="text-white/80">Iniciando cámara…</span>}
-
-          {!iniciando && !cameraError && !tomandoFoto && (
-            <span className="text-white/85 bg-black/45 px-3 py-1.5 rounded-lg inline-block">
-              La cámara solo enfoca. Al tocar el botón se saca una foto y se lee desde esa imagen.
+          {!iniciando && !error && !tomandoFoto && (
+            <span className="text-white bg-black/60 px-3 py-2 rounded-lg text-sm font-medium inline-block">
+              Sacá una foto del dorso. Después vas a marcar el código sobre la foto.
             </span>
           )}
 
           {tomandoFoto && (
-            <span className="text-white bg-black/70 px-3 py-1.5 rounded-lg">
+            <span className="text-white bg-black/70 px-3 py-2 rounded-lg text-sm font-medium">
               Sacando foto…
             </span>
           )}
 
-          {cameraError && (
-            <span className="text-rose-300 bg-black/70 px-3 py-1.5 rounded-lg">
-              {cameraError}
+          {error && (
+            <span className="text-rose-200 bg-black/70 px-3 py-2 rounded-lg text-sm font-medium inline-block">
+              {error}
             </span>
           )}
         </div>
@@ -440,30 +359,34 @@ function CamaraSoloParaSacarFoto({
 
       <div className="bg-black p-3 md:p-4 shrink-0 space-y-2">
         <input
-          ref={nativePhotoInputRef}
+          ref={fileInputRef}
           type="file"
           accept="image/*"
           capture="environment"
           className="hidden"
           onChange={(e) => {
-            onNativePhoto(e.target.files?.[0]);
+            const file = e.target.files?.[0];
+
+            if (file) {
+              onPhoto(file);
+            }
+
             e.currentTarget.value = '';
           }}
         />
 
         <button
-          onClick={capturarFoto}
-          disabled={disabled}
+          onClick={capturar}
+          disabled={iniciando || tomandoFoto || !!error}
           className="w-full py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg active:bg-emerald-700 disabled:opacity-50"
         >
-          📸 Sacar foto y leer
+          📸 Sacar foto
         </button>
 
         <button
           type="button"
-          onClick={() => nativePhotoInputRef.current?.click()}
-          disabled={tomandoFoto}
-          className="w-full py-3 rounded-lg bg-white/10 text-white font-semibold text-xs ring-1 ring-white/20 active:bg-white/15 disabled:opacity-50"
+          onClick={() => fileInputRef.current?.click()}
+          className="w-full py-3 rounded-lg bg-white/10 text-white font-semibold text-xs ring-1 ring-white/20 active:bg-white/15"
         >
           Usar cámara nativa / elegir foto
         </button>
@@ -472,45 +395,132 @@ function CamaraSoloParaSacarFoto({
   );
 }
 
-function FotoCapturada({
-  estado,
+function SeleccionarRecorte({
   fotoUrl,
+  crop,
+  setCrop,
+  leyendo,
   errorMsg,
-  onRetry,
-  onReadAgain,
-  onNativePhoto,
+  onLeer,
+  onOtraFoto,
+  onPhoto,
 }: {
-  estado: Estado;
   fotoUrl: string;
+  crop: Crop;
+  setCrop: (crop: Crop) => void;
+  leyendo: boolean;
   errorMsg: string;
-  onRetry: () => void;
-  onReadAgain: () => void;
-  onNativePhoto: (file: File | undefined) => void;
+  onLeer: () => void;
+  onOtraFoto: () => void;
+  onPhoto: (blob: Blob) => void;
 }) {
-  const nativePhotoInputRef = useRef<HTMLInputElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const puntoDesdeEvento = (event: PointerEvent<HTMLDivElement>) => {
+    const overlay = overlayRef.current;
+    if (!overlay) return null;
+
+    const bounds = overlay.getBoundingClientRect();
+
+    return {
+      x: clamp((event.clientX - bounds.left) / bounds.width, 0, 1),
+      y: clamp((event.clientY - bounds.top) / bounds.height, 0, 1),
+    };
+  };
+
+  const empezar = (event: PointerEvent<HTMLDivElement>) => {
+    if (leyendo) return;
+
+    const punto = puntoDesdeEvento(event);
+    if (!punto) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    startRef.current = punto;
+
+    setCrop({
+      x: punto.x,
+      y: punto.y,
+      w: 0.01,
+      h: 0.01,
+    });
+  };
+
+  const mover = (event: PointerEvent<HTMLDivElement>) => {
+    if (!startRef.current || leyendo) return;
+
+    const punto = puntoDesdeEvento(event);
+    if (!punto) return;
+
+    const start = startRef.current;
+
+    setCrop(
+      normalizarCrop({
+        x: Math.min(start.x, punto.x),
+        y: Math.min(start.y, punto.y),
+        w: Math.abs(punto.x - start.x),
+        h: Math.abs(punto.y - start.y),
+      }),
+    );
+  };
+
+  const terminar = (event: PointerEvent<HTMLDivElement>) => {
+    startRef.current = null;
+
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Algunos navegadores no requieren liberar captura.
+    }
+  };
 
   return (
     <>
-      <div className="flex-1 relative overflow-hidden flex items-center justify-center min-h-0 bg-black">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={fotoUrl}
-          alt="Foto capturada del código de barras"
-          className="absolute w-full h-full object-contain"
-        />
+      <div className="flex-1 relative min-h-0 bg-black flex items-center justify-center overflow-hidden p-2">
+        <div className="relative inline-block max-w-full max-h-full">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={fotoUrl}
+            alt="Foto del DNI"
+            draggable={false}
+            className="block max-w-full max-h-[calc(100vh-190px)] select-none touch-none"
+          />
 
-        <div className="absolute inset-0 bg-black/15 pointer-events-none" />
+          <div
+            ref={overlayRef}
+            className="absolute inset-0 touch-none cursor-crosshair"
+            onPointerDown={empezar}
+            onPointerMove={mover}
+            onPointerUp={terminar}
+            onPointerCancel={terminar}
+          >
+            <div className="absolute inset-0 bg-black/10" />
+
+            <div
+              className="absolute border-4 border-emerald-400 rounded-md shadow-[0_0_0_9999px_rgba(0,0,0,0.48)]"
+              style={{
+                left: `${crop.x * 100}%`,
+                top: `${crop.y * 100}%`,
+                width: `${crop.w * 100}%`,
+                height: `${crop.h * 100}%`,
+              }}
+            />
+          </div>
+        </div>
 
         <div className="absolute top-3 left-3 right-3 text-center pointer-events-none">
-          {estado === 'decodificando' && (
-            <span className="text-white bg-black/70 px-3 py-1.5 rounded-lg text-sm font-medium">
-              Foto tomada. Leyendo el código desde esta imagen…
+          {leyendo ? (
+            <span className="text-white bg-black/75 px-3 py-2 rounded-lg text-sm font-medium inline-block">
+              Leyendo solo el recorte marcado…
             </span>
-          )}
-
-          {estado === 'sin_codigo' && (
-            <span className="text-white bg-amber-500/95 px-3 py-1.5 rounded-lg text-sm font-medium max-w-[92%] inline-block">
+          ) : errorMsg ? (
+            <span className="text-white bg-amber-500/95 px-3 py-2 rounded-lg text-xs font-medium inline-block max-w-[96%]">
               {errorMsg}
+            </span>
+          ) : (
+            <span className="text-white bg-black/60 px-3 py-2 rounded-lg text-xs font-medium inline-block">
+              Arrastrá sobre el código PDF417 para marcar la zona exacta.
             </span>
           )}
         </div>
@@ -518,52 +528,49 @@ function FotoCapturada({
 
       <div className="bg-black p-3 md:p-4 shrink-0 space-y-2">
         <input
-          ref={nativePhotoInputRef}
+          ref={fileInputRef}
           type="file"
           accept="image/*"
           capture="environment"
           className="hidden"
           onChange={(e) => {
-            onNativePhoto(e.target.files?.[0]);
+            const file = e.target.files?.[0];
+
+            if (file) {
+              onPhoto(file);
+            }
+
             e.currentTarget.value = '';
           }}
         />
 
-        {estado === 'decodificando' && (
-          <button
-            disabled
-            className="w-full py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg opacity-60"
-          >
-            Leyendo desde la foto…
-          </button>
-        )}
-
-        {estado === 'sin_codigo' && (
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={onRetry}
-              className="py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg active:bg-emerald-700"
-            >
-              Sacar otra foto
-            </button>
-
-            <button
-              onClick={onReadAgain}
-              className="py-3.5 rounded-lg bg-white/10 text-white font-bold text-sm ring-1 ring-white/20 active:bg-white/15"
-            >
-              Releer esta foto
-            </button>
-          </div>
-        )}
-
         <button
-          type="button"
-          onClick={() => nativePhotoInputRef.current?.click()}
-          disabled={estado === 'decodificando'}
-          className="w-full py-3 rounded-lg bg-white/10 text-white font-semibold text-xs ring-1 ring-white/20 active:bg-white/15 disabled:opacity-50"
+          onClick={onLeer}
+          disabled={leyendo}
+          className="w-full py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg active:bg-emerald-700 disabled:opacity-50"
         >
-          Usar cámara nativa / elegir foto
+          {leyendo ? 'Leyendo recorte…' : 'Escanear zona marcada'}
         </button>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onOtraFoto}
+            disabled={leyendo}
+            className="py-3 rounded-lg bg-white/10 text-white font-semibold text-xs ring-1 ring-white/20 active:bg-white/15 disabled:opacity-50"
+          >
+            Sacar otra foto
+          </button>
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={leyendo}
+            className="py-3 rounded-lg bg-white/10 text-white font-semibold text-xs ring-1 ring-white/20 active:bg-white/15 disabled:opacity-50"
+          >
+            Elegir foto
+          </button>
+        </div>
       </div>
     </>
   );
@@ -597,16 +604,22 @@ function Row({
   );
 }
 
-async function aplicarMejorasDeCamara(track: MediaStreamTrack) {
+async function intentarAutoFocus(track: MediaStreamTrack) {
   try {
-    const caps = (track.getCapabilities?.() ?? {}) as CameraCapabilities;
-    const advanced: Array<Record<string, string | number>> = [];
+    const caps = track.getCapabilities?.() as
+      | (MediaTrackCapabilities & {
+          focusMode?: string[];
+          zoom?: { max: number };
+        })
+      | undefined;
 
-    if (caps.focusMode?.includes('continuous')) {
+    const advanced: Array<MediaTrackConstraintSet & { focusMode?: string; zoom?: number }> = [];
+
+    if (caps?.focusMode?.includes('continuous')) {
       advanced.push({ focusMode: 'continuous' });
     }
 
-    if (caps.zoom && caps.zoom.max > (caps.zoom.min || 1)) {
+    if (caps?.zoom?.max && caps.zoom.max > 1) {
       advanced.push({ zoom: Math.min(2, caps.zoom.max) });
     }
 
@@ -616,53 +629,28 @@ async function aplicarMejorasDeCamara(track: MediaStreamTrack) {
       });
     }
   } catch {
-    // Si el navegador no soporta foco/zoom por constraints, seguimos igual.
-  }
-}
-
-async function detectarResolucionDeFoto(
-  track: MediaStreamTrack,
-  setPhotoRes: (value: string) => void,
-) {
-  const ImageCaptureClass = obtenerImageCapture();
-  if (!ImageCaptureClass) return;
-
-  try {
-    const imageCapture = new ImageCaptureClass(track);
-    const caps = await imageCapture.getPhotoCapabilities?.();
-
-    if (caps?.imageWidth?.max && caps?.imageHeight?.max) {
-      setPhotoRes(`${caps.imageWidth.max}×${caps.imageHeight.max}`);
-    }
-  } catch {
-    // Solo diagnóstico visual; no bloquea el flujo.
+    // No todos los navegadores soportan focus/zoom.
   }
 }
 
 async function sacarFoto(track: MediaStreamTrack, video: HTMLVideoElement): Promise<Blob> {
-  const ImageCaptureClass = obtenerImageCapture();
+  const ImageCaptureClass = (window as Window & {
+    ImageCapture?: new (track: MediaStreamTrack) => {
+      takePhoto: () => Promise<Blob>;
+    };
+  }).ImageCapture;
 
   if (ImageCaptureClass) {
     try {
       const imageCapture = new ImageCaptureClass(track);
-      const caps = await imageCapture.getPhotoCapabilities?.();
-
-      const settings =
-        caps?.imageWidth?.max && caps?.imageHeight?.max
-          ? {
-              imageWidth: caps.imageWidth.max,
-              imageHeight: caps.imageHeight.max,
-            }
-          : undefined;
-
-      return await imageCapture.takePhoto(settings);
-    } catch (e) {
-      console.debug('[ImageCapture] falló; se usa frame del video como foto', e);
+      return await imageCapture.takePhoto();
+    } catch {
+      // Si ImageCapture falla, usamos el frame del video.
     }
   }
 
-  if (video.videoWidth <= 0 || video.videoHeight <= 0) {
-    throw new Error('La cámara todavía no está lista para sacar la foto.');
+  if (!video.videoWidth || !video.videoHeight) {
+    throw new Error('La cámara todavía no está lista.');
   }
 
   const canvas = document.createElement('canvas');
@@ -679,79 +667,16 @@ async function sacarFoto(track: MediaStreamTrack, video: HTMLVideoElement): Prom
   return canvasToBlob(canvas, 'image/jpeg', 0.95);
 }
 
-function obtenerImageCapture(): ImageCaptureConstructor | null {
-  const maybeWindow = window as Window & {
-    ImageCapture?: ImageCaptureConstructor;
-  };
-
-  return maybeWindow.ImageCapture ?? null;
-}
-
-async function decodificarImagen(blob: Blob): Promise<string> {
-  const url = URL.createObjectURL(blob);
-
-  try {
-    const reader = new BrowserPDF417Reader();
-
-    const hints = new Map<DecodeHintType, unknown>();
-    hints.set(DecodeHintType.TRY_HARDER, true);
-
-    (reader as BrowserPDF417Reader & { hints?: Map<DecodeHintType, unknown> }).hints = hints;
-
-    const result = await reader.decodeFromImageUrl(url);
-
-    return result.getText();
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-async function crearVariantesParaPdf417(blob: Blob): Promise<ImageVariant[]> {
+async function crearRecortesParaLeer(blob: Blob, crop: Crop): Promise<Blob[]> {
   const img = await cargarImagen(blob);
+  const zona = normalizarCrop(crop);
 
-  const variants: ImageVariant[] = [];
-
-  // Como el usuario alinea el PDF417 en el recuadro horizontal,
-  // probamos primero recortes centrales de la foto capturada.
-  variants.push({
-    label: 'recorte guía 92%',
-    blob: await renderVariant(img, {
-      cropWidthRatio: 0.92,
-      aspect: 3,
-    }),
-  });
-
-  variants.push({
-    label: 'recorte guía 78%',
-    blob: await renderVariant(img, {
-      cropWidthRatio: 0.78,
-      aspect: 3,
-    }),
-  });
-
-  variants.push({
-    label: 'recorte guía contrastado',
-    blob: await renderVariant(img, {
-      cropWidthRatio: 0.92,
-      aspect: 3,
-      enhance: true,
-    }),
-  });
-
-  // Fallbacks por si el código quedó fuera del recorte.
-  variants.push({
-    label: 'foto completa',
-    blob,
-  });
-
-  variants.push({
-    label: 'foto completa normalizada',
-    blob: await renderVariant(img, {
-      fullImage: true,
-    }),
-  });
-
-  return variants;
+  return [
+    await recortarImagen(img, zona, { margen: 0, contraste: false }),
+    await recortarImagen(img, zona, { margen: 0, contraste: true }),
+    await recortarImagen(img, zona, { margen: 0.06, contraste: false }),
+    await recortarImagen(img, zona, { margen: 0.06, contraste: true }),
+  ];
 }
 
 function cargarImagen(blob: Blob): Promise<HTMLImageElement> {
@@ -766,73 +691,60 @@ function cargarImagen(blob: Blob): Promise<HTMLImageElement> {
 
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error('No se pudo cargar la foto capturada.'));
+      reject(new Error('No se pudo cargar la foto.'));
     };
 
     img.src = url;
   });
 }
 
-async function renderVariant(
+async function recortarImagen(
   img: HTMLImageElement,
-  options: {
-    cropWidthRatio?: number;
-    aspect?: number;
-    enhance?: boolean;
-    fullImage?: boolean;
-  },
+  crop: Crop,
+  options: { margen: number; contraste: boolean },
 ): Promise<Blob> {
   const sourceW = img.naturalWidth || img.width;
   const sourceH = img.naturalHeight || img.height;
 
-  let sx = 0;
-  let sy = 0;
-  let sw = sourceW;
-  let sh = sourceH;
+  const margenX = crop.w * options.margen;
+  const margenY = crop.h * options.margen;
 
-  if (!options.fullImage) {
-    const aspect = options.aspect ?? 3;
-    const desiredW = sourceW * (options.cropWidthRatio ?? 0.92);
-    const desiredH = desiredW / aspect;
+  const x1 = clamp(crop.x - margenX, 0, 1);
+  const y1 = clamp(crop.y - margenY, 0, 1);
+  const x2 = clamp(crop.x + crop.w + margenX, 0, 1);
+  const y2 = clamp(crop.y + crop.h + margenY, 0, 1);
 
-    if (desiredH <= sourceH * 0.75) {
-      sw = desiredW;
-      sh = desiredH;
-    } else {
-      sh = sourceH * 0.6;
-      sw = sh * aspect;
-    }
+  const sx = Math.round(x1 * sourceW);
+  const sy = Math.round(y1 * sourceH);
+  const sw = Math.max(1, Math.round((x2 - x1) * sourceW));
+  const sh = Math.max(1, Math.round((y2 - y1) * sourceH));
 
-    sx = Math.max(0, (sourceW - sw) / 2);
-    sy = Math.max(0, (sourceH - sh) / 2);
-  }
-
-  const targetW = Math.min(2400, Math.max(1200, Math.round(sw)));
-  const targetH = Math.max(350, Math.round(targetW * (sh / sw)));
+  const targetW = Math.min(2600, Math.max(1200, sw));
+  const targetH = Math.max(260, Math.round(targetW * (sh / sw)));
 
   const canvas = document.createElement('canvas');
   canvas.width = targetW;
   canvas.height = targetH;
 
   const ctx = canvas.getContext('2d', {
-    willReadFrequently: !!options.enhance,
+    willReadFrequently: options.contraste,
   });
 
   if (!ctx) {
-    throw new Error('No se pudo preparar la imagen para leer el código.');
+    throw new Error('No se pudo preparar el recorte.');
   }
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
 
-  if (options.enhance) {
+  if (options.contraste) {
     const imageData = ctx.getImageData(0, 0, targetW, targetH);
     const data = imageData.data;
 
     for (let i = 0; i < data.length; i += 4) {
       const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.45 + 128));
+      const contrasted = clamp((gray - 128) * 1.55 + 128, 0, 255);
 
       data[i] = contrasted;
       data[i + 1] = contrasted;
@@ -845,24 +757,54 @@ async function renderVariant(
   return canvasToBlob(canvas, 'image/jpeg', 0.95);
 }
 
-function canvasToBlob(
-  canvas: HTMLCanvasElement,
-  type: string,
-  quality?: number,
-): Promise<Blob> {
+async function decodificarImagen(blob: Blob): Promise<string> {
+  const url = URL.createObjectURL(blob);
+
+  try {
+    const reader = new BrowserPDF417Reader();
+    const hints = new Map<DecodeHintType, unknown>();
+
+    hints.set(DecodeHintType.TRY_HARDER, true);
+
+    (reader as BrowserPDF417Reader & {
+      hints?: Map<DecodeHintType, unknown>;
+    }).hints = hints;
+
+    const result = await reader.decodeFromImageUrl(url);
+
+    return result.getText();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
         if (blob) {
           resolve(blob);
         } else {
-          reject(new Error('No se pudo generar la foto para leer el código.'));
+          reject(new Error('No se pudo generar la imagen.'));
         }
       },
       type,
       quality,
     );
   });
+}
+
+function normalizarCrop(crop: Crop): Crop {
+  const w = clamp(crop.w, 0.03, 1);
+  const h = clamp(crop.h, 0.03, 1);
+  const x = clamp(crop.x, 0, 1 - w);
+  const y = clamp(crop.y, 0, 1 - h);
+
+  return { x, y, w, h };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function esNotFoundException(e: unknown) {
