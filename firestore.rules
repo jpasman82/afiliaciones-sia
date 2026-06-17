@@ -73,7 +73,7 @@ service cloud.firestore {
 
     function camposEditablesFichaPendiente() {
       return [
-        'id', 'tipoDocumento', 'dni', 'apellidos', 'nombres', 'sexo', 'clase',
+        'id', 'apellidos', 'nombres', 'sexo', 'clase',
         'fechaNacimiento', 'lugarNacimiento', 'nacionalidad', 'profesion',
         'estadoCivil', 'celular', 'mail', 'distrito', 'calle', 'numero',
         'piso', 'dpto', 'localidad', 'observaciones', 'estadoControl',
@@ -81,12 +81,20 @@ service cloud.firestore {
       ];
     }
 
-    function creacionFichaValida() {
+    function indiceDniValido(docId) {
+      let indice = getAfter(/databases/$(database)/documents/dniIndex/$(request.resource.data.dni)).data;
+      return indice.fichaId == docId &&
+        indice.dni == request.resource.data.dni &&
+        indice.afiliadorUid == request.auth.uid;
+    }
+
+    function creacionFichaValida(docId) {
       return rolActivo(request.auth.uid) &&
         request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
         request.resource.data.afiliadorUid == request.auth.uid &&
         request.resource.data.afiliadorEmail == request.auth.token.email &&
-        estadoPendiente(request.resource.data);
+        estadoPendiente(request.resource.data) &&
+        indiceDniValido(docId);
     }
 
     function conservaPropiedadFicha() {
@@ -120,12 +128,23 @@ service cloud.firestore {
       allow delete: if request.auth != null && esAdmin(request.auth.uid);
     }
 
+    match /dniIndex/{dni} {
+      allow read: if request.auth != null && esAdminOSupervisor(request.auth.uid);
+      allow create: if request.auth != null &&
+        rolActivo(request.auth.uid) &&
+        request.resource.data.keys().hasOnly(['dni', 'fichaId', 'afiliadorUid', 'fecha']) &&
+        request.resource.data.dni == dni &&
+        request.resource.data.afiliadorUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if request.auth != null && esAdmin(request.auth.uid);
+    }
+
     match /afiliaciones/{docId} {
       // El afiliador ve sus propios registros; admins y supervisores ven todo
       allow read: if request.auth != null &&
         (resource.data.afiliadorUid == request.auth.uid || esAdminOSupervisor(request.auth.uid));
       // Solo usuarios activos pueden crear fichas con su propio uid
-      allow create: if request.auth != null && creacionFichaValida();
+      allow create: if request.auth != null && creacionFichaValida(docId);
       // Admin puede editar siempre. Afiliador/supervisor solo mientras la ficha siga en paso 1.
       allow update: if request.auth != null && (
         esAdmin(request.auth.uid) ||

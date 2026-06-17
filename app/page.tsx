@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy, arrayUnion } from 'firebase/firestore';
+import { collection, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy, arrayUnion, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getBlob } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
@@ -717,7 +717,7 @@ export default function Home() {
 
   const normalizarFichaPayload = (data: any) => ({
     tipoDocumento: data.tipoDocumento || 'DNI',
-    dni: data.dni || '',
+    dni: String(data.dni || '').replace(/\D/g, ''),
     apellidos: data.apellidos || '',
     nombres: data.nombres || '',
     sexo: data.sexo || '',
@@ -741,6 +741,11 @@ export default function Home() {
 
   const guardarFicha = async (e: React.FormEvent) => {
     e.preventDefault();
+    const dniNormalizado = String(formData.dni || '').replace(/\D/g, '');
+    if (!dniNormalizado) {
+      alert('Ingresá un DNI válido antes de guardar.');
+      return;
+    }
     if (editandoId) {
       const fichaActual = registros.find(r => r.id === editandoId);
       if (!puedeEditarFicha(fichaActual || formData)) {
@@ -784,7 +789,25 @@ export default function Home() {
         alert('Datos actualizados');
       } else {
         const nombreAfiliador = userData ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim() : ((user as any).displayName || '');
-        await addDoc(collection(db, 'afiliaciones'), { ...normalizarFichaPayload(formData), archivoDniPath: pathDni, afiliadorNombre: nombreAfiliador, afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
+        const payload = {
+          ...normalizarFichaPayload(formData),
+          archivoDniPath: pathDni,
+          afiliadorNombre: nombreAfiliador,
+          afiliadorEmail: (user as any).email,
+          afiliadorUid: (user as any).uid,
+          fecha: serverTimestamp(),
+        };
+        const fichaRef = doc(collection(db, 'afiliaciones'));
+        const indiceRef = doc(db, 'dniIndex', payload.dni);
+        const batch = writeBatch(db);
+        batch.set(indiceRef, {
+          dni: payload.dni,
+          fichaId: fichaRef.id,
+          afiliadorUid: (user as any).uid,
+          fecha: serverTimestamp(),
+        });
+        batch.set(fichaRef, payload);
+        await batch.commit();
         alert('Registro exitoso');
       }
 
@@ -797,6 +820,14 @@ export default function Home() {
       
     } catch (error: any) {
       console.error('Error al guardar ficha:', error);
+      if (
+        error?.code === 'already-exists' ||
+        error?.code === 'permission-denied' ||
+        error?.message?.toLowerCase?.().includes('already exists')
+      ) {
+        alert('No se puede guardar: ese DNI ya fue cargado en el sistema o no tenés permisos para registrarlo.');
+        return;
+      }
       alert(`Error al guardar: ${error?.code || error?.message || 'desconocido'}`);
     } finally {
       setSubiendo(false);
