@@ -155,6 +155,7 @@ export default function Home() {
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
   const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
+  const [decodeStatus, setDecodeStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
@@ -554,6 +555,7 @@ export default function Home() {
       setEditandoId(null);
       setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
+      setDecodeStatus('idle');
       cambiarTab('registros');
       
     } catch (error) {
@@ -589,6 +591,7 @@ export default function Home() {
     setEditandoId(null);
     setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
     setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
+    setDecodeStatus('idle');
     cambiarTab('nueva');
   };
 
@@ -743,14 +746,22 @@ export default function Home() {
               if (targetId) subirFichaControlExtra(targetId, dataUrl);
             }
             setCamaraActiva(null);
-            // Auto-decode del PDF417 en background (frente o dorso del DNI).
-            // Silencioso: si lee algo, llena el formulario; si no, no pasa nada.
+            // Intento de decode del PDF417 en background (frente o dorso del DNI).
+            // Status: processing → success/failed para feedback en la UI.
             if (cara === 'frente' || cara === 'dorso') {
-              const parsed = await decodeDniBarcode(dataUrl);
-              if (parsed && (parsed.dni || parsed.apellidos)) {
-                const campos = parsedDniToFormFields(parsed);
-                setFormData(prev => ({ ...prev, ...campos }));
-                console.info('[DNI PDF417] auto-decoded', { cara, raw: parsed.raw, warnings: parsed.warnings });
+              setDecodeStatus(prev => prev === 'success' ? 'success' : 'processing');
+              try {
+                const parsed = await decodeDniBarcode(dataUrl);
+                if (parsed && (parsed.dni || parsed.apellidos)) {
+                  const campos = parsedDniToFormFields(parsed);
+                  setFormData(prev => ({ ...prev, ...campos }));
+                  setDecodeStatus('success');
+                  console.info('[DNI PDF417] auto-decoded', { cara, raw: parsed.raw, warnings: parsed.warnings });
+                } else {
+                  setDecodeStatus(prev => prev === 'success' ? 'success' : 'failed');
+                }
+              } catch {
+                setDecodeStatus(prev => prev === 'success' ? 'success' : 'failed');
               }
             }
           }}
@@ -798,6 +809,7 @@ export default function Home() {
             onScanDorso: () => setCamaraActiva('dorso'),
             onPickFile: (file) => setArchivoUnico(file),
           }}
+          decodeStatus={decodeStatus}
         />
       )}
 

@@ -46,9 +46,12 @@ interface FichaFormProps {
     onScanDorso: () => void;
     onPickFile: (file: File) => void;
   };
+  /** Estado del intento de auto-decode del PDF417 del DNI tras sacar foto.
+   *  Se muestra como spinner / ✓ / mensaje de fallo en la sección Documentación. */
+  decodeStatus?: 'idle' | 'processing' | 'success' | 'failed';
 }
 
-export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, dni }: FichaFormProps) {
+export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, dni, decodeStatus }: FichaFormProps) {
   return (
     <form onSubmit={onSubmit} className="max-w-4xl mx-auto pb-24 md:pb-8" data-screen-label={editando ? 'Editar ficha' : 'Nueva ficha'}>
       <button type="button" onClick={onCancel} className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 mb-4">
@@ -59,6 +62,7 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
       <Card className="px-5 md:px-7 divide-y divide-slate-100">
         <FormSection n="1" title="Documentación" sub="Foto del DNI: frente y dorso, o un archivo único">
           <DniUploader dni={dni} />
+          {decodeStatus && decodeStatus !== 'idle' && <DecodeStatusIndicator status={decodeStatus} />}
         </FormSection>
 
         <FormSection n="2" title="Datos personales" sub="Identidad del afiliado">
@@ -142,5 +146,31 @@ function DniSlot({ label, ok, onClick }: { label: string; ok: boolean; onClick: 
       <Icon name={ok ? 'check' : 'camera'} className={`w-7 h-7 ${ok ? 'text-emerald-500' : 'text-slate-400'}`} strokeWidth={ok ? 2.5 : 1.8} />
       <span className={`text-sm font-medium ${ok ? 'text-emerald-700' : 'text-slate-600'}`}>{ok ? `${label} ✓` : label}</span>
     </button>
+  );
+}
+
+function DecodeStatusIndicator({ status }: { status: 'processing' | 'success' | 'failed' }) {
+  if (status === 'processing') {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+        <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-brand-600 animate-spin" />
+        <span>Leyendo código del DNI…</span>
+      </div>
+    );
+  }
+  if (status === 'success') {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-emerald-700 font-semibold">
+        <Icon name="check" className="w-4 h-4" strokeWidth={2.5} />
+        <span>Datos del DNI leídos automáticamente — revisalos abajo.</span>
+      </div>
+    );
+  }
+  // failed
+  return (
+    <div className="mt-3 flex items-start gap-2 text-xs text-amber-700">
+      <span className="text-base leading-none mt-px">⚠</span>
+      <span>No se pudo leer el código del DNI. Cargá los datos manualmente abajo.</span>
+    </div>
   );
 }
