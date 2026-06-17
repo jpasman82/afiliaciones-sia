@@ -7,6 +7,7 @@
 import {
   BarcodeFormat,
   BinaryBitmap,
+  BrowserPDF417Reader,
   DecodeHintType,
   GlobalHistogramBinarizer,
   HybridBinarizer,
@@ -18,10 +19,15 @@ import {
 } from '@zxing/library';
 import { parseDniPdf417, type ParsedDni } from './parseDniPdf417';
 
-export async function decodeDniBarcode(source: string | HTMLCanvasElement): Promise<ParsedDni | null> {
+export async function decodeDniBarcode(source: string | Blob | HTMLCanvasElement): Promise<ParsedDni | null> {
   try {
+    const browserRaw = await leerConBrowserReader(source);
+    if (browserRaw) return parseDniPdf417(browserRaw);
+
     const baseCanvas = typeof source === 'string'
       ? await dataUrlToCanvas(source)
+      : source instanceof Blob
+        ? await blobToCanvas(source)
       : source;
     const raw = await leerPdf417DesdeCanvas(baseCanvas);
     return parseDniPdf417(raw);
@@ -30,6 +36,27 @@ export async function decodeDniBarcode(source: string | HTMLCanvasElement): Prom
       console.debug('[decodeDniBarcode]', e);
     }
     return null;
+  }
+}
+
+async function leerConBrowserReader(source: string | Blob | HTMLCanvasElement): Promise<string | null> {
+  let url: string | null = null;
+  try {
+    if (source instanceof HTMLCanvasElement) {
+      url = source.toDataURL('image/png');
+    } else if (source instanceof Blob) {
+      url = URL.createObjectURL(source);
+    } else {
+      url = source;
+    }
+
+    const reader = new BrowserPDF417Reader();
+    const result = await reader.decodeFromImageUrl(url);
+    return result.getText();
+  } catch {
+    return null;
+  } finally {
+    if (source instanceof Blob && url) URL.revokeObjectURL(url);
   }
 }
 
@@ -187,5 +214,30 @@ function dataUrlToCanvas(dataUrl: string): Promise<HTMLCanvasElement> {
     };
     img.onerror = () => reject(new Error('No se pudo cargar la imagen del DNI.'));
     img.src = dataUrl;
+  });
+}
+
+function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) {
+        reject(new Error('No se pudo crear canvas para leer el DNI.'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No se pudo cargar la imagen del DNI.'));
+    };
+    img.src = url;
   });
 }
