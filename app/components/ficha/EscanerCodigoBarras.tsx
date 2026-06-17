@@ -3,7 +3,7 @@
 //  Una sola pantalla: cámara en vivo dentro de la app + recuadro de guía +
 //  botón "Capturar". Al capturar sacamos una foto/frame, generamos variantes
 //  de esa imagen (recorte del recuadro + imagen completa) y recién ahí
-//  decodificamos el PDF417 con ZXing.
+//  decodificamos el PDF417 con ZXing..
 // ============================================================================
 'use client';
 import { useEffect, useRef, useState } from 'react';
