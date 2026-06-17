@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy, arrayUnion } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getBlob } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
 import { RecordsView } from './components/records/RecordsView';
@@ -89,10 +89,10 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
 
     setNativeDisplayed({ w, h });
     const cropAspect = 1.58;
-    let cropW = w * 0.86;
+    let cropW = w * 0.94;
     let cropH = cropW / cropAspect;
-    if (cropH > h * 0.86) {
-      cropH = h * 0.86;
+    if (cropH > h * 0.94) {
+      cropH = h * 0.94;
       cropW = cropH * cropAspect;
     }
     setNativeCrop({ x: (w - cropW) / 2, y: (h - cropH) / 2, w: cropW, h: cropH });
@@ -572,7 +572,7 @@ export default function Home() {
       return;
     }
 
-    const conArchivo = registrosFiltrados.filter(r => tipo === 'dni' ? r.archivoDni : r.archivoFicha);
+    const conArchivo = registrosFiltrados.filter(r => tipo === 'dni' ? (r.archivoDniPath || r.archivoDni) : (r.archivoFichaPath || r.archivoFicha));
     if (conArchivo.length === 0) {
       alert(`No hay archivos de ${tipo.toUpperCase()} para descargar.`);
       return;
@@ -584,9 +584,11 @@ export default function Home() {
       const lote = conArchivo.slice(i, i + CONCURRENCIA);
       await Promise.all(lote.map(async (reg) => {
         try {
+          const targetPath = tipo === 'dni' ? reg.archivoDniPath : reg.archivoFichaPath;
           const targetUrl = tipo === 'dni' ? reg.archivoDni : reg.archivoFicha;
-          const res = await fetch(targetUrl);
-          const blob = await res.blob();
+          const blob = targetPath
+            ? await getBlob(ref(storage, targetPath))
+            : await (await fetch(targetUrl)).blob();
           const ext = blob.type === 'application/pdf' ? 'pdf' : 'jpg';
           const sufijo = tipo === 'dni' ? 'DNI' : 'FICHA';
           const nombre = `${reg.apellidos}_${reg.nombres}_${reg.dni}_${sufijo}.${ext}`.replace(/\s+/g, '_');
@@ -647,8 +649,8 @@ export default function Home() {
       reg.dpto || '',
       reg.observaciones || '',
       reg.afiliadorNombre || reg.afiliadorEmail || '',
-      reg.archivoDni || 'Sin archivo',
-      reg.archivoFicha || 'Sin archivo'
+      reg.archivoDniPath || reg.archivoDni || 'Sin archivo',
+      reg.archivoFichaPath || reg.archivoFicha || 'Sin archivo'
     ]);
 
     const contenidoCSV = [
@@ -722,25 +724,30 @@ export default function Home() {
     setSubiendo(true);
 
     try {
-      let urlDni = '';
+      let pathDni = '';
       if (!editandoId || fotoFrenteB64 || archivoUnico) {
         const timestamp = Date.now();
-        const ruta = `dnis/${formData.dni}-${timestamp}.jpg`;
+        const ownerUid = editandoId
+          ? (registros.find(r => r.id === editandoId)?.afiliadorUid || (user as any).uid)
+          : (user as any).uid;
+        const dniSeguro = String(formData.dni || 'sin-dni').replace(/\D/g, '') || 'sin-dni';
+        const ruta = `dnis/${ownerUid}/${dniSeguro}-${timestamp}.jpg`;
         const storageRef = ref(storage, ruta);
 
         if (modoArchivo === 'escaner' && fotoFrenteB64 && fotoDorsoB64) {
           const blob = await procesarDNIUnicoImagen();
           await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
-          urlDni = await getDownloadURL(storageRef);
+          pathDni = ruta;
         } else if (modoArchivo === 'unico' && archivoUnico) {
-          const storageRefUnico = ref(storage, `dnis/${formData.dni}-${timestamp}`);
+          const rutaUnico = `dnis/${ownerUid}/${dniSeguro}-${timestamp}`;
+          const storageRefUnico = ref(storage, rutaUnico);
           await uploadBytes(storageRefUnico, archivoUnico);
-          urlDni = await getDownloadURL(storageRefUnico);
+          pathDni = rutaUnico;
         }
       }
 
       if (editandoId) {
-        const payload: any = { ...formData, ['\u00faltimaModificaci\u00f3n']: serverTimestamp(), ...(urlDni && { archivoDni: urlDni }) };
+        const payload: any = { ...formData, ultimaModificacion: serverTimestamp(), ...(pathDni && { archivoDniPath: pathDni, archivoDni: null }) };
         const est = (formData as any).estadoControl || 'pendiente';
         if (isAdmin && ['escaneado', 'cargado_je', 'aprobado', 'error', 'suspendido', 'baja'].includes(est)) {
           payload.editadoPorAdmin = (user as any).displayName || (user as any).email;
@@ -750,7 +757,7 @@ export default function Home() {
         alert('Datos actualizados');
       } else {
         const nombreAfiliador = userData ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim() : ((user as any).displayName || '');
-        await addDoc(collection(db, 'afiliaciones'), { ...formData, archivoDni: urlDni, afiliadorNombre: nombreAfiliador, afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
+        await addDoc(collection(db, 'afiliaciones'), { ...formData, archivoDniPath: pathDni, afiliadorNombre: nombreAfiliador, afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
         alert('Registro exitoso');
       }
 
@@ -886,12 +893,11 @@ export default function Home() {
         blob = b64OrFile;
       }
 
-      const storageRef = ref(storage, `fichas/${id}-${Date.now()}.${extension}`);
+      const storageRef = ref(storage, `fichas/${id}/${Date.now()}.${extension}`);
       await uploadBytes(storageRef, blob, { contentType });
-      const url = await getDownloadURL(storageRef);
       
       await actualizarControl(id, 'escaneado', {
-        archivoFicha: url,
+        archivoFichaPath: storageRef.fullPath,
         fechaEscaneado: serverTimestamp(),
         escaneadoPor: u.displayName || u.email,
         escaneadoPorUid: u.uid,

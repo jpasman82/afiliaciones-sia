@@ -104,7 +104,7 @@ export function RecordsView({ role, registros, afiliadores, search, onOpenDetall
                     <td className="px-4 py-3"><span className="tnum font-medium text-slate-700">{f.dni}</span><span className="text-slate-300 ml-1.5 text-xs">{f.tipoDocumento || 'DNI'}</span></td>
                     <td className="px-4 py-3 text-slate-600">{f.localidad}</td>
                     {isSup && <td className="px-4 py-3 text-slate-500 text-xs">{f.afiliadorNombre || f.afiliadorEmail}</td>}
-                    <td className="px-4 py-3"><div className="flex gap-1.5"><FileChip ok={f.archivoDni} label="DNI" /><FileChip ok={f.archivoFicha} label="Ficha" /></div></td>
+                    <td className="px-4 py-3"><div className="flex gap-1.5"><FileChip ok={f.archivoDniPath || f.archivoDni} label="DNI" /><FileChip ok={f.archivoFichaPath || f.archivoFicha} label="Ficha" /></div></td>
                     <td className="px-4 py-3 align-top">
                       <StatusBadge estado={f.estadoControl || 'pendiente'} size="sm" />
                       {f.estadoControl === 'error' && f.errorJE && <p className="mt-1.5 max-w-40 text-xs text-rose-600">{f.errorJE}</p>}
@@ -133,7 +133,7 @@ export function RecordsView({ role, registros, afiliadores, search, onOpenDetall
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5 tnum">{f.tipoDocumento || 'DNI'} {f.dni} · {f.localidad}</div>
                     <div className="flex items-center justify-between mt-2.5">
-                      <div className="flex gap-1.5"><FileChip ok={f.archivoDni} label="DNI" /><FileChip ok={f.archivoFicha} label="Ficha" /></div>
+                      <div className="flex gap-1.5"><FileChip ok={f.archivoDniPath || f.archivoDni} label="DNI" /><FileChip ok={f.archivoFichaPath || f.archivoFicha} label="Ficha" /></div>
                       {isSup && <span className="text-[11px] text-slate-400 truncate max-w-[40%]">{f.afiliadorNombre || f.afiliadorEmail}</span>}
                     </div>
                     <div className="mt-3 pt-3 border-t border-slate-100">

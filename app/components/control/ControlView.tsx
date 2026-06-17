@@ -4,8 +4,10 @@
 //   - actualizarControl(id, estado, extras)  (tu updateDoc actual)
 //   - onSubirFichaFisica(id)                 (abre cámara / archivo → escaneado)
 // ============================================================================
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { getBlob, ref } from 'firebase/storage';
 import type { Ficha } from '../../lib/types';
+import { storage } from '../../../firebaseConfig';
 import { ESTADOS } from '../../lib/estados';
 import { Icon } from '../ui/Icon';
 import { Button } from '../ui/Button';
@@ -111,8 +113,8 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Button variant="secondary" size="sm" icon="doc" onClick={() => onOpenFicha(ficha.id)}>Ver ficha completa</Button>
-            {ficha.archivoDni && <a href={ficha.archivoDni} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 ring-inset bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"><Icon name="doc" className="w-4 h-4" strokeWidth={2} /> DNI</a>}
-            {ficha.archivoFicha && <a href={ficha.archivoFicha} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 ring-inset bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"><Icon name="doc" className="w-4 h-4" strokeWidth={2} /> Ficha</a>}
+            {(ficha.archivoDniPath || ficha.archivoDni) && <ArchivoButton label="DNI" path={ficha.archivoDniPath} url={ficha.archivoDni} />}
+            {(ficha.archivoFichaPath || ficha.archivoFicha) && <ArchivoButton label="Ficha" path={ficha.archivoFichaPath} url={ficha.archivoFicha} />}
           </div>
         </div>
 
@@ -292,6 +294,50 @@ function fechaMillis(fecha: any) {
   } catch {
     return 0;
   }
+}
+
+function ArchivoButton({ label, path, url }: { label: string; path?: string; url?: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [blobUrl]);
+
+  const abrir = async () => {
+    if (url && !path) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (!path) return;
+
+    setCargando(true);
+    try {
+      const blob = await getBlob(ref(storage, path));
+      const objectUrl = URL.createObjectURL(blob);
+      setBlobUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return objectUrl;
+      });
+      window.open(objectUrl, '_blank', 'noopener,noreferrer');
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={abrir}
+      disabled={cargando}
+      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 ring-inset bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 disabled:text-slate-300"
+    >
+      <Icon name="doc" className="w-4 h-4" strokeWidth={2} />
+      {cargando ? 'Abriendo...' : label}
+    </button>
+  );
 }
 
 function HistItem({ dot, label, por, fecha, detalle }: HistorialUI) {

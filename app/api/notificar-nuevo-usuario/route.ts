@@ -1,39 +1,26 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
+import { verifyFirebaseUser } from '../_auth';
 
 export async function POST(request: Request) {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
+  const auth = await verifyFirebaseUser(request);
+  if (!auth.ok) return auth.response;
 
-  const idToken = authHeader.slice(7);
   const { email, nombre } = await request.json();
-
-  // Verifica el ID token de Firebase contra la API de Google Identity
-  const verification = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${process.env.NEXT_PUBLIC_FIREBASE_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken }),
-    }
-  );
-
-  if (!verification.ok) {
-    return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+  if (email !== auth.user.email) {
+    return NextResponse.json({ error: 'Email invalido' }, { status: 403 });
   }
 
   try {
     const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT) || 465,
-  secure: true, // false si usás el puerto 587
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+      host: process.env.EMAIL_HOST,
+      port: Number(process.env.EMAIL_PORT) || 465,
+      secure: true,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
 
     await transporter.sendMail({
       from: process.env.EMAIL_USER,

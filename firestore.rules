@@ -34,21 +34,88 @@ service cloud.firestore {
       );
     }
 
+    function usuarioInicialValido(uid) {
+      return request.auth.uid == uid &&
+        request.resource.data.keys().hasOnly(['email', 'nombre', 'apellido', 'rol', 'perfilCompleto', 'fechaRegistro']) &&
+        request.resource.data.email == request.auth.token.email &&
+        request.resource.data.nombre == '' &&
+        request.resource.data.apellido == '' &&
+        request.resource.data.rol == 'pendiente' &&
+        request.resource.data.perfilCompleto == false;
+    }
+
+    function actualizacionPerfilPropioValida(uid) {
+      return request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nombre', 'apellido', 'perfilCompleto']) &&
+        request.resource.data.rol == resource.data.rol &&
+        request.resource.data.email == resource.data.email;
+    }
+
+    function actualizacionSupervisorValida() {
+      return esSupervisor(request.auth.uid) &&
+        resource.data.rol != 'admin' &&
+        resource.data.rol != 'supervisor' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nombre', 'apellido', 'rol']) &&
+        (request.resource.data.rol == resource.data.rol || request.resource.data.rol == 'afiliador') &&
+        request.resource.data.email == resource.data.email;
+    }
+
+    function camposCreacionFicha() {
+      return [
+        'tipoDocumento', 'dni', 'apellidos', 'nombres', 'sexo', 'clase',
+        'fechaNacimiento', 'lugarNacimiento', 'nacionalidad', 'profesion',
+        'estadoCivil', 'celular', 'mail', 'distrito', 'calle', 'numero',
+        'piso', 'dpto', 'localidad', 'observaciones', 'estadoControl',
+        'archivoDni', 'archivoDniPath', 'afiliadorNombre', 'afiliadorEmail',
+        'afiliadorUid', 'fecha'
+      ];
+    }
+
+    function camposEditablesFichaPendiente() {
+      return [
+        'id', 'tipoDocumento', 'dni', 'apellidos', 'nombres', 'sexo', 'clase',
+        'fechaNacimiento', 'lugarNacimiento', 'nacionalidad', 'profesion',
+        'estadoCivil', 'celular', 'mail', 'distrito', 'calle', 'numero',
+        'piso', 'dpto', 'localidad', 'observaciones', 'estadoControl',
+        'archivoDni', 'archivoDniPath', 'ultimaModificacion'
+      ];
+    }
+
+    function creacionFichaValida() {
+      return rolActivo(request.auth.uid) &&
+        request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
+        request.resource.data.afiliadorUid == request.auth.uid &&
+        request.resource.data.afiliadorEmail == request.auth.token.email &&
+        estadoPendiente(request.resource.data);
+    }
+
+    function conservaPropiedadFicha() {
+      return request.resource.data.afiliadorUid == resource.data.afiliadorUid &&
+        request.resource.data.afiliadorEmail == resource.data.afiliadorEmail &&
+        request.resource.data.fecha == resource.data.fecha;
+    }
+
+    function actualizacionFichaPendienteValida() {
+      return (resource.data.afiliadorUid == request.auth.uid || esSupervisor(request.auth.uid)) &&
+        estadoPendiente(resource.data) &&
+        conservaEstadoPendiente() &&
+        conservaPropiedadFicha() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(camposEditablesFichaPendiente());
+    }
+
     match /usuarios/{uid} {
       // El propio usuario y admins/supervisores pueden leer
       allow read: if request.auth != null &&
         (request.auth.uid == uid || esAdminOSupervisor(request.auth.uid));
-      // Un usuario puede crear su propio documento al registrarse por primera vez
-      allow create: if request.auth != null && request.auth.uid == uid;
+      // Un usuario puede crear su propio documento al registrarse, pero siempre pendiente
+      allow create: if request.auth != null && usuarioInicialValido(uid);
       // Admin: puede cambiar cualquier campo.
       // Supervisor: puede editar nombre/apellido y aprobar como afiliador (no puede asignar admin/supervisor).
       // El propio usuario: puede actualizar su perfil (nombre, apellido, perfilCompleto) sin cambiar su rol.
       allow update: if request.auth != null && (
         esAdmin(request.auth.uid) ||
-        (esSupervisor(request.auth.uid) &&
-          (request.resource.data.rol == resource.data.rol || request.resource.data.rol == 'afiliador')
-        ) ||
-        (request.auth.uid == uid && request.resource.data.rol == resource.data.rol)
+        actualizacionSupervisorValida() ||
+        actualizacionPerfilPropioValida(uid)
       );
       allow delete: if request.auth != null && esAdmin(request.auth.uid);
     }
@@ -58,18 +125,11 @@ service cloud.firestore {
       allow read: if request.auth != null &&
         (resource.data.afiliadorUid == request.auth.uid || esAdminOSupervisor(request.auth.uid));
       // Solo usuarios activos pueden crear fichas con su propio uid
-      allow create: if request.auth != null &&
-        rolActivo(request.auth.uid) &&
-        request.resource.data.afiliadorUid == request.auth.uid &&
-        estadoPendiente(request.resource.data);
+      allow create: if request.auth != null && creacionFichaValida();
       // Admin puede editar siempre. Afiliador/supervisor solo mientras la ficha siga en paso 1.
       allow update: if request.auth != null && (
         esAdmin(request.auth.uid) ||
-        (
-          (resource.data.afiliadorUid == request.auth.uid || esSupervisor(request.auth.uid)) &&
-          estadoPendiente(resource.data) &&
-          conservaEstadoPendiente()
-        )
+        actualizacionFichaPendienteValida()
       );
       // Admin puede eliminar siempre. Supervisor solo mientras la ficha siga en paso 1.
       allow delete: if request.auth != null && (
