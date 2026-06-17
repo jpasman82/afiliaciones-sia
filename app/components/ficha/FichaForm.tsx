@@ -45,6 +45,7 @@ interface FichaFormProps {
     onScanFrente: () => void;
     onScanDorso: () => void;
     onPickFile: (file: File) => void;
+    onScanBarcode?: () => void;
   };
   /** Estado del intento de auto-decode del PDF417 del DNI tras sacar foto.
    *  Se muestra como spinner / ✓ / mensaje de fallo en la sección Documentación. */
@@ -134,7 +135,21 @@ function DniUploader({ dni }: { dni: FichaFormProps['dni'] }) {
         </label>
       )}
       {(dni.frenteOk || dni.dorsoOk) && <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado</p>}
+      {dni.onScanBarcode && (dni.frenteOk || dni.dorsoOk) && (
+        <button type="button" onClick={dni.onScanBarcode}
+          className="mt-4 w-full py-2.5 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 active:bg-slate-950 transition flex items-center justify-center gap-2">
+          <BarcodeIcon className="w-5 h-5" /> Escanear código de barras de la foto
+        </button>
+      )}
     </div>
+  );
+}
+
+function BarcodeIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M3.75 5.25v13.5M6.75 5.25v13.5M9.75 5.25v13.5M13.5 5.25v13.5M16.5 5.25v13.5M20.25 5.25v13.5" />
+    </svg>
   );
 }
 

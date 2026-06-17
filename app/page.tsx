@@ -9,6 +9,7 @@ import { AppShell } from './components/shell/AppShell';
 import { RecordsView } from './components/records/RecordsView';
 import { FichaForm } from './components/ficha/FichaForm';
 import { FichaDetalle } from './components/ficha/FichaDetalle';
+import { EscanerCodigoBarras } from './components/ficha/EscanerCodigoBarras';
 import { decodeDniBarcode } from './lib/decodeDniBarcode';
 import { parsedDniToFormFields } from './lib/parseDniPdf417';
 import { ControlView } from './components/control/ControlView';
@@ -155,6 +156,7 @@ export default function Home() {
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
   const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
+  const [escanerBarcodeAbierto, setEscanerBarcodeAbierto] = useState(false);
   const [decodeStatus, setDecodeStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
@@ -768,6 +770,20 @@ export default function Home() {
         />
       )}
 
+      {escanerBarcodeAbierto && (
+        <EscanerCodigoBarras
+          fotoFrente={fotoFrenteB64}
+          fotoDorso={fotoDorsoB64}
+          onClose={() => setEscanerBarcodeAbierto(false)}
+          onApply={(campos, parsed) => {
+            setFormData(prev => ({ ...prev, ...campos }));
+            setDecodeStatus('success');
+            setEscanerBarcodeAbierto(false);
+            console.info('[DNI PDF417] manual decode', { raw: parsed.raw, warnings: parsed.warnings });
+          }}
+        />
+      )}
+
       {tab === 'registros' && (
         <RecordsView
           role={roleActual}
@@ -808,6 +824,7 @@ export default function Home() {
             onScanFrente: () => setCamaraActiva('frente'),
             onScanDorso: () => setCamaraActiva('dorso'),
             onPickFile: (file) => setArchivoUnico(file),
+            onScanBarcode: () => setEscanerBarcodeAbierto(true),
           }}
           decodeStatus={decodeStatus}
         />
