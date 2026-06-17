@@ -26,7 +26,12 @@ const IconControl = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" vi
 const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClose: () => void, onCapture: (imgData: string, originalFile?: File) => void, titulo: string, tipo?: 'dni' | 'ficha' }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const marcoRef = useRef<HTMLDivElement>(null);
+  const nativeImgRef = useRef<HTMLImageElement>(null);
+  const nativeWrapRef = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [nativeFile, setNativeFile] = useState<File | undefined>();
+  const [nativeDisplayed, setNativeDisplayed] = useState<{ w: number; h: number } | null>(null);
+  const [nativeCrop, setNativeCrop] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const proporcionMarco = tipo === 'ficha' ? 'aspect-[1.66]' : 'aspect-[1.58]';
   const usarCamaraNativa = tipo === 'dni';
 
@@ -56,11 +61,108 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        onCapture(reader.result, file);
+        setNativeFile(file);
+        setPreview(reader.result);
       }
     };
     reader.onerror = () => alert('No se pudo leer la foto del DNI.');
     reader.readAsDataURL(file);
+  };
+
+  const recalcularRecorteNativo = () => {
+    const img = nativeImgRef.current;
+    const wrap = nativeWrapRef.current;
+    if (!img || !wrap || !img.naturalWidth) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const aspect = img.naturalWidth / img.naturalHeight;
+    let w: number;
+    let h: number;
+
+    if (rect.width / aspect <= rect.height) {
+      w = rect.width;
+      h = rect.width / aspect;
+    } else {
+      h = rect.height;
+      w = rect.height * aspect;
+    }
+
+    setNativeDisplayed({ w, h });
+    const cropAspect = 1.58;
+    let cropW = w * 0.86;
+    let cropH = cropW / cropAspect;
+    if (cropH > h * 0.86) {
+      cropH = h * 0.86;
+      cropW = cropH * cropAspect;
+    }
+    setNativeCrop({ x: (w - cropW) / 2, y: (h - cropH) / 2, w: cropW, h: cropH });
+  };
+
+  const moverRecorteNativo = (e: React.PointerEvent) => {
+    if (!nativeDisplayed) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startCrop = { ...nativeCrop };
+
+    const onMove = (ev: PointerEvent) => {
+      ev.preventDefault();
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      setNativeCrop({
+        ...startCrop,
+        x: Math.max(0, Math.min(nativeDisplayed.w - startCrop.w, startCrop.x + dx)),
+        y: Math.max(0, Math.min(nativeDisplayed.h - startCrop.h, startCrop.y + dy)),
+      });
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    };
+
+    document.addEventListener('pointermove', onMove, { passive: false });
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+  };
+
+  const ajustarTamanoRecorteNativo = (delta: number) => {
+    if (!nativeDisplayed) return;
+    const aspect = 1.58;
+    const nextW = Math.max(120, Math.min(nativeDisplayed.w, nativeCrop.w + delta));
+    const nextH = nextW / aspect;
+    if (nextH > nativeDisplayed.h) return;
+
+    setNativeCrop(prev => {
+      const cx = prev.x + prev.w / 2;
+      const cy = prev.y + prev.h / 2;
+      return {
+        x: Math.max(0, Math.min(nativeDisplayed.w - nextW, cx - nextW / 2)),
+        y: Math.max(0, Math.min(nativeDisplayed.h - nextH, cy - nextH / 2)),
+        w: nextW,
+        h: nextH,
+      };
+    });
+  };
+
+  const usarRecorteNativo = () => {
+    const img = nativeImgRef.current;
+    if (!img || !nativeDisplayed || !preview) return;
+
+    const scaleX = img.naturalWidth / nativeDisplayed.w;
+    const scaleY = img.naturalHeight / nativeDisplayed.h;
+    const sx = nativeCrop.x * scaleX;
+    const sy = nativeCrop.y * scaleY;
+    const sw = nativeCrop.w * scaleX;
+    const sh = nativeCrop.h * scaleY;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(sw);
+    canvas.height = Math.round(sh);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    onCapture(canvas.toDataURL('image/jpeg', 0.9), nativeFile);
   };
 
   const tomarFoto = () => {
@@ -104,6 +206,52 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
           <button onClick={onClose} className="text-white font-bold px-3 py-1 bg-red-600 rounded">Cerrar</button>
         </div>
 
+        {preview ? (
+          <>
+            <div ref={nativeWrapRef} className="flex-1 relative bg-black flex items-center justify-center min-h-0 overflow-hidden p-3">
+              <div className="relative touch-none select-none" style={nativeDisplayed ? { width: nativeDisplayed.w, height: nativeDisplayed.h } : { width: 1, height: 1, opacity: 0 }}>
+                <img
+                  ref={nativeImgRef}
+                  src={preview}
+                  alt="Foto del DNI"
+                  draggable={false}
+                  onLoad={recalcularRecorteNativo}
+                  className="block w-full h-full pointer-events-none"
+                />
+                {nativeDisplayed && (
+                  <div
+                    className="absolute border-4 border-emerald-400 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] cursor-move"
+                    style={{ left: nativeCrop.x, top: nativeCrop.y, width: nativeCrop.w, height: nativeCrop.h, touchAction: 'none' }}
+                    onPointerDown={moverRecorteNativo}
+                  >
+                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded bg-black/45 text-white/80 text-xs font-bold uppercase tracking-wide pointer-events-none">
+                      DNI
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-black p-3 md:p-4 shrink-0">
+              <div className="flex gap-2 mb-2">
+                <button onClick={() => ajustarTamanoRecorteNativo(-40)} className="flex-1 py-3 rounded-lg bg-slate-800 text-white font-bold text-sm active:bg-slate-700">
+                  Alejar marco
+                </button>
+                <button onClick={() => ajustarTamanoRecorteNativo(40)} className="flex-1 py-3 rounded-lg bg-slate-800 text-white font-bold text-sm active:bg-slate-700">
+                  Agrandar marco
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { setPreview(null); setNativeFile(undefined); }} className="flex-1 py-3 rounded-lg bg-white text-slate-900 font-bold text-sm active:bg-slate-100">
+                  Reintentar
+                </button>
+                <button onClick={usarRecorteNativo} className="flex-1 py-3 rounded-lg bg-emerald-600 text-white font-bold text-sm active:bg-emerald-700">
+                  Usar recorte
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-white">
           <div className="w-16 h-16 rounded-2xl bg-emerald-600/20 flex items-center justify-center mb-5">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 text-emerald-400">
@@ -129,6 +277,7 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
             />
           </label>
         </div>
+        )}
       </div>
     );
   }
