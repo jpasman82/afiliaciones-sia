@@ -9,7 +9,8 @@ import { AppShell } from './components/shell/AppShell';
 import { RecordsView } from './components/records/RecordsView';
 import { FichaForm } from './components/ficha/FichaForm';
 import { FichaDetalle } from './components/ficha/FichaDetalle';
-import { EscanerCodigoBarras } from './components/ficha/EscanerCodigoBarras';
+import { decodeDniBarcode } from './lib/decodeDniBarcode';
+import { parsedDniToFormFields } from './lib/parseDniPdf417';
 import { ControlView } from './components/control/ControlView';
 import { UsuariosView } from './components/users/UsuariosView';
 import { Login, PerfilPendiente } from './components/auth/AuthScreens';
@@ -154,8 +155,6 @@ export default function Home() {
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
   const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
-  const [escanerBarcode, setEscanerBarcode] = useState(false);
-  const [barcodeAplicado, setBarcodeAplicado] = useState(false);
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
@@ -555,7 +554,6 @@ export default function Home() {
       setEditandoId(null);
       setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
-      setBarcodeAplicado(false);
       cambiarTab('registros');
       
     } catch (error) {
@@ -591,7 +589,6 @@ export default function Home() {
     setEditandoId(null);
     setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
     setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
-    setBarcodeAplicado(false);
     cambiarTab('nueva');
   };
 
@@ -737,26 +734,25 @@ export default function Home() {
           titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : camaraActiva === 'dorso' ? "Escanear Dorso DNI" : "Escanear Ficha"}
           tipo={camaraActiva.includes('ficha') ? 'ficha' : 'dni'}
           onClose={() => setCamaraActiva(null)}
-          onCapture={(dataUrl) => {
-            if (camaraActiva === 'frente') setFotoFrenteB64(dataUrl);
-            else if (camaraActiva === 'dorso') setFotoDorsoB64(dataUrl);
-            else if (camaraActiva === 'fichaControl') {
+          onCapture={async (dataUrl) => {
+            const cara = camaraActiva;
+            if (cara === 'frente') setFotoFrenteB64(dataUrl);
+            else if (cara === 'dorso') setFotoDorsoB64(dataUrl);
+            else if (cara === 'fichaControl') {
               const targetId = fichaControlDetalleId || (fichaSeleccionada ? fichaSeleccionada.id : null);
               if (targetId) subirFichaControlExtra(targetId, dataUrl);
             }
             setCamaraActiva(null);
-          }}
-        />
-      )}
-
-      {escanerBarcode && (
-        <EscanerCodigoBarras
-          onClose={() => setEscanerBarcode(false)}
-          onApply={(campos, parsed) => {
-            setFormData(prev => ({ ...prev, ...campos }));
-            setBarcodeAplicado(true);
-            setEscanerBarcode(false);
-            console.info('[DNI PDF417] raw:', parsed.raw, 'warnings:', parsed.warnings);
+            // Auto-decode del PDF417 en background (frente o dorso del DNI).
+            // Silencioso: si lee algo, llena el formulario; si no, no pasa nada.
+            if (cara === 'frente' || cara === 'dorso') {
+              const parsed = await decodeDniBarcode(dataUrl);
+              if (parsed && (parsed.dni || parsed.apellidos)) {
+                const campos = parsedDniToFormFields(parsed);
+                setFormData(prev => ({ ...prev, ...campos }));
+                console.info('[DNI PDF417] auto-decoded', { cara, raw: parsed.raw, warnings: parsed.warnings });
+              }
+            }
           }}
         />
       )}
@@ -802,10 +798,6 @@ export default function Home() {
             onScanDorso: () => setCamaraActiva('dorso'),
             onPickFile: (file) => setArchivoUnico(file),
           }}
-          barcodeScan={tab === 'nueva' && !editandoId ? {
-            onOpen: () => setEscanerBarcode(true),
-            aplicado: barcodeAplicado,
-          } : undefined}
         />
       )}
 
