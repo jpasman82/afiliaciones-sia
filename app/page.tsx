@@ -323,12 +323,24 @@ export default function Home() {
     );
   }
   const actualizarRol = async (uid: string, nuevoRol: string) => {
-    try {
-      await updateDoc(doc(db, 'usuarios', uid), { rol: nuevoRol });
-    } catch (e) {
-      alert('Error de red');
+  try {
+    const usuarioObjetivo = usuariosSistema.find(u => u.id === uid);
+    const rolAnterior = usuarioObjetivo?.rol || 'pendiente';
+    await updateDoc(doc(db, 'usuarios', uid), { rol: nuevoRol });
+    if (rolAnterior !== nuevoRol && nuevoRol !== 'pendiente' && usuarioObjetivo?.email) {
+      const nombreCompleto = [usuarioObjetivo.nombre, usuarioObjetivo.apellido].filter(Boolean).join(' ') || usuarioObjetivo.email;
+      (user as any).getIdToken().then((idToken: string) => {
+        fetch('/api/notificar-usuario-aprobado', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+          body: JSON.stringify({ email: usuarioObjetivo.email, nombre: nombreCompleto, rol: nuevoRol }),
+        });
+      }).catch(() => {});
     }
-  };
+  } catch (e) {
+    alert('Error de red');
+  }
+};
 
   const guardarNombreUsuario = async () => {
     if (!editandoUsuarioId) return;
