@@ -28,8 +28,11 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
   const marcoRef = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const proporcionMarco = tipo === 'ficha' ? 'aspect-[1.66]' : 'aspect-[1.58]';
+  const usarCamaraNativa = tipo === 'dni';
 
   useEffect(() => {
+    if (usarCamaraNativa) return;
+
     let currentStream: MediaStream;
     const encenderCamara = async () => {
       try {
@@ -47,7 +50,18 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
     };
     encenderCamara();
     return () => { if (currentStream) currentStream.getTracks().forEach(t => t.stop()); };
-  }, [onClose]);
+  }, [onClose, usarCamaraNativa]);
+
+  const tomarFotoNativa = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        onCapture(reader.result);
+      }
+    };
+    reader.onerror = () => alert('No se pudo leer la foto del DNI.');
+    reader.readAsDataURL(file);
+  };
 
   const tomarFoto = () => {
     const video = videoRef.current;
@@ -81,6 +95,43 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
       setPreview(dataUrl);
     }
   };
+
+  if (usarCamaraNativa) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+        <div className="p-4 bg-black text-white flex justify-between items-center z-10">
+          <h3 className="font-bold text-lg">{titulo}</h3>
+          <button onClick={onClose} className="text-white font-bold px-3 py-1 bg-red-600 rounded">Cerrar</button>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-white">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-600/20 flex items-center justify-center mb-5">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 text-emerald-400">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
+            </svg>
+          </div>
+          <p className="text-center mb-1 max-w-sm text-base font-semibold">Usar cámara del celular</p>
+          <p className="text-center text-white/60 text-sm max-w-sm mb-6">
+            Se va a abrir la cámara nativa. Enfocá bien el DNI antes de confirmar la foto.
+          </p>
+          <label className="block w-full max-w-sm py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg text-center cursor-pointer active:bg-emerald-700">
+            Abrir cámara
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) tomarFotoNativa(file);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col">

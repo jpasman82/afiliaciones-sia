@@ -36,8 +36,7 @@ export function EscanerCodigoBarras({ fotoFrente, fotoDorso, onClose, onApply }:
 
   const decodificarCanvas = async (canvas: HTMLCanvasElement) => {
     setEstado('decodificando');
-    const dataUrl = canvas.toDataURL('image/png');
-    const p = await decodeDniBarcode(dataUrl);
+    const p = await decodeDniBarcode(canvas);
     if (p && (p.dni || p.apellidos)) {
       setParsed(p);
       setEstado('parseado');
@@ -269,13 +268,21 @@ function Cropper({
     if (!img || !displayed) return;
     const scaleX = img.naturalWidth / displayed.w;
     const scaleY = img.naturalHeight / displayed.h;
+    const margenX = box.w * 0.12;
+    const margenY = box.h * 0.35;
+    const sx = clamp((box.x - margenX) * scaleX, 0, img.naturalWidth);
+    const sy = clamp((box.y - margenY) * scaleY, 0, img.naturalHeight);
+    const right = clamp((box.x + box.w + margenX) * scaleX, 0, img.naturalWidth);
+    const bottom = clamp((box.y + box.h + margenY) * scaleY, 0, img.naturalHeight);
+    const sw = Math.max(1, right - sx);
+    const sh = Math.max(1, bottom - sy);
+    const upscale = sw < 1800 ? 1800 / sw : 1;
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(box.w * scaleX);
-    canvas.height = Math.round(box.h * scaleY);
-    const ctx = canvas.getContext('2d');
+    canvas.width = Math.round(sw * upscale);
+    canvas.height = Math.round(sh * upscale);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
-    ctx.drawImage(img, box.x * scaleX, box.y * scaleY, box.w * scaleX, box.h * scaleY,
-                       0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     onDecode(canvas);
   };
 
