@@ -34,6 +34,8 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
   const [nativeCrop, setNativeCrop] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const proporcionMarco = tipo === 'ficha' ? 'aspect-[1.66]' : 'aspect-[1.58]';
   const usarCamaraNativa = tipo === 'dni';
+  const ladoDni = titulo.toLowerCase().includes('frente') ? 'frente' : titulo.toLowerCase().includes('dorso') ? 'dorso' : 'dni';
+  const ladoDniLabel = ladoDni === 'frente' ? 'frente del DNI' : ladoDni === 'dorso' ? 'dorso del DNI' : 'DNI';
 
   useEffect(() => {
     if (usarCamaraNativa) return;
@@ -225,7 +227,7 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
                     onPointerDown={moverRecorteNativo}
                   >
                     <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded bg-black/45 text-white/80 text-xs font-bold uppercase tracking-wide pointer-events-none">
-                      DNI
+                      {ladoDni === 'dni' ? 'DNI' : ladoDni}
                     </span>
                   </div>
                 )}
@@ -260,7 +262,7 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
           </div>
           <p className="text-center mb-1 max-w-sm text-base font-semibold">Usar cámara del celular</p>
           <p className="text-center text-white/60 text-sm max-w-sm mb-6">
-            Se va a abrir la cámara nativa. Enfocá bien el DNI antes de confirmar la foto.
+            Se va a abrir la cámara nativa. Sacá foto del {ladoDniLabel} y confirmala cuando se vea nítida.
           </p>
           <label className="block w-full max-w-sm py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg text-center cursor-pointer active:bg-emerald-700">
             Abrir cámara
@@ -356,6 +358,7 @@ export default function Home() {
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
   const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
+  const [escaneoDniGuiado, setEscaneoDniGuiado] = useState(false);
   const [escanerBarcodeAbierto, setEscanerBarcodeAbierto] = useState(false);
   const [decodeStatus, setDecodeStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
@@ -765,6 +768,7 @@ export default function Home() {
       setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
       setDecodeStatus('idle');
+      setEscaneoDniGuiado(false);
       cambiarTab('registros');
       
     } catch (error) {
@@ -801,6 +805,7 @@ export default function Home() {
     setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
     setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
     setDecodeStatus('idle');
+    setEscaneoDniGuiado(false);
     cambiarTab('nueva');
   };
 
@@ -944,9 +949,13 @@ export default function Home() {
         <EscanerDocumento
           titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : camaraActiva === 'dorso' ? "Escanear Dorso DNI" : "Escanear Ficha"}
           tipo={camaraActiva.includes('ficha') ? 'ficha' : 'dni'}
-          onClose={() => setCamaraActiva(null)}
+          onClose={() => {
+            setEscaneoDniGuiado(false);
+            setCamaraActiva(null);
+          }}
           onCapture={async (dataUrl, originalFile) => {
             const cara = camaraActiva;
+            const continuarConDorso = escaneoDniGuiado && cara === 'frente';
             if (cara === 'frente') setFotoFrenteB64(dataUrl);
             else if (cara === 'dorso') setFotoDorsoB64(dataUrl);
             else if (cara === 'fichaControl') {
@@ -971,6 +980,11 @@ export default function Home() {
               } catch {
                 setDecodeStatus(prev => prev === 'success' ? 'success' : 'failed');
               }
+            }
+            if (continuarConDorso) {
+              window.setTimeout(() => setCamaraActiva('dorso'), 250);
+            } else if (cara === 'dorso') {
+              setEscaneoDniGuiado(false);
             }
           }}
         />
@@ -1027,12 +1041,20 @@ export default function Home() {
             setModo: setModoArchivo,
             frenteOk: !!fotoFrenteB64,
             dorsoOk: !!fotoDorsoB64,
-            onScanFrente: () => setCamaraActiva('frente'),
-            onScanDorso: () => setCamaraActiva('dorso'),
+            onScanFrente: () => {
+              setEscaneoDniGuiado(false);
+              setCamaraActiva('frente');
+            },
+            onScanDorso: () => {
+              setEscaneoDniGuiado(false);
+              setCamaraActiva('dorso');
+            },
             onPickFile: (file) => setArchivoUnico(file),
             onScanDniData: () => {
               setModoArchivo('escaner');
-              setCamaraActiva('dorso');
+              setDecodeStatus('idle');
+              setEscaneoDniGuiado(true);
+              setCamaraActiva('frente');
             },
             onScanBarcode: () => setEscanerBarcodeAbierto(true),
           }}

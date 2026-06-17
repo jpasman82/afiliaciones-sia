@@ -121,7 +121,7 @@ function DniUploader({ dni }: { dni: FichaFormProps['dni'] }) {
       {dni.onScanDniData && (
         <button type="button" onClick={dni.onScanDniData}
           className="mb-4 w-full py-3 rounded-xl bg-brand-600 text-white font-bold text-sm hover:bg-brand-700 active:bg-brand-800 transition flex items-center justify-center gap-2 shadow-sm">
-          <BarcodeIcon className="w-5 h-5" /> Escanear datos del DNI
+          <BarcodeIcon className="w-5 h-5" /> Escanear DNI: frente y dorso
         </button>
       )}
       <div className="mb-4">
