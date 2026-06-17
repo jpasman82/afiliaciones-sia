@@ -50,7 +50,7 @@ interface FichaFormProps {
    *  arriba del formulario. En modo "editar" se omite (undefined). */
   barcodeScan?: {
     onOpen: () => void;
-    aplicado: boolean;  // ya se aplicó un escaneo en esta ficha
+    aplicado: boolean;
   };
 }
 
@@ -129,7 +129,7 @@ function BarcodeBanner({ onOpen, aplicado }: { onOpen: () => void; aplicado: boo
         </div>
         <div className="flex-1">
           <p className="text-sm font-semibold text-emerald-900">Datos importados del DNI</p>
-          <p className="text-xs text-emerald-700 mt-0.5">Revisá los campos antes de continuar. Podés volver a escanear si hace falta.</p>
+          <p className="text-xs text-emerald-700 mt-0.5">Revisá los campos. Podés volver a escanear si hace falta.</p>
         </div>
         <button type="button" onClick={onOpen} className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 shrink-0">
           Volver a escanear
@@ -137,7 +137,6 @@ function BarcodeBanner({ onOpen, aplicado }: { onOpen: () => void; aplicado: boo
       </div>
     );
   }
-
   return (
     <button
       type="button"
@@ -149,7 +148,7 @@ function BarcodeBanner({ onOpen, aplicado }: { onOpen: () => void; aplicado: boo
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-slate-900">Escanear código del DNI</p>
-        <p className="text-xs text-slate-600 mt-0.5">Apuntá al código de barras del dorso. Si no se detecta en vivo, podés sacar una foto.</p>
+        <p className="text-xs text-slate-600 mt-0.5">Alineá el código de barras del dorso dentro del recuadro y capturá.</p>
       </div>
       <Icon name="chevronR" className="w-5 h-5 text-brand-700 shrink-0" strokeWidth={2.2} />
     </button>
