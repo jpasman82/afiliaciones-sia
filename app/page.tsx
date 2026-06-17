@@ -1024,6 +1024,10 @@ export default function Home() {
             onScanFrente: () => setCamaraActiva('frente'),
             onScanDorso: () => setCamaraActiva('dorso'),
             onPickFile: (file) => setArchivoUnico(file),
+            onScanDniData: () => {
+              setModoArchivo('escaner');
+              setCamaraActiva('dorso');
+            },
             onScanBarcode: () => setEscanerBarcodeAbierto(true),
           }}
           decodeStatus={decodeStatus}
