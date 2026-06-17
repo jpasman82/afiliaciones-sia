@@ -1,9 +1,9 @@
 // ============================================================================
 //  app/components/ficha/EscanerCodigoBarras.tsx
 //  Una sola pantalla: cámara en vivo dentro de la app + recuadro de guía +
-//  botón "Capturar". Al capturar usamos ImageCapture (foto a resolución
-//  máxima del sensor) si está disponible, si no canvas grab del video, y
-//  decodificamos la imagen entera con ZXing.
+//  botón "Capturar". Al capturar sacamos una foto/frame, generamos variantes
+//  de esa imagen (recorte del recuadro + imagen completa) y recién ahí
+//  decodificamos el PDF417 con ZXing.
 // ============================================================================
 'use client';
 import { useEffect, useRef, useState } from 'react';
@@ -17,6 +17,11 @@ type Props = {
 
 type Estado = 'capturando' | 'decodificando' | 'parseado' | 'sin_codigo';
 
+type ImageVariant = {
+  label: string;
+  blob: Blob;
+};
+
 export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const [estado, setEstado] = useState<Estado>('capturando');
   const [parsed, setParsed] = useState<ParsedDni | null>(null);
@@ -24,26 +29,33 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
 
   const decodificarBlob = async (blob: Blob) => {
     setEstado('decodificando');
-    const url = URL.createObjectURL(blob);
+    setErrorMsg('');
+
     try {
-      const reader = new BrowserPDF417Reader();
-      const hints = new Map();
-      hints.set(DecodeHintType.TRY_HARDER, true);
-      (reader as any).hints = hints;
-      const result = await reader.decodeFromImageUrl(url);
-      const raw = result.getText();
-      const p = parseDniPdf417(raw);
-      setParsed(p);
-      setEstado('parseado');
+      const variants = await crearVariantesParaPdf417(blob);
+      let lastError: unknown = null;
+
+      for (const variant of variants) {
+        try {
+          const raw = await decodificarImagen(variant.blob);
+          const p = parseDniPdf417(raw);
+          setParsed(p);
+          setEstado('parseado');
+          console.info(`[DNI PDF417] decodificado desde: ${variant.label}`);
+          return;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
+      throw lastError ?? new NotFoundException();
     } catch (e) {
-      if (e instanceof NotFoundException) {
-        setErrorMsg('No se detectó el código. Acercá más, mejor luz, mantené el celular firme y reintentá.');
+      if (e instanceof NotFoundException || (e as any)?.name === 'NotFoundException') {
+        setErrorMsg('No se detectó el código. Acercá más, mejor luz, mantené el celular firme y reintentá. Si sigue fallando, usá “Sacar foto nativa”.');
       } else {
         setErrorMsg((e as any)?.message || 'Error al decodificar.');
       }
       setEstado('sin_codigo');
-    } finally {
-      URL.revokeObjectURL(url);
     }
   };
 
@@ -61,7 +73,7 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   const subtitulo = (() => {
     switch (estado) {
       case 'capturando':    return 'Alineá el código de barras dentro del recuadro';
-      case 'decodificando': return 'Decodificando…';
+      case 'decodificando': return 'Decodificando desde foto…';
       case 'parseado':      return 'Revisá los datos detectados';
       case 'sin_codigo':    return 'No se detectó el código';
     }
@@ -161,6 +173,7 @@ function Camara({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const nativePhotoInputRef = useRef<HTMLInputElement>(null);
   const [iniciando, setIniciando] = useState(true);
   const [cameraError, setCameraError] = useState('');
   const [videoRes, setVideoRes] = useState('—');
@@ -197,7 +210,7 @@ function Camara({
         const settings = track.getSettings();
         setVideoRes(`${settings.width || '?'}×${settings.height || '?'}`);
 
-        // Autofocus continuo + zoom moderado
+        // Autofocus continuo + zoom moderado, cuando el navegador lo soporta.
         try {
           const caps = (track.getCapabilities?.() ?? {}) as MediaTrackCapabilities & {
             focusMode?: string[]; zoom?: { min: number; max: number };
@@ -210,7 +223,7 @@ function Camara({
           if (advanced.length) await track.applyConstraints({ advanced } as any);
         } catch { /* sin focus/zoom, seguimos */ }
 
-        // Detectar resolución máxima de foto via ImageCapture (informativo)
+        // Detectar resolución máxima de foto via ImageCapture (informativo).
         const IC = (window as any).ImageCapture;
         if (typeof IC !== 'undefined') {
           try {
@@ -235,8 +248,9 @@ function Camara({
     return stop;
   }, []);
 
-  // Captura: ImageCapture si está disponible (foto a max resolución del sensor),
-  // si no canvas grab del video al vuelo (resolución del stream).
+  // Captura: ImageCapture si está disponible (foto a máxima resolución del sensor),
+  // si no canvas grab del video al vuelo (resolución del stream). En ambos casos
+  // el blob resultante se decodifica como imagen, no como stream de video.
   const capturar = async () => {
     const video = videoRef.current;
     const track = streamRef.current?.getVideoTracks()[0];
@@ -261,7 +275,6 @@ function Camara({
       }
     }
 
-    // Fallback: canvas grab del video
     if (video.videoWidth > 0) {
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
@@ -269,8 +282,15 @@ function Camara({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.drawImage(video, 0, 0);
-      canvas.toBlob((blob) => { if (blob) onCapture(blob); }, 'image/png');
+      const blob = await canvasToBlob(canvas, 'image/jpeg', 0.95);
+      onCapture(blob);
     }
+  };
+
+  const cargarFotoNativa = (file: File | undefined) => {
+    if (!file) return;
+    onCapture(file);
+    if (nativePhotoInputRef.current) nativePhotoInputRef.current.value = '';
   };
 
   const disabled = iniciando || decodingState === 'decodificando' || !!cameraError;
@@ -299,10 +319,10 @@ function Camara({
         <div className="absolute bottom-3 left-0 right-0 text-center text-sm font-medium px-4 pointer-events-none">
           {iniciando && <span className="text-white/80">Iniciando cámara…</span>}
           {!iniciando && !cameraError && decodingState === 'capturando' && (
-            <span className="text-white/85">Tocá &quot;Capturar&quot; cuando esté nítido</span>
+            <span className="text-white/85">Tocá &quot;Capturar y leer&quot; cuando esté nítido</span>
           )}
           {decodingState === 'decodificando' && (
-            <span className="text-white bg-black/70 px-3 py-1.5 rounded-lg">Decodificando…</span>
+            <span className="text-white bg-black/70 px-3 py-1.5 rounded-lg">Decodificando foto…</span>
           )}
           {decodingState === 'sin_codigo' && (
             <span className="text-white bg-amber-500/90 px-3 py-1.5 rounded-lg max-w-[92%] inline-block">{errorMsg}</span>
@@ -311,7 +331,16 @@ function Camara({
         </div>
       </div>
 
-      <div className="bg-black p-3 md:p-4 shrink-0">
+      <div className="bg-black p-3 md:p-4 shrink-0 space-y-2">
+        <input
+          ref={nativePhotoInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={e => cargarFotoNativa(e.target.files?.[0])}
+        />
+
         {decodingState === 'sin_codigo' ? (
           <button
             onClick={onRetry}
@@ -328,6 +357,15 @@ function Camara({
             📸 Capturar y leer
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={() => nativePhotoInputRef.current?.click()}
+          disabled={decodingState === 'decodificando'}
+          className="w-full py-3 rounded-lg bg-white/10 text-white font-semibold text-xs ring-1 ring-white/20 active:bg-white/15 disabled:opacity-50"
+        >
+          Sacar foto nativa / elegir imagen
+        </button>
       </div>
     </>
   );
@@ -342,4 +380,118 @@ function Row({ label, value, mono, full }: { label: string; value: string; mono?
       </dd>
     </div>
   );
+}
+
+async function decodificarImagen(blob: Blob): Promise<string> {
+  const url = URL.createObjectURL(blob);
+  try {
+    const reader = new BrowserPDF417Reader();
+    const hints = new Map();
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    (reader as any).hints = hints;
+    const result = await reader.decodeFromImageUrl(url);
+    return result.getText();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function crearVariantesParaPdf417(blob: Blob): Promise<ImageVariant[]> {
+  const img = await cargarImagen(blob);
+  const variants: ImageVariant[] = [];
+
+  // Primero probamos recortes centrados similares al recuadro visual. El usuario
+  // alinea el código en esa zona, y ZXing suele leer mejor sin todo el DNI/fondo.
+  variants.push({ label: 'recorte guía 92%', blob: await renderVariant(img, { cropWidthRatio: 0.92, aspect: 3.0 }) });
+  variants.push({ label: 'recorte guía 78%', blob: await renderVariant(img, { cropWidthRatio: 0.78, aspect: 3.0 }) });
+  variants.push({ label: 'recorte guía contrastado', blob: await renderVariant(img, { cropWidthRatio: 0.92, aspect: 3.0, enhance: true }) });
+
+  // Fallbacks: por si el encuadre real no coincide exactamente con el recuadro.
+  variants.push({ label: 'foto completa', blob });
+  variants.push({ label: 'foto completa normalizada', blob: await renderVariant(img, { fullImage: true }) });
+
+  return variants;
+}
+
+function cargarImagen(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No se pudo cargar la foto capturada.'));
+    };
+    img.src = url;
+  });
+}
+
+async function renderVariant(
+  img: HTMLImageElement,
+  options: { cropWidthRatio?: number; aspect?: number; enhance?: boolean; fullImage?: boolean },
+): Promise<Blob> {
+  const sourceW = img.naturalWidth || img.width;
+  const sourceH = img.naturalHeight || img.height;
+
+  let sx = 0;
+  let sy = 0;
+  let sw = sourceW;
+  let sh = sourceH;
+
+  if (!options.fullImage) {
+    const aspect = options.aspect ?? 3;
+    const desiredW = sourceW * (options.cropWidthRatio ?? 0.92);
+    const desiredH = desiredW / aspect;
+
+    if (desiredH <= sourceH * 0.75) {
+      sw = desiredW;
+      sh = desiredH;
+    } else {
+      sh = sourceH * 0.60;
+      sw = sh * aspect;
+    }
+
+    sx = Math.max(0, (sourceW - sw) / 2);
+    sy = Math.max(0, (sourceH - sh) / 2);
+  }
+
+  const targetW = Math.min(2400, Math.max(1200, Math.round(sw)));
+  const targetH = Math.max(350, Math.round(targetW * (sh / sw)));
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+
+  const ctx = canvas.getContext('2d', { willReadFrequently: !!options.enhance });
+  if (!ctx) throw new Error('No se pudo preparar la imagen para leer el código.');
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+
+  if (options.enhance) {
+    const imageData = ctx.getImageData(0, 0, targetW, targetH);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.45 + 128));
+      data[i] = contrasted;
+      data[i + 1] = contrasted;
+      data[i + 2] = contrasted;
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  return canvasToBlob(canvas, 'image/jpeg', 0.95);
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('No se pudo generar la foto para leer el código.'));
+    }, type, quality);
+  });
 }
