@@ -715,6 +715,30 @@ export default function Home() {
     return isAdmin || estado === 'pendiente';
   };
 
+  const normalizarFichaPayload = (data: any) => ({
+    tipoDocumento: data.tipoDocumento || 'DNI',
+    dni: data.dni || '',
+    apellidos: data.apellidos || '',
+    nombres: data.nombres || '',
+    sexo: data.sexo || '',
+    clase: data.clase || '',
+    fechaNacimiento: data.fechaNacimiento || '',
+    lugarNacimiento: data.lugarNacimiento || '',
+    nacionalidad: data.nacionalidad || '',
+    profesion: data.profesion || '',
+    estadoCivil: data.estadoCivil || '',
+    celular: data.celular || '',
+    mail: data.mail || '',
+    distrito: data.distrito || 'Buenos Aires',
+    calle: data.calle || '',
+    numero: data.numero || '',
+    piso: data.piso || '',
+    dpto: data.dpto || '',
+    localidad: data.localidad || '',
+    observaciones: data.observaciones || '',
+    estadoControl: data.estadoControl || 'pendiente',
+  });
+
   const guardarFicha = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editandoId) {
@@ -750,7 +774,7 @@ export default function Home() {
       }
 
       if (editandoId) {
-        const payload: any = { ...formData, ultimaModificacion: serverTimestamp(), ...(pathDni && { archivoDniPath: pathDni, archivoDni: null }) };
+        const payload: any = { ...normalizarFichaPayload(formData), ultimaModificacion: serverTimestamp(), ...(pathDni && { archivoDniPath: pathDni, archivoDni: null }) };
         const est = (formData as any).estadoControl || 'pendiente';
         if (isAdmin && ['escaneado', 'cargado_je', 'aprobado', 'error', 'suspendido', 'baja'].includes(est)) {
           payload.editadoPorAdmin = (user as any).displayName || (user as any).email;
@@ -760,7 +784,7 @@ export default function Home() {
         alert('Datos actualizados');
       } else {
         const nombreAfiliador = userData ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim() : ((user as any).displayName || '');
-        await addDoc(collection(db, 'afiliaciones'), { ...formData, archivoDniPath: pathDni, afiliadorNombre: nombreAfiliador, afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
+        await addDoc(collection(db, 'afiliaciones'), { ...normalizarFichaPayload(formData), archivoDniPath: pathDni, afiliadorNombre: nombreAfiliador, afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
         alert('Registro exitoso');
       }
 
@@ -771,8 +795,9 @@ export default function Home() {
       setEscaneoDniGuiado(false);
       cambiarTab('registros');
       
-    } catch (error) {
-      alert('Error al guardar en la base de datos.');
+    } catch (error: any) {
+      console.error('Error al guardar ficha:', error);
+      alert(`Error al guardar: ${error?.code || error?.message || 'desconocido'}`);
     } finally {
       setSubiendo(false);
     }
