@@ -1,16 +1,17 @@
 // ============================================================================
 // app/components/ficha/EscanerCodigoBarras.tsx
 //
-// Flujo simple y confiable:
-// 1) Abrir cámara nativa del teléfono o elegir imagen.
-// 2) El usuario saca una foto real.
-// 3) Se lee directamente ese archivo de imagen.
-// 4) No hay preview de cámara.
-// 5) No hay lectura desde video.
+// Flujo correcto para este caso:
+// 1) NO usa cámara en vivo.
+// 2) Abre la cámara nativa / selector de imagen.
+// 3) El usuario saca una foto real.
+// 4) La app muestra esa foto.
+// 5) El usuario marca con el dedo/mouse la zona exacta del PDF417.
+// 6) ZXing lee únicamente ese recorte.
 // ============================================================================
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   BarcodeFormat,
   BrowserPDF417Reader,
@@ -28,14 +29,30 @@ type Props = {
   onApply: (campos: ReturnType<typeof parsedDniToFormFields>, parsed: ParsedDni) => void;
 };
 
-type Estado = 'inicial' | 'leyendo' | 'parseado' | 'error';
+type Estado = 'inicial' | 'seleccionar' | 'leyendo' | 'parseado';
+
+type Crop = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+const CROP_INICIAL: Crop = {
+  x: 0.08,
+  y: 0.52,
+  w: 0.84,
+  h: 0.24,
+};
 
 export function EscanerCodigoBarras({ onClose, onApply }: Props) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const fotoUrlRef = useRef('');
 
   const [estado, setEstado] = useState<Estado>('inicial');
+  const [fotoBlob, setFotoBlob] = useState<Blob | null>(null);
   const [fotoUrl, setFotoUrl] = useState('');
+  const [crop, setCrop] = useState<Crop>(CROP_INICIAL);
   const [parsed, setParsed] = useState<ParsedDni | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -47,52 +64,64 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
     };
   }, []);
 
-  const abrirCamara = () => {
-    fileInputRef.current?.click();
+  const abrirCamaraNativa = () => {
+    inputRef.current?.click();
   };
 
-  const limpiarFotoAnterior = () => {
-    if (fotoUrlRef.current) {
-      URL.revokeObjectURL(fotoUrlRef.current);
-      fotoUrlRef.current = '';
-    }
-
-    setFotoUrl('');
-  };
-
-  const recibirFoto = async (file: File | undefined) => {
+  const recibirFoto = (file: File | undefined) => {
     if (!file) return;
 
-    limpiarFotoAnterior();
+    if (fotoUrlRef.current) {
+      URL.revokeObjectURL(fotoUrlRef.current);
+    }
 
     const url = URL.createObjectURL(file);
     fotoUrlRef.current = url;
 
+    setFotoBlob(file);
     setFotoUrl(url);
+    setCrop(CROP_INICIAL);
     setParsed(null);
     setErrorMsg('');
+    setEstado('seleccionar');
+  };
+
+  const leerZonaMarcada = async () => {
+    if (!fotoBlob) return;
+
     setEstado('leyendo');
+    setErrorMsg('');
 
     try {
-      // PRIMER INTENTO:
-      // Leer directamente la foto original que devuelve la cámara nativa.
-      const raw = await decodificarImagenDesdeUrl(url);
-      const p = parseDniPdf417(raw);
+      const recortes = await crearRecortesParaLeer(fotoBlob, crop);
+      let ultimoError: unknown = null;
 
-      setParsed(p);
-      setEstado('parseado');
+      for (const recorte of recortes) {
+        try {
+          const raw = await decodificarImagen(recorte);
+          const p = parseDniPdf417(raw);
+
+          setParsed(p);
+          setEstado('parseado');
+          return;
+        } catch (e) {
+          ultimoError = e;
+        }
+      }
+
+      throw ultimoError ?? new NotFoundException();
     } catch (e) {
-      console.error('[DNI PDF417] No se pudo leer la foto original', e);
+      console.error('[DNI PDF417] No se pudo leer el recorte', e);
 
       if (esNotFoundException(e)) {
         setErrorMsg(
-          'No se pudo leer el código en la foto. Probá sacar otra foto más cerca, bien enfocada y con buena luz.',
+          'No se pudo leer el código. Marcá solamente el código PDF417, sin mucho DNI alrededor, y probá de nuevo.',
         );
       } else {
         setErrorMsg((e as Error)?.message || 'No se pudo leer el código.');
       }
 
-      setEstado('error');
+      setEstado('seleccionar');
     }
   };
 
@@ -102,10 +131,10 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
   };
 
   const subtitulo = (() => {
-    if (estado === 'leyendo') return 'Leyendo la foto tomada';
-    if (estado === 'parseado') return 'Revisá los datos detectados';
-    if (estado === 'error') return 'No se pudo leer la foto';
-    return 'Sacá una foto del código PDF417 del DNI';
+    if (estado === 'inicial') return 'Sacá una foto del código PDF417 del DNI';
+    if (estado === 'seleccionar') return 'Marcá la zona exacta del código en la foto';
+    if (estado === 'leyendo') return 'Leyendo solo el recorte marcado';
+    return 'Revisá los datos detectados';
   })();
 
   return (
@@ -125,14 +154,13 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
       </div>
 
       <input
-        ref={fileInputRef}
+        ref={inputRef}
         type="file"
         accept="image/*"
         capture="environment"
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          void recibirFoto(file);
+          recibirFoto(e.target.files?.[0]);
           e.currentTarget.value = '';
         }}
       />
@@ -146,21 +174,21 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
           <h4 className="text-lg font-bold mb-2">Sacar foto del código</h4>
 
           <p className="text-sm text-white/70 max-w-sm mb-6">
-            Se va a abrir la cámara nativa del teléfono. Sacá una foto del código de barras PDF417
-            del dorso del DNI. Después se va a leer esa imagen.
+            Se va a abrir la cámara del teléfono. Sacá una foto del dorso del DNI. Después vas a
+            marcar con el dedo la zona donde está el código de barras PDF417.
           </p>
 
           <button
             type="button"
-            onClick={abrirCamara}
+            onClick={abrirCamaraNativa}
             className="w-full max-w-sm py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg active:bg-emerald-700"
           >
-            Sacar foto y leer
+            Sacar foto
           </button>
 
           <button
             type="button"
-            onClick={abrirCamara}
+            onClick={abrirCamaraNativa}
             className="w-full max-w-sm mt-3 py-3 rounded-lg bg-white/10 text-white font-semibold text-xs ring-1 ring-white/20 active:bg-white/15"
           >
             Elegir foto existente
@@ -168,61 +196,16 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
         </div>
       )}
 
-      {estado === 'leyendo' && (
-        <div className="flex-1 flex flex-col items-center justify-center p-4 bg-black text-white">
-          {fotoUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={fotoUrl}
-              alt="Foto tomada del código"
-              className="max-w-full max-h-[65vh] object-contain rounded-lg mb-5"
-            />
-          )}
-
-          <div className="flex items-center gap-3 text-sm text-white/80">
-            <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-            Leyendo el código desde la foto…
-          </div>
-        </div>
-      )}
-
-      {estado === 'error' && (
-        <div className="flex-1 flex flex-col bg-black text-white">
-          <div className="flex-1 flex items-center justify-center p-4 min-h-0">
-            {fotoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={fotoUrl}
-                alt="Foto que no pudo leerse"
-                className="max-w-full max-h-full object-contain rounded-lg"
-              />
-            ) : (
-              <p className="text-white/70 text-sm">No hay foto cargada.</p>
-            )}
-          </div>
-
-          <div className="p-4 bg-black border-t border-white/10">
-            <div className="mb-3 p-3 rounded-lg bg-amber-500/15 ring-1 ring-amber-400/30">
-              <p className="text-sm text-amber-100">{errorMsg}</p>
-            </div>
-
-            <button
-              type="button"
-              onClick={abrirCamara}
-              className="w-full py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg active:bg-emerald-700"
-            >
-              Sacar otra foto
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full mt-2 py-3 rounded-lg bg-white/10 text-white font-semibold text-xs ring-1 ring-white/20 active:bg-white/15"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
+      {(estado === 'seleccionar' || estado === 'leyendo') && fotoUrl && (
+        <SeleccionarZona
+          fotoUrl={fotoUrl}
+          crop={crop}
+          setCrop={setCrop}
+          leyendo={estado === 'leyendo'}
+          errorMsg={errorMsg}
+          onLeer={leerZonaMarcada}
+          onNuevaFoto={abrirCamaraNativa}
+        />
       )}
 
       {estado === 'parseado' && parsed && (
@@ -295,7 +278,7 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
 
           <div className="p-3 md:p-4 bg-white border-t border-slate-200 flex gap-3 max-w-2xl mx-auto w-full shrink-0">
             <button
-              onClick={abrirCamara}
+              onClick={abrirCamaraNativa}
               className="flex-1 py-3 rounded-lg bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm hover:bg-slate-50 transition"
             >
               Sacar otra foto
@@ -312,6 +295,158 @@ export function EscanerCodigoBarras({ onClose, onApply }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+function SeleccionarZona({
+  fotoUrl,
+  crop,
+  setCrop,
+  leyendo,
+  errorMsg,
+  onLeer,
+  onNuevaFoto,
+}: {
+  fotoUrl: string;
+  crop: Crop;
+  setCrop: (crop: Crop) => void;
+  leyendo: boolean;
+  errorMsg: string;
+  onLeer: () => void;
+  onNuevaFoto: () => void;
+}) {
+  const areaRef = useRef<HTMLDivElement>(null);
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+
+  const puntoRelativo = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const area = areaRef.current;
+    if (!area) return null;
+
+    const rect = area.getBoundingClientRect();
+
+    return {
+      x: clamp((event.clientX - rect.left) / rect.width, 0, 1),
+      y: clamp((event.clientY - rect.top) / rect.height, 0, 1),
+    };
+  };
+
+  const empezar = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (leyendo) return;
+
+    const punto = puntoRelativo(event);
+    if (!punto) return;
+
+    startRef.current = punto;
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    setCrop({
+      x: punto.x,
+      y: punto.y,
+      w: 0.01,
+      h: 0.01,
+    });
+  };
+
+  const mover = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!startRef.current || leyendo) return;
+
+    const punto = puntoRelativo(event);
+    if (!punto) return;
+
+    const start = startRef.current;
+
+    setCrop(
+      normalizarCrop({
+        x: Math.min(start.x, punto.x),
+        y: Math.min(start.y, punto.y),
+        w: Math.abs(punto.x - start.x),
+        h: Math.abs(punto.y - start.y),
+      }),
+    );
+  };
+
+  const terminar = (event: ReactPointerEvent<HTMLDivElement>) => {
+    startRef.current = null;
+
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // No todos los navegadores lo necesitan.
+    }
+  };
+
+  return (
+    <>
+      <div className="flex-1 relative min-h-0 bg-black flex items-center justify-center overflow-hidden p-2">
+        <div className="relative inline-block max-w-full max-h-full">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={fotoUrl}
+            alt="Foto del DNI"
+            draggable={false}
+            className="block max-w-full max-h-[calc(100vh-205px)] select-none touch-none"
+          />
+
+          <div
+            ref={areaRef}
+            className="absolute inset-0 touch-none cursor-crosshair"
+            onPointerDown={empezar}
+            onPointerMove={mover}
+            onPointerUp={terminar}
+            onPointerCancel={terminar}
+          >
+            <div className="absolute inset-0 bg-black/10" />
+
+            <div
+              className="absolute border-4 border-emerald-400 rounded-md shadow-[0_0_0_9999px_rgba(0,0,0,0.48)]"
+              style={{
+                left: `${crop.x * 100}%`,
+                top: `${crop.y * 100}%`,
+                width: `${crop.w * 100}%`,
+                height: `${crop.h * 100}%`,
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="absolute top-3 left-3 right-3 text-center pointer-events-none">
+          {leyendo ? (
+            <span className="text-white bg-black/75 px-3 py-2 rounded-lg text-sm font-medium inline-block">
+              Leyendo solo la zona marcada…
+            </span>
+          ) : errorMsg ? (
+            <span className="text-white bg-amber-500/95 px-3 py-2 rounded-lg text-xs font-medium inline-block max-w-[96%]">
+              {errorMsg}
+            </span>
+          ) : (
+            <span className="text-white bg-black/65 px-3 py-2 rounded-lg text-xs font-medium inline-block max-w-[96%]">
+              Arrastrá sobre el código PDF417 para marcarlo. El recuadro verde es lo único que se
+              va a leer.
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-black p-3 md:p-4 shrink-0 space-y-2">
+        <button
+          type="button"
+          onClick={onLeer}
+          disabled={leyendo}
+          className="w-full py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg active:bg-emerald-700 disabled:opacity-50"
+        >
+          {leyendo ? 'Leyendo recorte…' : 'Escanear zona marcada'}
+        </button>
+
+        <button
+          type="button"
+          onClick={onNuevaFoto}
+          disabled={leyendo}
+          className="w-full py-3 rounded-lg bg-white/10 text-white font-semibold text-xs ring-1 ring-white/20 active:bg-white/15 disabled:opacity-50"
+        >
+          Sacar otra foto / elegir foto
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -343,20 +478,148 @@ function Row({
   );
 }
 
-async function decodificarImagenDesdeUrl(url: string): Promise<string> {
-  const reader = new BrowserPDF417Reader();
+async function crearRecortesParaLeer(blob: Blob, crop: Crop): Promise<Blob[]> {
+  const img = await cargarImagen(blob);
+  const zona = normalizarCrop(crop);
 
-  const hints = new Map<DecodeHintType, unknown>();
-  hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417]);
-  hints.set(DecodeHintType.TRY_HARDER, true);
+  return [
+    await recortarImagen(img, zona, { margen: 0, contraste: false, escala: 1 }),
+    await recortarImagen(img, zona, { margen: 0, contraste: true, escala: 1 }),
+    await recortarImagen(img, zona, { margen: 0.04, contraste: false, escala: 1 }),
+    await recortarImagen(img, zona, { margen: 0.04, contraste: true, escala: 1 }),
+    await recortarImagen(img, zona, { margen: 0.08, contraste: false, escala: 1.2 }),
+    await recortarImagen(img, zona, { margen: 0.08, contraste: true, escala: 1.2 }),
+  ];
+}
 
-  (reader as BrowserPDF417Reader & {
-    hints?: Map<DecodeHintType, unknown>;
-  }).hints = hints;
+function cargarImagen(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
 
-  const result = await reader.decodeFromImageUrl(url);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
 
-  return result.getText();
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No se pudo cargar la foto.'));
+    };
+
+    img.src = url;
+  });
+}
+
+async function recortarImagen(
+  img: HTMLImageElement,
+  crop: Crop,
+  options: { margen: number; contraste: boolean; escala: number },
+): Promise<Blob> {
+  const sourceW = img.naturalWidth || img.width;
+  const sourceH = img.naturalHeight || img.height;
+
+  const margenX = crop.w * options.margen;
+  const margenY = crop.h * options.margen;
+
+  const x1 = clamp(crop.x - margenX, 0, 1);
+  const y1 = clamp(crop.y - margenY, 0, 1);
+  const x2 = clamp(crop.x + crop.w + margenX, 0, 1);
+  const y2 = clamp(crop.y + crop.h + margenY, 0, 1);
+
+  const sx = Math.round(x1 * sourceW);
+  const sy = Math.round(y1 * sourceH);
+  const sw = Math.max(1, Math.round((x2 - x1) * sourceW));
+  const sh = Math.max(1, Math.round((y2 - y1) * sourceH));
+
+  const baseTargetW = Math.min(3200, Math.max(1400, sw));
+  const targetW = Math.round(baseTargetW * options.escala);
+  const targetH = Math.max(280, Math.round(targetW * (sh / sw)));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+
+  const ctx = canvas.getContext('2d', {
+    willReadFrequently: options.contraste,
+  });
+
+  if (!ctx) {
+    throw new Error('No se pudo preparar el recorte.');
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+
+  if (options.contraste) {
+    const imageData = ctx.getImageData(0, 0, targetW, targetH);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      const contrasted = clamp((gray - 128) * 1.65 + 128, 0, 255);
+
+      data[i] = contrasted;
+      data[i + 1] = contrasted;
+      data[i + 2] = contrasted;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  return canvasToBlob(canvas, 'image/jpeg', 0.95);
+}
+
+async function decodificarImagen(blob: Blob): Promise<string> {
+  const url = URL.createObjectURL(blob);
+
+  try {
+    const reader = new BrowserPDF417Reader();
+
+    const hints = new Map<DecodeHintType, unknown>();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417]);
+    hints.set(DecodeHintType.TRY_HARDER, true);
+
+    (reader as BrowserPDF417Reader & {
+      hints?: Map<DecodeHintType, unknown>;
+    }).hints = hints;
+
+    const result = await reader.decodeFromImageUrl(url);
+
+    return result.getText();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('No se pudo generar la imagen.'));
+        }
+      },
+      type,
+      quality,
+    );
+  });
+}
+
+function normalizarCrop(crop: Crop): Crop {
+  const w = clamp(crop.w, 0.03, 1);
+  const h = clamp(crop.h, 0.03, 1);
+  const x = clamp(crop.x, 0, 1 - w);
+  const y = clamp(crop.y, 0, 1 - h);
+
+  return { x, y, w, h };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function esNotFoundException(e: unknown) {
