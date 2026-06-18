@@ -32,7 +32,9 @@ export interface Ficha {
   dpto?: string;
   observaciones?: string;
   archivoDni?: string;
+  archivoDniPath?: string;
   archivoFicha?: string;
+  archivoFichaPath?: string;
   afiliadorNombre?: string;
   afiliadorEmail?: string;
   afiliadorUid?: string;

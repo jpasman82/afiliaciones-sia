@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, orderBy, arrayUnion } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, orderBy, arrayUnion, writeBatch } from 'firebase/firestore';
+import { ref, uploadBytes, getBlob } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
 import { RecordsView } from './components/records/RecordsView';
@@ -23,13 +23,31 @@ const IconFichas = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" vie
 const IconUsuarios = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>;
 const IconControl = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>;
 
-const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClose: () => void, onCapture: (imgData: string) => void, titulo: string, tipo?: 'dni' | 'ficha' }) => {
+function getDniCaptureQuality() {
+  const memory = typeof navigator !== 'undefined' ? (navigator as any).deviceMemory as number | undefined : undefined;
+  if (memory && memory <= 2) return { maxWidth: 1500, jpegQuality: 0.84 };
+  if (memory && memory <= 4) return { maxWidth: 1800, jpegQuality: 0.87 };
+  return { maxWidth: 2400, jpegQuality: 0.9 };
+}
+
+const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClose: () => void, onCapture: (imgData: string, originalFile?: File) => void, titulo: string, tipo?: 'dni' | 'ficha' }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const marcoRef = useRef<HTMLDivElement>(null);
+  const nativeImgRef = useRef<HTMLImageElement>(null);
+  const nativeWrapRef = useRef<HTMLDivElement>(null);
+  const nativeObjectUrlRef = useRef<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [nativeFile, setNativeFile] = useState<File | undefined>();
+  const [nativeDisplayed, setNativeDisplayed] = useState<{ w: number; h: number } | null>(null);
+  const [nativeCrop, setNativeCrop] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const proporcionMarco = tipo === 'ficha' ? 'aspect-[1.66]' : 'aspect-[1.58]';
+  const usarCamaraNativa = tipo === 'dni';
+  const ladoDni = titulo.toLowerCase().includes('frente') ? 'frente' : titulo.toLowerCase().includes('dorso') ? 'dorso' : 'dni';
+  const ladoDniLabel = ladoDni === 'frente' ? 'frente del DNI' : ladoDni === 'dorso' ? 'dorso del DNI' : 'DNI';
 
   useEffect(() => {
+    if (usarCamaraNativa) return;
+
     let currentStream: MediaStream;
     const encenderCamara = async () => {
       try {
@@ -47,7 +65,134 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
     };
     encenderCamara();
     return () => { if (currentStream) currentStream.getTracks().forEach(t => t.stop()); };
-  }, [onClose]);
+  }, [onClose, usarCamaraNativa]);
+
+  useEffect(() => {
+    return () => {
+      if (nativeObjectUrlRef.current) {
+        URL.revokeObjectURL(nativeObjectUrlRef.current);
+      }
+    };
+  }, []);
+
+  const limpiarPreviewNativa = () => {
+    if (nativeObjectUrlRef.current) {
+      URL.revokeObjectURL(nativeObjectUrlRef.current);
+      nativeObjectUrlRef.current = null;
+    }
+    setPreview(null);
+    setNativeFile(undefined);
+    setNativeDisplayed(null);
+  };
+
+  const tomarFotoNativa = (file: File) => {
+    limpiarPreviewNativa();
+    nativeObjectUrlRef.current = URL.createObjectURL(file);
+    setNativeFile(file);
+    setPreview(nativeObjectUrlRef.current);
+  };
+
+  const recalcularRecorteNativo = () => {
+    const img = nativeImgRef.current;
+    const wrap = nativeWrapRef.current;
+    if (!img || !wrap || !img.naturalWidth) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const aspect = img.naturalWidth / img.naturalHeight;
+    let w: number;
+    let h: number;
+
+    if (rect.width / aspect <= rect.height) {
+      w = rect.width;
+      h = rect.width / aspect;
+    } else {
+      h = rect.height;
+      w = rect.height * aspect;
+    }
+
+    setNativeDisplayed({ w, h });
+    const cropAspect = 1.58;
+    let cropW = w * 0.94;
+    let cropH = cropW / cropAspect;
+    if (cropH > h * 0.94) {
+      cropH = h * 0.94;
+      cropW = cropH * cropAspect;
+    }
+    setNativeCrop({ x: (w - cropW) / 2, y: (h - cropH) / 2, w: cropW, h: cropH });
+  };
+
+  const moverRecorteNativo = (e: React.PointerEvent) => {
+    if (!nativeDisplayed) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startCrop = { ...nativeCrop };
+
+    const onMove = (ev: PointerEvent) => {
+      ev.preventDefault();
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      setNativeCrop({
+        ...startCrop,
+        x: Math.max(0, Math.min(nativeDisplayed.w - startCrop.w, startCrop.x + dx)),
+        y: Math.max(0, Math.min(nativeDisplayed.h - startCrop.h, startCrop.y + dy)),
+      });
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    };
+
+    document.addEventListener('pointermove', onMove, { passive: false });
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+  };
+
+  const ajustarTamanoRecorteNativo = (delta: number) => {
+    if (!nativeDisplayed) return;
+    const aspect = 1.58;
+    const nextW = Math.max(120, Math.min(nativeDisplayed.w, nativeCrop.w + delta));
+    const nextH = nextW / aspect;
+    if (nextH > nativeDisplayed.h) return;
+
+    setNativeCrop(prev => {
+      const cx = prev.x + prev.w / 2;
+      const cy = prev.y + prev.h / 2;
+      return {
+        x: Math.max(0, Math.min(nativeDisplayed.w - nextW, cx - nextW / 2)),
+        y: Math.max(0, Math.min(nativeDisplayed.h - nextH, cy - nextH / 2)),
+        w: nextW,
+        h: nextH,
+      };
+    });
+  };
+
+  const usarRecorteNativo = () => {
+    const img = nativeImgRef.current;
+    if (!img || !nativeDisplayed || !preview) return;
+
+    const scaleX = img.naturalWidth / nativeDisplayed.w;
+    const scaleY = img.naturalHeight / nativeDisplayed.h;
+    const sx = nativeCrop.x * scaleX;
+    const sy = nativeCrop.y * scaleY;
+    const sw = nativeCrop.w * scaleX;
+    const sh = nativeCrop.h * scaleY;
+
+    const canvas = document.createElement('canvas');
+    const { maxWidth, jpegQuality } = getDniCaptureQuality();
+    const maxOutputWidth = maxWidth;
+    const outputScale = sw > maxOutputWidth ? maxOutputWidth / sw : 1;
+    canvas.width = Math.round(sw * outputScale);
+    canvas.height = Math.round(sh * outputScale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    onCapture(canvas.toDataURL('image/jpeg', jpegQuality), nativeFile);
+    limpiarPreviewNativa();
+  };
 
   const tomarFoto = () => {
     const video = videoRef.current;
@@ -81,6 +226,90 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
       setPreview(dataUrl);
     }
   };
+
+  if (usarCamaraNativa) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+        <div className="p-4 bg-black text-white flex justify-between items-center z-10">
+          <h3 className="font-bold text-lg">{titulo}</h3>
+          <button onClick={onClose} className="text-white font-bold px-3 py-1 bg-red-600 rounded">Cerrar</button>
+        </div>
+
+        {preview ? (
+          <>
+            <div ref={nativeWrapRef} className="flex-1 relative bg-black flex items-center justify-center min-h-0 overflow-hidden p-3">
+              <div className="relative touch-none select-none" style={nativeDisplayed ? { width: nativeDisplayed.w, height: nativeDisplayed.h } : { width: 1, height: 1, opacity: 0 }}>
+                <img
+                  ref={nativeImgRef}
+                  src={preview}
+                  alt="Foto del DNI"
+                  draggable={false}
+                  onLoad={recalcularRecorteNativo}
+                  className="block w-full h-full pointer-events-none"
+                />
+                {nativeDisplayed && (
+                  <div
+                    className="absolute border-4 border-emerald-400 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] cursor-move"
+                    style={{ left: nativeCrop.x, top: nativeCrop.y, width: nativeCrop.w, height: nativeCrop.h, touchAction: 'none' }}
+                    onPointerDown={moverRecorteNativo}
+                  >
+                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded bg-black/45 text-white/80 text-xs font-bold uppercase tracking-wide pointer-events-none">
+                      {ladoDni === 'dni' ? 'DNI' : ladoDni}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-black p-3 md:p-4 shrink-0">
+              <div className="flex gap-2 mb-2">
+                <button onClick={() => ajustarTamanoRecorteNativo(-40)} className="flex-1 py-3 rounded-lg bg-slate-800 text-white font-bold text-sm active:bg-slate-700">
+                  Alejar marco
+                </button>
+                <button onClick={() => ajustarTamanoRecorteNativo(40)} className="flex-1 py-3 rounded-lg bg-slate-800 text-white font-bold text-sm active:bg-slate-700">
+                  Agrandar marco
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={limpiarPreviewNativa} className="flex-1 py-3 rounded-lg bg-white text-slate-900 font-bold text-sm active:bg-slate-100">
+                  Reintentar
+                </button>
+                <button onClick={usarRecorteNativo} className="flex-1 py-3 rounded-lg bg-emerald-600 text-white font-bold text-sm active:bg-emerald-700">
+                  Usar recorte
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-white">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-600/20 flex items-center justify-center mb-5">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 text-emerald-400">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
+            </svg>
+          </div>
+          <p className="text-center mb-1 max-w-sm text-base font-semibold">Usar cámara del celular</p>
+          <p className="text-center text-white/60 text-sm max-w-sm mb-6">
+            Se va a abrir la cámara nativa. Sacá foto del {ladoDniLabel} y confirmala cuando se vea nítida.
+          </p>
+          <label className="block w-full max-w-sm py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg text-center cursor-pointer active:bg-emerald-700">
+            Abrir cámara
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) tomarFotoNativa(file);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col">
@@ -156,6 +385,7 @@ export default function Home() {
   
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
   const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
+  const [escaneoDniGuiado, setEscaneoDniGuiado] = useState(false);
   const [escanerBarcodeAbierto, setEscanerBarcodeAbierto] = useState(false);
   const [decodeStatus, setDecodeStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
@@ -372,7 +602,7 @@ export default function Home() {
       return;
     }
 
-    const conArchivo = registrosFiltrados.filter(r => tipo === 'dni' ? r.archivoDni : r.archivoFicha);
+    const conArchivo = registrosFiltrados.filter(r => tipo === 'dni' ? (r.archivoDniPath || r.archivoDni) : (r.archivoFichaPath || r.archivoFicha));
     if (conArchivo.length === 0) {
       alert(`No hay archivos de ${tipo.toUpperCase()} para descargar.`);
       return;
@@ -384,9 +614,11 @@ export default function Home() {
       const lote = conArchivo.slice(i, i + CONCURRENCIA);
       await Promise.all(lote.map(async (reg) => {
         try {
+          const targetPath = tipo === 'dni' ? reg.archivoDniPath : reg.archivoFichaPath;
           const targetUrl = tipo === 'dni' ? reg.archivoDni : reg.archivoFicha;
-          const res = await fetch(targetUrl);
-          const blob = await res.blob();
+          const blob = targetPath
+            ? await getBlob(ref(storage, targetPath))
+            : await (await fetch(targetUrl)).blob();
           const ext = blob.type === 'application/pdf' ? 'pdf' : 'jpg';
           const sufijo = tipo === 'dni' ? 'DNI' : 'FICHA';
           const nombre = `${reg.apellidos}_${reg.nombres}_${reg.dni}_${sufijo}.${ext}`.replace(/\s+/g, '_');
@@ -447,8 +679,8 @@ export default function Home() {
       reg.dpto || '',
       reg.observaciones || '',
       reg.afiliadorNombre || reg.afiliadorEmail || '',
-      reg.archivoDni || 'Sin archivo',
-      reg.archivoFicha || 'Sin archivo'
+      reg.archivoDniPath || reg.archivoDni || 'Sin archivo',
+      reg.archivoFichaPath || reg.archivoFicha || 'Sin archivo'
     ]);
 
     const contenidoCSV = [
@@ -519,8 +751,37 @@ export default function Home() {
     }
   };
 
+  const normalizarFichaPayload = (data: any) => ({
+    tipoDocumento: data.tipoDocumento || 'DNI',
+    dni: String(data.dni || '').replace(/\D/g, ''),
+    apellidos: data.apellidos || '',
+    nombres: data.nombres || '',
+    sexo: data.sexo || '',
+    clase: data.clase || '',
+    fechaNacimiento: data.fechaNacimiento || '',
+    lugarNacimiento: data.lugarNacimiento || '',
+    nacionalidad: data.nacionalidad || '',
+    profesion: data.profesion || '',
+    estadoCivil: data.estadoCivil || '',
+    celular: data.celular || '',
+    mail: data.mail || '',
+    distrito: data.distrito || 'Buenos Aires',
+    calle: data.calle || '',
+    numero: data.numero || '',
+    piso: data.piso || '',
+    dpto: data.dpto || '',
+    localidad: data.localidad || '',
+    observaciones: data.observaciones || '',
+    estadoControl: data.estadoControl || 'pendiente',
+  });
+
   const guardarFicha = async (e: React.FormEvent) => {
     e.preventDefault();
+    const dniNormalizado = String(formData.dni || '').replace(/\D/g, '');
+    if (!dniNormalizado) {
+      alert('Ingresá un DNI válido antes de guardar.');
+      return;
+    }
     if (editandoId) {
       const fichaActual = registros.find(r => r.id === editandoId);
       if (!puedeEditarFicha(fichaActual || formData)) {
@@ -531,25 +792,30 @@ export default function Home() {
     setSubiendo(true);
 
     try {
-      let urlDni = '';
+      let pathDni = '';
       if (!editandoId || fotoFrenteB64 || archivoUnico) {
         const timestamp = Date.now();
-        const ruta = `dnis/${formData.dni}-${timestamp}.jpg`;
+        const ownerUid = editandoId
+          ? (registros.find(r => r.id === editandoId)?.afiliadorUid || (user as any).uid)
+          : (user as any).uid;
+        const dniSeguro = String(formData.dni || 'sin-dni').replace(/\D/g, '') || 'sin-dni';
+        const ruta = `dnis/${ownerUid}/${dniSeguro}-${timestamp}.jpg`;
         const storageRef = ref(storage, ruta);
 
         if (modoArchivo === 'escaner' && fotoFrenteB64 && fotoDorsoB64) {
           const blob = await procesarDNIUnicoImagen();
           await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
-          urlDni = await getDownloadURL(storageRef);
+          pathDni = ruta;
         } else if (modoArchivo === 'unico' && archivoUnico) {
-          const storageRefUnico = ref(storage, `dnis/${formData.dni}-${timestamp}`);
+          const rutaUnico = `dnis/${ownerUid}/${dniSeguro}-${timestamp}`;
+          const storageRefUnico = ref(storage, rutaUnico);
           await uploadBytes(storageRefUnico, archivoUnico);
-          urlDni = await getDownloadURL(storageRefUnico);
+          pathDni = rutaUnico;
         }
       }
 
       if (editandoId) {
-        const payload: any = { ...formData, ['\u00faltimaModificaci\u00f3n']: serverTimestamp(), ...(urlDni && { archivoDni: urlDni }) };
+        const payload: any = { ...normalizarFichaPayload(formData), ultimaModificacion: serverTimestamp(), ...(pathDni && { archivoDniPath: pathDni, archivoDni: null }) };
         const est = (formData as any).estadoControl || 'pendiente';
         if (isAdmin && ['escaneado', 'cargado_je', 'aprobado', 'error', 'suspendido', 'baja'].includes(est)) {
           payload.editadoPorAdmin = (user as any).displayName || (user as any).email;
@@ -559,7 +825,25 @@ export default function Home() {
         alert('Datos actualizados');
       } else {
         const nombreAfiliador = userData ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim() : ((user as any).displayName || '');
-        await addDoc(collection(db, 'afiliaciones'), { ...formData, archivoDni: urlDni, afiliadorNombre: nombreAfiliador, afiliadorEmail: (user as any).email, afiliadorUid: (user as any).uid, fecha: serverTimestamp() });
+        const payload = {
+          ...normalizarFichaPayload(formData),
+          archivoDniPath: pathDni,
+          afiliadorNombre: nombreAfiliador,
+          afiliadorEmail: (user as any).email,
+          afiliadorUid: (user as any).uid,
+          fecha: serverTimestamp(),
+        };
+        const fichaRef = doc(collection(db, 'afiliaciones'));
+        const indiceRef = doc(db, 'dniIndex', payload.dni);
+        const batch = writeBatch(db);
+        batch.set(indiceRef, {
+          dni: payload.dni,
+          fichaId: fichaRef.id,
+          afiliadorUid: (user as any).uid,
+          fecha: serverTimestamp(),
+        });
+        batch.set(fichaRef, payload);
+        await batch.commit();
         alert('Registro exitoso');
       }
 
@@ -567,10 +851,20 @@ export default function Home() {
       setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
       setDecodeStatus('idle');
+      setEscaneoDniGuiado(false);
       cambiarTab('registros');
       
-    } catch (error) {
-      alert('Error al guardar en la base de datos.');
+    } catch (error: any) {
+      console.error('Error al guardar ficha:', error);
+      if (
+        error?.code === 'already-exists' ||
+        error?.code === 'permission-denied' ||
+        error?.message?.toLowerCase?.().includes('already exists')
+      ) {
+        alert('No se puede guardar: ese DNI ya fue cargado en el sistema o no tenés permisos para registrarlo.');
+        return;
+      }
+      alert(`Error al guardar: ${error?.code || error?.message || 'desconocido'}`);
     } finally {
       setSubiendo(false);
     }
@@ -603,6 +897,7 @@ export default function Home() {
     setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
     setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
     setDecodeStatus('idle');
+    setEscaneoDniGuiado(false);
     cambiarTab('nueva');
   };
 
@@ -695,12 +990,11 @@ export default function Home() {
         blob = b64OrFile;
       }
 
-      const storageRef = ref(storage, `fichas/${id}-${Date.now()}.${extension}`);
+      const storageRef = ref(storage, `fichas/${id}/${Date.now()}.${extension}`);
       await uploadBytes(storageRef, blob, { contentType });
-      const url = await getDownloadURL(storageRef);
       
       await actualizarControl(id, 'escaneado', {
-        archivoFicha: url,
+        archivoFichaPath: storageRef.fullPath,
         fechaEscaneado: serverTimestamp(),
         escaneadoPor: u.displayName || u.email,
         escaneadoPorUid: u.uid,
@@ -747,9 +1041,13 @@ export default function Home() {
         <EscanerDocumento
           titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : camaraActiva === 'dorso' ? "Escanear Dorso DNI" : "Escanear Ficha"}
           tipo={camaraActiva.includes('ficha') ? 'ficha' : 'dni'}
-          onClose={() => setCamaraActiva(null)}
-          onCapture={async (dataUrl) => {
+          onClose={() => {
+            setEscaneoDniGuiado(false);
+            setCamaraActiva(null);
+          }}
+          onCapture={async (dataUrl, originalFile) => {
             const cara = camaraActiva;
+            const continuarConDorso = escaneoDniGuiado && cara === 'frente';
             if (cara === 'frente') setFotoFrenteB64(dataUrl);
             else if (cara === 'dorso') setFotoDorsoB64(dataUrl);
             else if (cara === 'fichaControl') {
@@ -762,7 +1060,7 @@ export default function Home() {
             if (cara === 'frente' || cara === 'dorso') {
               setDecodeStatus(prev => prev === 'success' ? 'success' : 'processing');
               try {
-                const parsed = await decodeDniBarcode(dataUrl);
+                const parsed = await decodeDniBarcode(originalFile || dataUrl);
                 if (parsed && (parsed.dni || parsed.apellidos)) {
                   const campos = parsedDniToFormFields(parsed);
                   setFormData(prev => ({ ...prev, ...campos }));
@@ -774,6 +1072,11 @@ export default function Home() {
               } catch {
                 setDecodeStatus(prev => prev === 'success' ? 'success' : 'failed');
               }
+            }
+            if (continuarConDorso) {
+              window.setTimeout(() => setCamaraActiva('dorso'), 250);
+            } else if (cara === 'dorso') {
+              setEscaneoDniGuiado(false);
             }
           }}
         />
@@ -831,9 +1134,21 @@ export default function Home() {
             setModo: setModoArchivo,
             frenteOk: !!fotoFrenteB64,
             dorsoOk: !!fotoDorsoB64,
-            onScanFrente: () => setCamaraActiva('frente'),
-            onScanDorso: () => setCamaraActiva('dorso'),
+            onScanFrente: () => {
+              setEscaneoDniGuiado(false);
+              setCamaraActiva('frente');
+            },
+            onScanDorso: () => {
+              setEscaneoDniGuiado(false);
+              setCamaraActiva('dorso');
+            },
             onPickFile: (file) => setArchivoUnico(file),
+            onScanDniData: () => {
+              setModoArchivo('escaner');
+              setDecodeStatus('idle');
+              setEscaneoDniGuiado(true);
+              setCamaraActiva('frente');
+            },
             onScanBarcode: () => setEscanerBarcodeAbierto(true),
           }}
           decodeStatus={decodeStatus}

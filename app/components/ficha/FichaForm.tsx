@@ -45,6 +45,7 @@ interface FichaFormProps {
     onScanFrente: () => void;
     onScanDorso: () => void;
     onPickFile: (file: File) => void;
+    onScanDniData?: () => void;
     onScanBarcode?: () => void;
   };
   /** Estado del intento de auto-decode del PDF417 del DNI tras sacar foto.
@@ -117,6 +118,12 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
 function DniUploader({ dni }: { dni: FichaFormProps['dni'] }) {
   return (
     <div>
+      {dni.onScanDniData && (
+        <button type="button" onClick={dni.onScanDniData}
+          className="mb-4 w-full py-3 rounded-xl bg-brand-600 text-white font-bold text-sm hover:bg-brand-700 active:bg-brand-800 transition flex items-center justify-center gap-2 shadow-sm">
+          <BarcodeIcon className="w-5 h-5" /> Escanear DNI: frente y dorso
+        </button>
+      )}
       <div className="mb-4">
         <Segmented value={dni.modo} onChange={dni.setModo}
           options={[{ value: 'escaner', label: 'Escanear', icon: 'camera' }, { value: 'unico', label: 'Archivo único', icon: 'upload' }]} />
