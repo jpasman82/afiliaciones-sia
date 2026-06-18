@@ -71,10 +71,10 @@ service cloud.firestore {
           conservaEstadoPendiente()
         )
       );
-      // Admin puede eliminar siempre. Supervisor solo mientras la ficha siga en paso 1.
+      // Admin puede eliminar siempre. Supervisor y afiliador (dueño) solo mientras la ficha siga en paso 1.
       allow delete: if request.auth != null && (
         esAdmin(request.auth.uid) ||
-        (esSupervisor(request.auth.uid) && estadoPendiente(resource.data))
+        ((esSupervisor(request.auth.uid) || resource.data.afiliadorUid == request.auth.uid) && estadoPendiente(resource.data))
       );
     }
   }

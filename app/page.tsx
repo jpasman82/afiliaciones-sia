@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, orderBy, arrayUnion } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, orderBy, arrayUnion } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
@@ -510,6 +510,15 @@ export default function Home() {
     return isAdmin || estado === 'pendiente';
   };
 
+  const eliminarFicha = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'afiliaciones', id));
+      cambiarTab('registros');
+    } catch {
+      alert('No se pudo eliminar la ficha. Verificá tu conexión e intentá de nuevo.');
+    }
+  };
+
   const guardarFicha = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editandoId) {
@@ -805,6 +814,7 @@ export default function Home() {
           role={roleActual}
           onBack={() => cambiarTab('registros')}
           onEdit={prepararEdicion}
+          onDelete={puedeEditarFicha(fichaSeleccionada) ? () => eliminarFicha(fichaSeleccionada.id) : undefined}
         />
       )}
 
