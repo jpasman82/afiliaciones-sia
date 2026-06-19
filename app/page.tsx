@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
-import { collection, serverTimestamp, query, where, onSnapshot, doc, getDoc, updateDoc, deleteDoc, orderBy, arrayUnion, writeBatch } from 'firebase/firestore';
+import { collection, serverTimestamp, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, arrayUnion, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getBlob } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
@@ -761,12 +761,26 @@ export default function Home() {
     return isAdmin || estado === 'pendiente';
   };
 
-  const eliminarFicha = async (id: string) => {
+  const eliminarFicha = async (ficha: any) => {
     try {
-      await deleteDoc(doc(db, 'afiliaciones', id));
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'afiliaciones', ficha.id));
+
+      const dniNormalizado = String(ficha.dni || '').replace(/\D/g, '');
+      if (dniNormalizado) {
+        const indiceRef = doc(db, 'dniIndex', dniNormalizado);
+        const indiceSnap = await getDoc(indiceRef);
+        if (indiceSnap.exists() && indiceSnap.data()?.fichaId === ficha.id) {
+          batch.delete(indiceRef);
+        }
+      }
+
+      await batch.commit();
+      setFichaSeleccionada(null);
       cambiarTab('registros');
-    } catch {
-      alert('No se pudo eliminar la ficha. Verificá tu conexión e intentá de nuevo.');
+    } catch (error: any) {
+      console.error('Error al eliminar ficha:', error);
+      alert(`No se pudo eliminar la ficha: ${error?.code || error?.message || 'verificá tu conexión e intentá de nuevo.'}`);
     }
   };
 
@@ -1189,7 +1203,7 @@ export default function Home() {
           role={roleActual}
           onBack={() => cambiarTab('registros')}
           onEdit={prepararEdicion}
-          onDelete={puedeEditarFicha(fichaSeleccionada) ? () => eliminarFicha(fichaSeleccionada.id) : undefined}
+          onDelete={puedeEditarFicha(fichaSeleccionada) ? () => eliminarFicha(fichaSeleccionada) : undefined}
         />
       )}
 

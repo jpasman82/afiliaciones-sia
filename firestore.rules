@@ -97,6 +97,17 @@ service cloud.firestore {
         indiceDniValido(docId);
     }
 
+    function eliminacionIndiceDniValida(dni) {
+      let fichaPath = /databases/$(database)/documents/afiliaciones/$(resource.data.fichaId);
+      let ficha = get(fichaPath).data;
+      return (
+        esAdmin(request.auth.uid) ||
+        ((esSupervisor(request.auth.uid) || resource.data.afiliadorUid == request.auth.uid) && estadoPendiente(ficha))
+      ) &&
+      resource.data.dni == dni &&
+      !existsAfter(fichaPath);
+    }
+
     function conservaPropiedadFicha() {
       return request.resource.data.afiliadorUid == resource.data.afiliadorUid &&
         request.resource.data.afiliadorEmail == resource.data.afiliadorEmail &&
@@ -136,7 +147,10 @@ service cloud.firestore {
         request.resource.data.dni == dni &&
         request.resource.data.afiliadorUid == request.auth.uid;
       allow update: if false;
-      allow delete: if request.auth != null && esAdmin(request.auth.uid);
+      allow delete: if request.auth != null && (
+        esAdmin(request.auth.uid) ||
+        eliminacionIndiceDniValida(dni)
+      );
     }
 
     match /afiliaciones/{docId} {
