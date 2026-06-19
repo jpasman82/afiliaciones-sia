@@ -129,7 +129,7 @@ service cloud.firestore {
     }
 
     match /dniIndex/{dni} {
-      allow read: if request.auth != null && esAdminOSupervisor(request.auth.uid);
+      allow read: if request.auth != null && rolActivo(request.auth.uid);
       allow create: if request.auth != null &&
         rolActivo(request.auth.uid) &&
         request.resource.data.keys().hasOnly(['dni', 'fichaId', 'afiliadorUid', 'fecha']) &&

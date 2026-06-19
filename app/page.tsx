@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
-import { collection, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, orderBy, arrayUnion, writeBatch } from 'firebase/firestore';
+import { collection, serverTimestamp, query, where, onSnapshot, doc, getDoc, updateDoc, deleteDoc, orderBy, arrayUnion, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getBlob } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
@@ -828,6 +828,11 @@ export default function Home() {
         };
         const fichaRef = doc(collection(db, 'afiliaciones'));
         const indiceRef = doc(db, 'dniIndex', payload.dni);
+        const indiceExistente = await getDoc(indiceRef);
+        if (indiceExistente.exists()) {
+          alert('No se puede guardar: ese DNI ya fue cargado en el sistema.');
+          return;
+        }
         const batch = writeBatch(db);
         batch.set(indiceRef, {
           dni: payload.dni,
@@ -851,12 +856,12 @@ export default function Home() {
       
     } catch (error: any) {
       console.error('Error al guardar ficha:', error);
-      if (
-        error?.code === 'already-exists' ||
-        error?.code === 'permission-denied' ||
-        error?.message?.toLowerCase?.().includes('already exists')
-      ) {
-        alert('No se puede guardar: ese DNI ya fue cargado en el sistema o no tenés permisos para registrarlo.');
+      if (error?.code === 'already-exists' || error?.message?.toLowerCase?.().includes('already exists')) {
+        alert('No se puede guardar: ese DNI ya fue cargado en el sistema.');
+        return;
+      }
+      if (error?.code === 'permission-denied') {
+        alert('No se puede guardar: tu usuario no tiene permisos para registrar esta ficha o falta actualizar las reglas de seguridad.');
         return;
       }
       alert(`Error al guardar: ${error?.code || error?.message || 'desconocido'}`);
