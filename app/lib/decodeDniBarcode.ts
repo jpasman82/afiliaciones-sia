@@ -61,8 +61,43 @@ async function leerConBrowserReader(source: string | Blob | HTMLCanvasElement): 
 }
 
 async function leerPdf417DesdeCanvas(canvas: HTMLCanvasElement): Promise<string> {
-  const variantes = crearVariantesCanvas(canvas);
+  const normalizado = normalizarTamano(canvas);
 
+  try {
+    const variantesBasicas = [
+      normalizado,
+      aplicarFiltroCanvas(normalizado, 'grayscale(100%) contrast(1.7) brightness(1.08)'),
+      aplicarUmbralCanvas(normalizado, 128),
+    ];
+    try {
+      const raw = await probarVariantes(variantesBasicas);
+      if (raw) return raw;
+    } finally {
+      liberarVariantes(variantesBasicas, normalizado);
+    }
+
+    const variantesAvanzadas = [
+      aplicarFiltroCanvas(normalizado, 'grayscale(100%) contrast(2.25) brightness(1.15)'),
+      aplicarUmbralCanvas(normalizado, 160),
+      ...crearBandasHorizontales(normalizado).flatMap(banda => [
+        banda,
+        aplicarFiltroCanvas(banda, 'grayscale(100%) contrast(2) brightness(1.1)'),
+      ]),
+    ];
+    try {
+      const raw = await probarVariantes(variantesAvanzadas);
+      if (raw) return raw;
+    } finally {
+      liberarVariantes(variantesAvanzadas);
+    }
+  } finally {
+    liberarCanvasSiEsNuevo(normalizado, canvas);
+  }
+
+  throw NotFoundException.getNotFoundInstance();
+}
+
+async function probarVariantes(variantes: HTMLCanvasElement[]): Promise<string | null> {
   for (const variante of variantes) {
     const native = await leerConBarcodeDetector(variante);
     if (native) return native;
@@ -73,25 +108,22 @@ async function leerPdf417DesdeCanvas(canvas: HTMLCanvasElement): Promise<string>
     if (raw) return raw;
   }
 
-  throw NotFoundException.getNotFoundInstance();
+  return null;
 }
 
-function crearVariantesCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement[] {
-  const normalizado = normalizarTamano(canvas);
-  const candidatos = [
-    normalizado,
-    aplicarFiltroCanvas(normalizado, 'grayscale(100%) contrast(1.7) brightness(1.08)'),
-    aplicarFiltroCanvas(normalizado, 'grayscale(100%) contrast(2.25) brightness(1.15)'),
-    aplicarUmbralCanvas(normalizado, 128),
-    aplicarUmbralCanvas(normalizado, 160),
-  ];
+function liberarVariantes(variantes: HTMLCanvasElement[], preservar?: HTMLCanvasElement) {
+  for (const variante of variantes) {
+    if (variante !== preservar) liberarCanvas(variante);
+  }
+}
 
-  const bandas = crearBandasHorizontales(normalizado).flatMap(banda => [
-    banda,
-    aplicarFiltroCanvas(banda, 'grayscale(100%) contrast(2) brightness(1.1)'),
-  ]);
+function liberarCanvasSiEsNuevo(canvas: HTMLCanvasElement, original: HTMLCanvasElement) {
+  if (canvas !== original) liberarCanvas(canvas);
+}
 
-  return [...candidatos, ...bandas];
+function liberarCanvas(canvas: HTMLCanvasElement) {
+  canvas.width = 0;
+  canvas.height = 0;
 }
 
 function normalizarTamano(canvas: HTMLCanvasElement): HTMLCanvasElement {
