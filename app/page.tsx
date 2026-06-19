@@ -33,7 +33,6 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
   const nativeWrapRef = useRef<HTMLDivElement>(null);
   const nativeObjectUrlRef = useRef<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [nativeFile, setNativeFile] = useState<File | undefined>();
   const [nativeDisplayed, setNativeDisplayed] = useState<{ w: number; h: number } | null>(null);
   const [nativeCrop, setNativeCrop] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const proporcionMarco = tipo === 'ficha' ? 'aspect-[1.66]' : 'aspect-[1.58]';
@@ -77,14 +76,12 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
       nativeObjectUrlRef.current = null;
     }
     setPreview(null);
-    setNativeFile(undefined);
     setNativeDisplayed(null);
   };
 
   const tomarFotoNativa = (file: File) => {
     limpiarPreviewNativa();
     nativeObjectUrlRef.current = URL.createObjectURL(file);
-    setNativeFile(file);
     setPreview(nativeObjectUrlRef.current);
   };
 
@@ -184,7 +181,7 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-    onCapture(canvas.toDataURL('image/jpeg', DNI_CAPTURE_JPEG_QUALITY), nativeFile);
+    onCapture(canvas.toDataURL('image/jpeg', DNI_CAPTURE_JPEG_QUALITY));
     limpiarPreviewNativa();
   };
 
@@ -1046,7 +1043,7 @@ export default function Home() {
             setContinuacionDniPendiente(null);
             setCamaraActiva(null);
           }}
-          onCapture={async (dataUrl, originalFile) => {
+          onCapture={async (dataUrl) => {
             const cara = camaraActiva;
             const continuarConDorso = escaneoDniGuiado && cara === 'frente';
             if (cara === 'frente') setFotoFrenteB64(dataUrl);
@@ -1056,13 +1053,16 @@ export default function Home() {
               if (targetId) subirFichaControlExtra(targetId, dataUrl);
             }
             setCamaraActiva(null);
+            if (continuarConDorso) {
+              setContinuacionDniPendiente('dorso');
+            }
             // Intento de decode del PDF417 en background (frente o dorso del DNI).
             // Status: processing → success/failed para feedback en la UI.
             if (cara === 'frente' || cara === 'dorso') {
               if (!dniDatosLeidos) {
                 setDecodeStatus(prev => prev === 'success' ? 'success' : 'processing');
                 try {
-                  const parsed = await decodeDniBarcode(originalFile || dataUrl);
+                  const parsed = await decodeDniBarcode(dataUrl);
                   if (parsed && (parsed.dni || parsed.apellidos)) {
                     const campos = parsedDniToFormFields(parsed);
                     setFormData(prev => ({ ...prev, ...campos }));
@@ -1077,9 +1077,7 @@ export default function Home() {
                 }
               }
             }
-            if (continuarConDorso) {
-              setContinuacionDniPendiente('dorso');
-            } else if (cara === 'dorso') {
+            if (cara === 'dorso') {
               setEscaneoDniGuiado(false);
               setContinuacionDniPendiente(null);
             }
