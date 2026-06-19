@@ -63,7 +63,7 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
 
       <Card className="px-5 md:px-7 divide-y divide-slate-100">
         <FormSection n="1" title="Documentación" sub="Foto del DNI: frente y dorso, o un archivo único">
-          <DniUploader dni={dni} />
+          <DniUploader dni={dni} decodeStatus={decodeStatus} />
           {decodeStatus && decodeStatus !== 'idle' && <DecodeStatusIndicator status={decodeStatus} />}
         </FormSection>
 
@@ -115,7 +115,7 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
   );
 }
 
-function DniUploader({ dni }: { dni: FichaFormProps['dni'] }) {
+function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decodeStatus?: FichaFormProps['decodeStatus'] }) {
   return (
     <div>
       {dni.onScanDniData && (
@@ -142,10 +142,10 @@ function DniUploader({ dni }: { dni: FichaFormProps['dni'] }) {
         </label>
       )}
       {(dni.frenteOk || dni.dorsoOk) && <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado</p>}
-      {dni.onScanBarcode && (dni.frenteOk || dni.dorsoOk) && (
+      {dni.onScanBarcode && decodeStatus === 'failed' && (dni.frenteOk || dni.dorsoOk) && (
         <button type="button" onClick={dni.onScanBarcode}
           className="mt-4 w-full py-2.5 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 active:bg-slate-950 transition flex items-center justify-center gap-2">
-          <BarcodeIcon className="w-5 h-5" /> Escanear código de barras de la foto
+          <BarcodeIcon className="w-5 h-5" /> Reintentar lectura del código
         </button>
       )}
     </div>

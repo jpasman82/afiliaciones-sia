@@ -23,12 +23,8 @@ const IconFichas = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" vie
 const IconUsuarios = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>;
 const IconControl = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 md:w-6 md:h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>;
 
-function getDniCaptureQuality() {
-  const memory = typeof navigator !== 'undefined' ? (navigator as any).deviceMemory as number | undefined : undefined;
-  if (memory && memory <= 2) return { maxWidth: 1500, jpegQuality: 0.84 };
-  if (memory && memory <= 4) return { maxWidth: 1800, jpegQuality: 0.87 };
-  return { maxWidth: 2400, jpegQuality: 0.9 };
-}
+const DNI_CAPTURE_MAX_WIDTH = 1800;
+const DNI_CAPTURE_JPEG_QUALITY = 0.87;
 
 const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClose: () => void, onCapture: (imgData: string, originalFile?: File) => void, titulo: string, tipo?: 'dni' | 'ficha' }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -180,9 +176,7 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
     const sh = nativeCrop.h * scaleY;
 
     const canvas = document.createElement('canvas');
-    const { maxWidth, jpegQuality } = getDniCaptureQuality();
-    const maxOutputWidth = maxWidth;
-    const outputScale = sw > maxOutputWidth ? maxOutputWidth / sw : 1;
+    const outputScale = sw > DNI_CAPTURE_MAX_WIDTH ? DNI_CAPTURE_MAX_WIDTH / sw : 1;
     canvas.width = Math.round(sw * outputScale);
     canvas.height = Math.round(sh * outputScale);
     const ctx = canvas.getContext('2d');
@@ -190,7 +184,7 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-    onCapture(canvas.toDataURL('image/jpeg', jpegQuality), nativeFile);
+    onCapture(canvas.toDataURL('image/jpeg', DNI_CAPTURE_JPEG_QUALITY), nativeFile);
     limpiarPreviewNativa();
   };
 
@@ -386,6 +380,8 @@ export default function Home() {
   const [modoArchivo, setModoArchivo] = useState<'escaner' | 'unico'>('escaner');
   const [camaraActiva, setCamaraActiva] = useState<null | 'frente' | 'dorso' | 'fichaControl'>(null);
   const [escaneoDniGuiado, setEscaneoDniGuiado] = useState(false);
+  const [continuacionDniPendiente, setContinuacionDniPendiente] = useState<null | 'dorso'>(null);
+  const [dniDatosLeidos, setDniDatosLeidos] = useState(false);
   const [escanerBarcodeAbierto, setEscanerBarcodeAbierto] = useState(false);
   const [decodeStatus, setDecodeStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
@@ -852,6 +848,8 @@ export default function Home() {
       setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
       setDecodeStatus('idle');
       setEscaneoDniGuiado(false);
+      setContinuacionDniPendiente(null);
+      setDniDatosLeidos(false);
       cambiarTab('registros');
       
     } catch (error: any) {
@@ -898,6 +896,8 @@ export default function Home() {
     setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
     setDecodeStatus('idle');
     setEscaneoDniGuiado(false);
+    setContinuacionDniPendiente(null);
+    setDniDatosLeidos(false);
     cambiarTab('nueva');
   };
 
@@ -1043,6 +1043,7 @@ export default function Home() {
           tipo={camaraActiva.includes('ficha') ? 'ficha' : 'dni'}
           onClose={() => {
             setEscaneoDniGuiado(false);
+            setContinuacionDniPendiente(null);
             setCamaraActiva(null);
           }}
           onCapture={async (dataUrl, originalFile) => {
@@ -1058,28 +1059,70 @@ export default function Home() {
             // Intento de decode del PDF417 en background (frente o dorso del DNI).
             // Status: processing → success/failed para feedback en la UI.
             if (cara === 'frente' || cara === 'dorso') {
-              setDecodeStatus(prev => prev === 'success' ? 'success' : 'processing');
-              try {
-                const parsed = await decodeDniBarcode(originalFile || dataUrl);
-                if (parsed && (parsed.dni || parsed.apellidos)) {
-                  const campos = parsedDniToFormFields(parsed);
-                  setFormData(prev => ({ ...prev, ...campos }));
-                  setDecodeStatus('success');
-                  console.info('[DNI PDF417] auto-decoded', { cara, raw: parsed.raw, warnings: parsed.warnings });
-                } else {
-                  setDecodeStatus(prev => prev === 'success' ? 'success' : 'failed');
+              if (!dniDatosLeidos) {
+                setDecodeStatus(prev => prev === 'success' ? 'success' : 'processing');
+                try {
+                  const parsed = await decodeDniBarcode(originalFile || dataUrl);
+                  if (parsed && (parsed.dni || parsed.apellidos)) {
+                    const campos = parsedDniToFormFields(parsed);
+                    setFormData(prev => ({ ...prev, ...campos }));
+                    setDniDatosLeidos(true);
+                    setDecodeStatus('success');
+                    console.info('[DNI PDF417] auto-decoded', { cara, raw: parsed.raw, warnings: parsed.warnings });
+                  } else {
+                    setDecodeStatus(continuarConDorso ? 'idle' : 'failed');
+                  }
+                } catch {
+                  setDecodeStatus(continuarConDorso ? 'idle' : 'failed');
                 }
-              } catch {
-                setDecodeStatus(prev => prev === 'success' ? 'success' : 'failed');
               }
             }
             if (continuarConDorso) {
-              window.setTimeout(() => setCamaraActiva('dorso'), 250);
+              setContinuacionDniPendiente('dorso');
             } else if (cara === 'dorso') {
               setEscaneoDniGuiado(false);
+              setContinuacionDniPendiente(null);
             }
           }}
         />
+      )}
+
+      {continuacionDniPendiente === 'dorso' && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="w-11 h-11 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-slate-900">Frente guardado</h3>
+            <p className="text-sm text-slate-500 mt-1.5">
+              Ahora sacá la foto del dorso del DNI. Si el código no estaba en el frente, se va a intentar leer en el dorso.
+            </p>
+            <div className="flex gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => {
+                  setEscaneoDniGuiado(false);
+                  setContinuacionDniPendiente(null);
+                }}
+                className="flex-1 py-3 rounded-xl bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm active:bg-slate-50"
+              >
+                Salir
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setContinuacionDniPendiente(null);
+                  setCamaraActiva('dorso');
+                }}
+                className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm active:bg-emerald-700"
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {escanerBarcodeAbierto && (
@@ -1136,16 +1179,24 @@ export default function Home() {
             dorsoOk: !!fotoDorsoB64,
             onScanFrente: () => {
               setEscaneoDniGuiado(false);
+              setContinuacionDniPendiente(null);
+              setDniDatosLeidos(false);
+              setDecodeStatus('idle');
               setCamaraActiva('frente');
             },
             onScanDorso: () => {
               setEscaneoDniGuiado(false);
+              setContinuacionDniPendiente(null);
+              setDniDatosLeidos(false);
+              setDecodeStatus('idle');
               setCamaraActiva('dorso');
             },
             onPickFile: (file) => setArchivoUnico(file),
             onScanDniData: () => {
               setModoArchivo('escaner');
               setDecodeStatus('idle');
+              setDniDatosLeidos(false);
+              setContinuacionDniPendiente(null);
               setEscaneoDniGuiado(true);
               setCamaraActiva('frente');
             },
