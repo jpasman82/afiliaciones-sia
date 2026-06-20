@@ -929,7 +929,7 @@ export default function Home() {
         afiliadorUid: (user as any).uid,
         afiliadorEmail,
         afiliadorNombre: nombreAfiliador,
-        creadoEn: serverTimestamp(),
+        creadoEn: Timestamp.fromDate(new Date()),
         venceEn: Timestamp.fromDate(vence),
         usado: false,
       });

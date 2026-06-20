@@ -219,8 +219,6 @@ service cloud.firestore {
       allow create: if request.auth != null &&
         request.resource.data.keys().hasOnly(['afiliadorUid', 'afiliadorEmail', 'afiliadorNombre', 'creadoEn', 'venceEn', 'usado']) &&
         request.resource.data.afiliadorUid == request.auth.uid &&
-        request.resource.data.afiliadorEmail is string &&
-        request.resource.data.afiliadorNombre is string &&
         request.resource.data.usado == false &&
         request.resource.data.venceEn > request.time;
       allow update: if usoLinkPublicoValido(token);
