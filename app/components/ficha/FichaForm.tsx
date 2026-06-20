@@ -145,7 +145,7 @@ function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decode
       <input
         ref={archivoInputRef}
         type="file"
-        accept="image/*,application/pdf"
+        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
         className="hidden"
         disabled={dni.procesandoArchivo}
         onChange={e => {
@@ -154,19 +154,12 @@ function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decode
           e.target.value = '';
         }}
       />
-      {true ? (
+      <>
         <div className="grid grid-cols-2 gap-3">
           <DniSlot label="Frente" ok={dni.frenteOk} preview={dni.fotoFrente} onClick={dni.onScanFrente} />
           <DniSlot label="Dorso" ok={dni.dorsoOk} preview={dni.fotoDorso} onClick={dni.onScanDorso} />
         </div>
-      ) : (
-        <label className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 py-8 cursor-pointer hover:border-brand-300 hover:bg-brand-50/40 transition">
-          <Icon name="upload" className="w-7 h-7 text-slate-400" />
-          <span className="text-sm font-medium text-slate-600">{dni.procesandoArchivo ? 'Procesando archivo…' : 'Subir imagen o PDF del DNI'}</span>
-          <span className="text-xs text-slate-400">JPG, PNG o PDF; se guarda como JPEG</span>
-          <input type="file" accept="image/*,application/pdf" className="hidden" disabled={dni.procesandoArchivo} onChange={e => e.target.files?.[0] && dni.onPickFile(e.target.files[0])} />
-        </label>
-      )}
+      </>
       {dni.procesandoArchivo && <p className="text-xs text-slate-500 font-medium mt-3">Procesando archivo del DNI…</p>}
       {(dni.frenteOk || dni.dorsoOk) && <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado</p>}
       {dni.onScanBarcode && decodeStatus === 'failed' && (dni.frenteOk || dni.dorsoOk) && (
