@@ -20,6 +20,10 @@ service cloud.firestore {
       return rol == 'admin' || rol == 'supervisor' || rol == 'afiliador';
     }
 
+    function emailUsuario(uid) {
+      return get(/databases/$(database)/documents/usuarios/$(uid)).data.email;
+    }
+
     function estadoPendiente(data) {
       return !('estadoControl' in data) || data.estadoControl == 'pendiente';
     }
@@ -92,7 +96,7 @@ service cloud.firestore {
       return rolActivo(request.auth.uid) &&
         request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
         request.resource.data.afiliadorUid == request.auth.uid &&
-        request.resource.data.afiliadorEmail == request.auth.token.email &&
+        request.resource.data.afiliadorEmail == emailUsuario(request.auth.uid) &&
         (!('origen' in request.resource.data) || request.resource.data.origen == 'app') &&
         !('linkToken' in request.resource.data) &&
         estadoPendiente(request.resource.data) &&
@@ -216,7 +220,7 @@ service cloud.firestore {
         rolActivo(request.auth.uid) &&
         request.resource.data.keys().hasOnly(['afiliadorUid', 'afiliadorEmail', 'afiliadorNombre', 'creadoEn', 'venceEn', 'usado']) &&
         request.resource.data.afiliadorUid == request.auth.uid &&
-        request.resource.data.afiliadorEmail == request.auth.token.email &&
+        request.resource.data.afiliadorEmail == emailUsuario(request.auth.uid) &&
         request.resource.data.usado == false &&
         request.resource.data.venceEn > request.time;
       allow update: if usoLinkPublicoValido(token);
