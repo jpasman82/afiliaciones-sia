@@ -941,7 +941,10 @@ export default function Home() {
       } catch {}
     } catch (error: any) {
       console.error('Error al generar link publico:', error);
-      alert(`No se pudo generar el link: ${error?.message || 'intentá nuevamente.'}`);
+      const detalles = error?.code === 'permission-denied'
+        ? `\n\nDatos para revisar:\nUID: ${(user as any)?.uid || '-'}\nRol app: ${role || '-'}\nEmail: ${((userData as any)?.email || (user as any)?.email || '-')}`
+        : '';
+      alert(`No se pudo generar el link: ${error?.message || 'intenta nuevamente.'}${detalles}`);
     } finally {
       setCreandoPublicLink(false);
     }

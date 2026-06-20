@@ -217,7 +217,6 @@ service cloud.firestore {
       allow get: if resource.data.usado == false && resource.data.venceEn > request.time;
       allow list: if false;
       allow create: if request.auth != null &&
-        rolActivo(request.auth.uid) &&
         request.resource.data.keys().hasOnly(['afiliadorUid', 'afiliadorEmail', 'afiliadorNombre', 'creadoEn', 'venceEn', 'usado']) &&
         request.resource.data.afiliadorUid == request.auth.uid &&
         request.resource.data.afiliadorEmail is string &&
