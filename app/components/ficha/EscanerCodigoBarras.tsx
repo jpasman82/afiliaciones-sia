@@ -168,8 +168,7 @@ function PhotoOption({ label, foto, onClick }: { label: string; foto: string; on
 // ============================================================================
 
 type Box = { x: number; y: number; w: number; h: number };
-type Corner = 'tl' | 'tr' | 'bl' | 'br';
-type DragMode = 'move' | Corner;
+type DragMode = 'move';
 
 function Cropper({
   imgUrl, disabled, decodingState, errorMsg, puedeCambiarFoto, onDecode, onCambiarFoto,
@@ -206,8 +205,8 @@ function Cropper({
         const rw = box.w / prev.w, rh = box.h / prev.h;
         setBox({ x: w * rx, y: h * ry, w: w * rw, h: h * rh });
       } else {
-        const bw = w * 0.68;
-        const bh = Math.min(h * 0.12, Math.max(44, bw * 0.14));
+        const bw = w * 0.72;
+        const bh = Math.min(h * 0.16, Math.max(56, bw * 0.18));
         const preferredY = h * 0.6;
         setBox({ x: (w - bw) / 2, y: clamp(preferredY, 0, h - bh), w: bw, h: bh });
       }
@@ -236,23 +235,15 @@ function Cropper({
     const onMove = (ev: PointerEvent) => {
       if (!dragInfo.current || !displayed) return;
       ev.preventDefault();
-      const { mode, px, py, box: s } = dragInfo.current;
+      const { px, py, box: s } = dragInfo.current;
       const dx = ev.clientX - px;
       const dy = ev.clientY - py;
-      const maxW = displayed.w, maxH = displayed.h, MIN = 40;
-      let x = s.x, y = s.y, w = s.w, h = s.h;
-      if (mode === 'move') {
-        x = clamp(s.x + dx, 0, maxW - s.w);
-        y = clamp(s.y + dy, 0, maxH - s.h);
-      } else {
-        let left = s.x, top = s.y, right = s.x + s.w, bottom = s.y + s.h;
-        if (mode === 'tl' || mode === 'bl') left   = clamp(s.x + dx, 0, right - MIN);
-        if (mode === 'tr' || mode === 'br') right  = clamp(s.x + s.w + dx, left + MIN, maxW);
-        if (mode === 'tl' || mode === 'tr') top    = clamp(s.y + dy, 0, bottom - MIN);
-        if (mode === 'bl' || mode === 'br') bottom = clamp(s.y + s.h + dy, top + MIN, maxH);
-        x = left; y = top; w = right - left; h = bottom - top;
-      }
-      setBox({ x, y, w, h });
+      const maxW = displayed.w, maxH = displayed.h;
+      setBox({
+        ...s,
+        x: clamp(s.x + dx, 0, maxW - s.w),
+        y: clamp(s.y + dy, 0, maxH - s.h),
+      });
     };
     const onUp = () => {
       dragInfo.current = null;
@@ -311,10 +302,6 @@ function Cropper({
               style={{ left: box.x, top: box.y, width: box.w, height: box.h, touchAction: 'none' }}
               onPointerDown={(e) => startDrag(e, 'move')}>
               <div className="absolute inset-0 ring-1 ring-emerald-300/50 pointer-events-none" />
-              <CornerHandle pos="tl" onDown={(e) => startDrag(e, 'tl')} />
-              <CornerHandle pos="tr" onDown={(e) => startDrag(e, 'tr')} />
-              <CornerHandle pos="bl" onDown={(e) => startDrag(e, 'bl')} />
-              <CornerHandle pos="br" onDown={(e) => startDrag(e, 'br')} />
             </div>
           )}
         </div>
@@ -334,17 +321,6 @@ function Cropper({
       </div>
     </>
   );
-}
-
-function CornerHandle({ pos, onDown }: { pos: Corner; onDown: (e: React.PointerEvent) => void }) {
-  const positions: Record<Corner, string> = {
-    tl: '-top-3.5 -left-3.5 cursor-nwse-resize',
-    tr: '-top-3.5 -right-3.5 cursor-nesw-resize',
-    bl: '-bottom-3.5 -left-3.5 cursor-nesw-resize',
-    br: '-bottom-3.5 -right-3.5 cursor-nwse-resize',
-  };
-  return <div className={`absolute w-7 h-7 bg-emerald-400 rounded-full border-2 border-white shadow-lg ${positions[pos]}`}
-    style={{ touchAction: 'none' }} onPointerDown={onDown} />;
 }
 
 function clamp(v: number, min: number, max: number): number {

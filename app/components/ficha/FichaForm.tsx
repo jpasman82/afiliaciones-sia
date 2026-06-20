@@ -9,7 +9,7 @@ import { useRef } from 'react';
 import { LOCALIDADES } from '../../lib/estados';
 import { Icon } from '../ui/Icon';
 import { Button } from '../ui/Button';
-import { Field, Input, Select, Textarea, Segmented } from '../ui/Form';
+import { Field, Input, Select, Textarea } from '../ui/Form';
 import { Card, PageHeader } from '../ui/Primitives';
 
 const SEXO = ['Masculino', 'Femenino'];
@@ -121,15 +121,6 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
 
 function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decodeStatus?: FichaFormProps['decodeStatus'] }) {
   const archivoInputRef = useRef<HTMLInputElement>(null);
-  const cambiarModo = (modo: 'escaner' | 'unico') => {
-    if (modo === 'unico') {
-      dni.setModo('escaner');
-      archivoInputRef.current?.click();
-      return;
-    }
-    dni.setModo(modo);
-  };
-
   return (
     <div>
       {dni.onScanDniData && (
@@ -138,10 +129,14 @@ function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decode
           <BarcodeIcon className="w-5 h-5" /> Escanear DNI: frente y dorso
         </button>
       )}
-      <div className="mb-4">
-        <Segmented value={dni.modo} onChange={cambiarModo}
-          options={[{ value: 'escaner', label: 'Escanear', icon: 'camera' }, { value: 'unico', label: 'Archivo único', icon: 'upload' }]} />
-      </div>
+      <button
+        type="button"
+        onClick={() => archivoInputRef.current?.click()}
+        disabled={dni.procesandoArchivo}
+        className="mb-4 w-full py-3 rounded-xl bg-white text-slate-700 ring-1 ring-slate-200 font-bold text-sm hover:bg-slate-50 active:bg-slate-100 transition flex items-center justify-center gap-2 disabled:opacity-60"
+      >
+        <Icon name="upload" className="w-5 h-5" /> Subir archivo único
+      </button>
       <input
         ref={archivoInputRef}
         type="file"
