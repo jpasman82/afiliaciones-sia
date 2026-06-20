@@ -205,7 +205,7 @@ function Cropper({
         const rw = box.w / prev.w, rh = box.h / prev.h;
         setBox({ x: w * rx, y: h * ry, w: w * rw, h: h * rh });
       } else {
-        const bw = w * 0.36;
+        const bw = w * 0.414;
         const bh = Math.min(h * 0.22, Math.max(72, bw * 0.38));
         const preferredY = h * 0.6;
         setBox({ x: (w - bw) / 2, y: clamp(preferredY, 0, h - bh), w: bw, h: bh });
