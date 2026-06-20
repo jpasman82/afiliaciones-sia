@@ -5,6 +5,7 @@
 //    · 4. Documentación (foto DNI al final).
 //  - El bloque DNI recibe callbacks para enganchar EscanerDocumento (cámara).
 // ============================================================================
+import { useRef } from 'react';
 import { LOCALIDADES } from '../../lib/estados';
 import { Icon } from '../ui/Icon';
 import { Button } from '../ui/Button';
@@ -119,6 +120,16 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
 }
 
 function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decodeStatus?: FichaFormProps['decodeStatus'] }) {
+  const archivoInputRef = useRef<HTMLInputElement>(null);
+  const cambiarModo = (modo: 'escaner' | 'unico') => {
+    if (modo === 'unico') {
+      dni.setModo('escaner');
+      archivoInputRef.current?.click();
+      return;
+    }
+    dni.setModo(modo);
+  };
+
   return (
     <div>
       {dni.onScanDniData && (
@@ -128,10 +139,22 @@ function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decode
         </button>
       )}
       <div className="mb-4">
-        <Segmented value={dni.modo} onChange={dni.setModo}
+        <Segmented value={dni.modo} onChange={cambiarModo}
           options={[{ value: 'escaner', label: 'Escanear', icon: 'camera' }, { value: 'unico', label: 'Archivo único', icon: 'upload' }]} />
       </div>
-      {dni.modo === 'escaner' ? (
+      <input
+        ref={archivoInputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        disabled={dni.procesandoArchivo}
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) dni.onPickFile(file);
+          e.target.value = '';
+        }}
+      />
+      {true ? (
         <div className="grid grid-cols-2 gap-3">
           <DniSlot label="Frente" ok={dni.frenteOk} preview={dni.fotoFrente} onClick={dni.onScanFrente} />
           <DniSlot label="Dorso" ok={dni.dorsoOk} preview={dni.fotoDorso} onClick={dni.onScanDorso} />
@@ -144,6 +167,7 @@ function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decode
           <input type="file" accept="image/*,application/pdf" className="hidden" disabled={dni.procesandoArchivo} onChange={e => e.target.files?.[0] && dni.onPickFile(e.target.files[0])} />
         </label>
       )}
+      {dni.procesandoArchivo && <p className="text-xs text-slate-500 font-medium mt-3">Procesando archivo del DNI…</p>}
       {(dni.frenteOk || dni.dorsoOk) && <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado</p>}
       {dni.onScanBarcode && decodeStatus === 'failed' && (dni.frenteOk || dni.dorsoOk) && (
         <button type="button" onClick={dni.onScanBarcode}

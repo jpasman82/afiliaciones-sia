@@ -206,8 +206,10 @@ function Cropper({
         const rw = box.w / prev.w, rh = box.h / prev.h;
         setBox({ x: w * rx, y: h * ry, w: w * rw, h: h * rh });
       } else {
-        const bw = w * 0.85, bh = h * 0.20;
-        setBox({ x: (w - bw) / 2, y: (h - bh) / 2, w: bw, h: bh });
+        const bw = w * 0.9;
+        const bh = Math.min(h * 0.16, Math.max(56, bw * 0.16));
+        const preferredY = h * 0.62;
+        setBox({ x: (w - bw) / 2, y: clamp(preferredY, 0, h - bh), w: bw, h: bh });
       }
       return { w, h };
     });
@@ -309,6 +311,11 @@ function Cropper({
               style={{ left: box.x, top: box.y, width: box.w, height: box.h, touchAction: 'none' }}
               onPointerDown={(e) => startDrag(e, 'move')}>
               <div className="absolute inset-0 ring-1 ring-emerald-300/50 pointer-events-none" />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <span className="rounded bg-black/55 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white/90">
+                  Código PDF417
+                </span>
+              </div>
               <CornerHandle pos="tl" onDown={(e) => startDrag(e, 'tl')} />
               <CornerHandle pos="tr" onDown={(e) => startDrag(e, 'tr')} />
               <CornerHandle pos="bl" onDown={(e) => startDrag(e, 'bl')} />
