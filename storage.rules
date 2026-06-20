@@ -22,6 +22,20 @@ service firebase.storage {
       return rol == 'admin' || rol == 'supervisor' || rol == 'afiliador';
     }
 
+    match /dnisPublicos/{token}/{fileName} {
+      allow get: if request.auth != null && (
+        esAdminOSupervisor() ||
+        firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.afiliadorUid == request.auth.uid
+      );
+      allow list: if false;
+      allow create: if request.auth == null &&
+        firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.usado == false &&
+        firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.venceEn > request.time &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType == 'image/jpeg';
+      allow update, delete: if false;
+    }
+
     match /dnis/{ownerUid}/{fileName} {
       allow get: if request.auth != null &&
         (request.auth.uid == ownerUid || esAdminOSupervisor());

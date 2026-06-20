@@ -38,6 +38,9 @@ interface FichaFormProps {
   onCancel: () => void;
   editando: boolean;
   subiendo?: boolean;
+  publicLink?: string | null;
+  creandoPublicLink?: boolean;
+  onCrearPublicLink?: () => void;
   dni: {
     modo: 'escaner' | 'unico';
     setModo: (m: 'escaner' | 'unico') => void;
@@ -57,7 +60,7 @@ interface FichaFormProps {
   decodeStatus?: 'idle' | 'processing' | 'success' | 'failed';
 }
 
-export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, dni, decodeStatus }: FichaFormProps) {
+export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, publicLink, creandoPublicLink, onCrearPublicLink, dni, decodeStatus }: FichaFormProps) {
   return (
     <form onSubmit={onSubmit} className="max-w-4xl mx-auto pb-24 md:pb-8" data-screen-label={editando ? 'Editar ficha' : 'Nueva ficha'}>
       <button type="button" onClick={onCancel} className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 mb-4">
@@ -69,6 +72,24 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
         <FormSection n="1" title="Documentación" sub="Foto del DNI: frente y dorso, o un archivo único">
           <DniUploader dni={dni} decodeStatus={decodeStatus} />
           {decodeStatus && decodeStatus !== 'idle' && <DecodeStatusIndicator status={decodeStatus} />}
+          {onCrearPublicLink && !editando && (
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <button
+                type="button"
+                onClick={onCrearPublicLink}
+                disabled={creandoPublicLink}
+                className="w-full py-2.5 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 active:bg-slate-950 transition disabled:opacity-60"
+              >
+                {creandoPublicLink ? 'Generando link...' : 'Generar link de carga publica'}
+              </button>
+              {publicLink && (
+                <div className="mt-3 rounded-lg bg-white ring-1 ring-slate-200 p-2">
+                  <p className="text-[11px] font-semibold text-slate-500 mb-1">Valido por 24 horas y un solo uso</p>
+                  <input readOnly value={publicLink} className="w-full bg-transparent text-xs text-slate-700 outline-none" onFocus={e => e.currentTarget.select()} />
+                </div>
+              )}
+            </div>
+          )}
         </FormSection>
 
         <FormSection n="2" title="Datos personales" sub="Identidad del afiliado">

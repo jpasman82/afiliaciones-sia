@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
-import { collection, serverTimestamp, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, arrayUnion, writeBatch } from 'firebase/firestore';
+import { collection, serverTimestamp, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, orderBy, arrayUnion, writeBatch, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getBlob } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
@@ -434,6 +434,8 @@ export default function Home() {
   const [procesandoArchivoDni, setProcesandoArchivoDni] = useState(false);
   
   const [subiendo, setSubiendo] = useState(false);
+  const [creandoPublicLink, setCreandoPublicLink] = useState(false);
+  const [publicLink, setPublicLink] = useState<string | null>(null);
   const [descargandoZip, setDescargandoZip] = useState<string | null>(null);
   
   const [busqueda, setBusqueda] = useState('');
@@ -909,6 +911,41 @@ export default function Home() {
     }
   };
 
+  const generarLinkCargaPublica = async () => {
+    if (!user || role === 'pendiente') {
+      alert('Tu usuario todavia no esta habilitado para generar links.');
+      return;
+    }
+    setCreandoPublicLink(true);
+    try {
+      const token = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, '')}`;
+      const vence = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const nombreAfiliador = userData
+        ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim()
+        : ((user as any).displayName || '');
+
+      await setDoc(doc(db, 'linksCargaPublica', token), {
+        afiliadorUid: (user as any).uid,
+        afiliadorEmail: (user as any).email,
+        afiliadorNombre: nombreAfiliador,
+        creadoEn: serverTimestamp(),
+        venceEn: Timestamp.fromDate(vence),
+        usado: false,
+      });
+
+      const url = `${window.location.origin}/cargar/${token}`;
+      setPublicLink(url);
+      try {
+        await navigator.clipboard?.writeText(url);
+      } catch {}
+    } catch (error: any) {
+      console.error('Error al generar link publico:', error);
+      alert(`No se pudo generar el link: ${error?.message || 'intentá nuevamente.'}`);
+    } finally {
+      setCreandoPublicLink(false);
+    }
+  };
+
   const normalizarFichaPayload = (data: any) => ({
     tipoDocumento: data.tipoDocumento || 'DNI',
     dni: String(data.dni || '').replace(/\D/g, ''),
@@ -1013,6 +1050,7 @@ export default function Home() {
       setEscaneoDniGuiado(false);
       setContinuacionDniPendiente(null);
       setDniDatosLeidos(false);
+      setPublicLink(null);
       cambiarTab('registros');
       
     } catch (error: any) {
@@ -1062,6 +1100,7 @@ export default function Home() {
     setEscaneoDniGuiado(false);
     setContinuacionDniPendiente(null);
     setDniDatosLeidos(false);
+    setPublicLink(null);
     cambiarTab('nueva');
   };
 
@@ -1358,6 +1397,9 @@ export default function Home() {
           onCancel={() => cambiarTab('registros')}
           editando={!!editandoId}
           subiendo={subiendo}
+          publicLink={publicLink}
+          creandoPublicLink={creandoPublicLink}
+          onCrearPublicLink={generarLinkCargaPublica}
           dni={{
             modo: modoArchivo,
             setModo: setModoArchivo,

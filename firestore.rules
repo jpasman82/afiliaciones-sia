@@ -67,7 +67,7 @@ service cloud.firestore {
         'estadoCivil', 'celular', 'mail', 'distrito', 'calle', 'numero',
         'piso', 'dpto', 'localidad', 'observaciones', 'estadoControl',
         'archivoDni', 'archivoDniPath', 'afiliadorNombre', 'afiliadorEmail',
-        'afiliadorUid', 'fecha'
+        'afiliadorUid', 'fecha', 'origen', 'linkToken'
       ];
     }
 
@@ -93,8 +93,57 @@ service cloud.firestore {
         request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
         request.resource.data.afiliadorUid == request.auth.uid &&
         request.resource.data.afiliadorEmail == request.auth.token.email &&
+        (!('origen' in request.resource.data) || request.resource.data.origen == 'app') &&
+        !('linkToken' in request.resource.data) &&
         estadoPendiente(request.resource.data) &&
         indiceDniValido(docId);
+    }
+
+    function linkPublicoUsadoValido(token, docId) {
+      let link = getAfter(/databases/$(database)/documents/linksCargaPublica/$(token)).data;
+      return link.usado == true &&
+        link.fichaId == docId &&
+        link.dni == request.resource.data.dni &&
+        link.venceEn > request.time &&
+        link.afiliadorUid == request.resource.data.afiliadorUid &&
+        link.afiliadorEmail == request.resource.data.afiliadorEmail;
+    }
+
+    function indiceDniPublicoValido(docId, token) {
+      let indice = getAfter(/databases/$(database)/documents/dniIndex/$(request.resource.data.dni)).data;
+      return indice.fichaId == docId &&
+        indice.dni == request.resource.data.dni &&
+        indice.afiliadorUid == request.resource.data.afiliadorUid &&
+        linkPublicoUsadoValido(token, docId);
+    }
+
+    function creacionFichaPublicaValida(docId) {
+      let token = request.resource.data.linkToken;
+      return request.auth == null &&
+        request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
+        request.resource.data.origen == 'link_publico' &&
+        token is string &&
+        request.resource.data.archivoDniPath.matches('dnisPublicos/' + token + '/.*') &&
+        estadoPendiente(request.resource.data) &&
+        linkPublicoUsadoValido(token, docId) &&
+        indiceDniPublicoValido(docId, token);
+    }
+
+    function usoLinkPublicoValido(token) {
+      let ficha = getAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)).data;
+      return request.auth == null &&
+        resource.data.usado == false &&
+        resource.data.venceEn > request.time &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usado', 'usadoEn', 'fichaId', 'dni']) &&
+        request.resource.data.usado == true &&
+        request.resource.data.afiliadorUid == resource.data.afiliadorUid &&
+        request.resource.data.afiliadorEmail == resource.data.afiliadorEmail &&
+        request.resource.data.afiliadorNombre == resource.data.afiliadorNombre &&
+        request.resource.data.creadoEn == resource.data.creadoEn &&
+        request.resource.data.venceEn == resource.data.venceEn &&
+        ficha.linkToken == token &&
+        ficha.dni == request.resource.data.dni &&
+        ficha.afiliadorUid == resource.data.afiliadorUid;
     }
 
     function eliminacionIndiceDniValida(dni) {
@@ -145,7 +194,14 @@ service cloud.firestore {
         rolActivo(request.auth.uid) &&
         request.resource.data.keys().hasOnly(['dni', 'fichaId', 'afiliadorUid', 'fecha']) &&
         request.resource.data.dni == dni &&
-        request.resource.data.afiliadorUid == request.auth.uid;
+        request.resource.data.afiliadorUid == request.auth.uid
+        ||
+        request.auth == null &&
+        request.resource.data.keys().hasOnly(['dni', 'fichaId', 'afiliadorUid', 'fecha']) &&
+        request.resource.data.dni == dni &&
+        existsAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)) &&
+        getAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)).data.dni == dni &&
+        getAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)).data.afiliadorUid == request.resource.data.afiliadorUid;
       allow update: if false;
       allow delete: if request.auth != null && (
         esAdmin(request.auth.uid) ||
@@ -153,12 +209,27 @@ service cloud.firestore {
       );
     }
 
+    match /linksCargaPublica/{token} {
+      allow get: if resource.data.usado == false && resource.data.venceEn > request.time;
+      allow list: if false;
+      allow create: if request.auth != null &&
+        rolActivo(request.auth.uid) &&
+        request.resource.data.keys().hasOnly(['afiliadorUid', 'afiliadorEmail', 'afiliadorNombre', 'creadoEn', 'venceEn', 'usado']) &&
+        request.resource.data.afiliadorUid == request.auth.uid &&
+        request.resource.data.afiliadorEmail == request.auth.token.email &&
+        request.resource.data.usado == false &&
+        request.resource.data.venceEn > request.time;
+      allow update: if usoLinkPublicoValido(token);
+      allow delete: if false;
+    }
+
     match /afiliaciones/{docId} {
       // El afiliador ve sus propios registros; admins y supervisores ven todo
       allow read: if request.auth != null &&
         (resource.data.afiliadorUid == request.auth.uid || esAdminOSupervisor(request.auth.uid));
       // Solo usuarios activos pueden crear fichas con su propio uid
-      allow create: if request.auth != null && creacionFichaValida(docId);
+      allow create: if (request.auth != null && creacionFichaValida(docId)) ||
+        creacionFichaPublicaValida(docId);
       // Admin puede editar siempre. Afiliador/supervisor solo mientras la ficha siga en paso 1.
       allow update: if request.auth != null && (
         esAdmin(request.auth.uid) ||
