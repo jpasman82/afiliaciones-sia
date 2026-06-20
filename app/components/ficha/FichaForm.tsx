@@ -42,7 +42,8 @@ interface FichaFormProps {
     setModo: (m: 'escaner' | 'unico') => void;
     frenteOk: boolean;
     dorsoOk: boolean;
-    unicoOk?: boolean;
+    fotoFrente?: string | null;
+    fotoDorso?: string | null;
     procesandoArchivo?: boolean;
     onScanFrente: () => void;
     onScanDorso: () => void;
@@ -132,8 +133,8 @@ function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decode
       </div>
       {dni.modo === 'escaner' ? (
         <div className="grid grid-cols-2 gap-3">
-          <DniSlot label="Frente" ok={dni.frenteOk} onClick={dni.onScanFrente} />
-          <DniSlot label="Dorso" ok={dni.dorsoOk} onClick={dni.onScanDorso} />
+          <DniSlot label="Frente" ok={dni.frenteOk} preview={dni.fotoFrente} onClick={dni.onScanFrente} />
+          <DniSlot label="Dorso" ok={dni.dorsoOk} preview={dni.fotoDorso} onClick={dni.onScanDorso} />
         </div>
       ) : (
         <label className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 py-8 cursor-pointer hover:border-brand-300 hover:bg-brand-50/40 transition">
@@ -143,7 +144,7 @@ function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decode
           <input type="file" accept="image/*,application/pdf" className="hidden" disabled={dni.procesandoArchivo} onChange={e => e.target.files?.[0] && dni.onPickFile(e.target.files[0])} />
         </label>
       )}
-      {(dni.frenteOk || dni.dorsoOk || dni.unicoOk) && <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado</p>}
+      {(dni.frenteOk || dni.dorsoOk) && <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado</p>}
       {dni.onScanBarcode && decodeStatus === 'failed' && (dni.frenteOk || dni.dorsoOk) && (
         <button type="button" onClick={dni.onScanBarcode}
           className="mt-4 w-full py-2.5 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 active:bg-slate-950 transition flex items-center justify-center gap-2">
@@ -162,12 +163,25 @@ function BarcodeIcon({ className = '' }: { className?: string }) {
   );
 }
 
-function DniSlot({ label, ok, onClick }: { label: string; ok: boolean; onClick: () => void }) {
+function DniSlot({ label, ok, preview, onClick }: { label: string; ok: boolean; preview?: string | null; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed py-7 transition
+      className={`relative flex aspect-[1.58] flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border-2 border-dashed transition ${preview ? '[&>svg]:opacity-0 [&>span]:opacity-0' : ''}
         ${ok ? 'border-emerald-300 bg-emerald-50/60' : 'border-slate-300 bg-slate-50 hover:border-brand-300 hover:bg-brand-50/40'}`}>
       <Icon name={ok ? 'check' : 'camera'} className={`w-7 h-7 ${ok ? 'text-emerald-500' : 'text-slate-400'}`} strokeWidth={ok ? 2.5 : 1.8} />
+      {preview && (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={preview} alt={label} className="absolute inset-0 h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-black/10" />
+          <div className="absolute left-2 top-2 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+            {label}
+          </div>
+          <div className="absolute right-2 top-2 rounded-full bg-white/95 p-1 text-emerald-600 shadow-sm">
+            <Icon name="check" className="w-4 h-4" strokeWidth={2.7} />
+          </div>
+        </>
+      )}
       <span className={`text-sm font-medium ${ok ? 'text-emerald-700' : 'text-slate-600'}`}>{ok ? `${label} ✓` : label}</span>
     </button>
   );
