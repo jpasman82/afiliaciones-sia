@@ -6,6 +6,7 @@ import { collection, doc, getDoc, serverTimestamp, writeBatch } from 'firebase/f
 import { ref, uploadBytes } from 'firebase/storage';
 import { db, storage } from '../../../firebaseConfig';
 import { FichaForm } from '../../components/ficha/FichaForm';
+import { EscanerCodigoBarras } from '../../components/ficha/EscanerCodigoBarras';
 import { decodeDniBarcode } from '../../lib/decodeDniBarcode';
 import { parsedDniToFormFields } from '../../lib/parseDniPdf417';
 
@@ -43,6 +44,11 @@ const fichaInicial = {
 };
 
 type FichaPublicaData = typeof fichaInicial;
+type RecortePublico = {
+  cara: 'frente' | 'dorso';
+  imagen: string;
+  siguienteImagen?: string;
+};
 
 export default function CargaPublicaPage() {
   const params = useParams<{ token: string }>();
@@ -60,7 +66,9 @@ export default function CargaPublicaPage() {
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
   const [decodeStatus, setDecodeStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
-  const [dniDatosLeidos, setDniDatosLeidos] = useState(false);
+  const dniDatosLeidosRef = useRef(false);
+  const [recortePendiente, setRecortePendiente] = useState<RecortePublico | null>(null);
+  const [escaneandoCodigo, setEscaneandoCodigo] = useState(false);
 
   useEffect(() => {
     const validar = async () => {
@@ -172,13 +180,13 @@ export default function CargaPublicaPage() {
   };
 
   const intentarLeerDni = async (dataUrl: string, cara: 'frente' | 'dorso') => {
-    if (dniDatosLeidos) return;
+    if (dniDatosLeidosRef.current) return;
     setDecodeStatus(prev => prev === 'success' ? 'success' : 'processing');
     try {
       const parsed = await decodeDniBarcode(dataUrl);
       if (parsed && (parsed.dni || parsed.apellidos)) {
         setFormData(prev => ({ ...prev, ...parsedDniToFormFields(parsed) }));
-        setDniDatosLeidos(true);
+        dniDatosLeidosRef.current = true;
         setDecodeStatus('success');
       } else {
         setDecodeStatus(cara === 'frente' ? 'idle' : 'failed');
@@ -192,14 +200,26 @@ export default function CargaPublicaPage() {
     setProcesandoArchivo(true);
     try {
       const dataUrl = await prepararImagenArchivo(file);
-      if (cara === 'frente') setFotoFrenteB64(dataUrl);
-      else setFotoDorsoB64(dataUrl);
-      await intentarLeerDni(dataUrl, cara);
+      setRecortePendiente({ cara, imagen: dataUrl });
     } catch (e: any) {
       alert(e?.message || 'No se pudo procesar la imagen.');
     } finally {
       setProcesandoArchivo(false);
     }
+  };
+
+  const aplicarRecorte = async (dataUrl: string) => {
+    const recorte = recortePendiente;
+    if (!recorte) return;
+    if (recorte.cara === 'frente') setFotoFrenteB64(dataUrl);
+    else setFotoDorsoB64(dataUrl);
+
+    if (recorte.cara === 'frente' && recorte.siguienteImagen) {
+      setRecortePendiente({ cara: 'dorso', imagen: recorte.siguienteImagen });
+    } else {
+      setRecortePendiente(null);
+    }
+    await intentarLeerDni(dataUrl, recorte.cara);
   };
 
   const cargarArchivoUnico = async (file: File) => {
@@ -218,10 +238,7 @@ export default function CargaPublicaPage() {
       if (!paginas.length) throw new Error('El archivo no tiene paginas para procesar.');
       const frente = paginas[0];
       const dorso = paginas[1] || paginas[0];
-      setFotoFrenteB64(frente);
-      setFotoDorsoB64(dorso);
-      await intentarLeerDni(frente, 'frente');
-      await intentarLeerDni(dorso, 'dorso');
+      setRecortePendiente({ cara: 'frente', imagen: frente, siguienteImagen: dorso });
     } catch (e: any) {
       alert(e?.message || 'No se pudo procesar el archivo.');
     } finally {
@@ -340,10 +357,33 @@ export default function CargaPublicaPage() {
 
   return (
     <PublicShell>
+      {recortePendiente && (
+        <RecortadorDniPublico
+          key={`${recortePendiente.cara}-${recortePendiente.imagen.slice(0, 32)}`}
+          cara={recortePendiente.cara}
+          imagen={recortePendiente.imagen}
+          onClose={() => setRecortePendiente(null)}
+          onApply={aplicarRecorte}
+        />
+      )}
+      {escaneandoCodigo && (
+        <EscanerCodigoBarras
+          fotoFrente={fotoFrenteB64}
+          fotoDorso={fotoDorsoB64}
+          onClose={() => setEscaneandoCodigo(false)}
+          onApply={(campos) => {
+            setFormData(prev => ({ ...prev, ...campos }));
+            dniDatosLeidosRef.current = true;
+            setDecodeStatus('success');
+            setEscaneandoCodigo(false);
+          }}
+        />
+      )}
       <input
         ref={frenteInputRef}
         type="file"
         accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+        capture="environment"
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0];
@@ -355,6 +395,7 @@ export default function CargaPublicaPage() {
         ref={dorsoInputRef}
         type="file"
         accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+        capture="environment"
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0];
@@ -369,6 +410,9 @@ export default function CargaPublicaPage() {
         onCancel={() => setFormData({ ...fichaInicial })}
         editando={false}
         subiendo={subiendo}
+        hideBackButton
+        hideCancelButton
+        submitLabel="Enviar ficha"
         dni={{
           modo: 'escaner',
           setModo: () => {},
@@ -380,6 +424,7 @@ export default function CargaPublicaPage() {
           onScanFrente: () => frenteInputRef.current?.click(),
           onScanDorso: () => dorsoInputRef.current?.click(),
           onPickFile: cargarArchivoUnico,
+          onScanBarcode: () => setEscaneandoCodigo(true),
         }}
         decodeStatus={decodeStatus}
       />
@@ -399,4 +444,182 @@ function PublicShell({ children }: { children: React.ReactNode }) {
       </div>
     </main>
   );
+}
+
+type CropBox = { x: number; y: number; w: number; h: number };
+
+function RecortadorDniPublico({
+  cara,
+  imagen,
+  onClose,
+  onApply,
+}: {
+  cara: 'frente' | 'dorso';
+  imagen: string;
+  onClose: () => void;
+  onApply: (dataUrl: string) => void;
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [displayed, setDisplayed] = useState<{ w: number; h: number } | null>(null);
+  const [box, setBox] = useState<CropBox>({ x: 0, y: 0, w: 0, h: 0 });
+  const dragInfo = useRef<{ px: number; py: number; box: CropBox } | null>(null);
+
+  const recalcular = () => {
+    const img = imgRef.current;
+    const wrap = wrapperRef.current;
+    if (!img || !wrap || !img.naturalWidth) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const aspect = img.naturalWidth / img.naturalHeight;
+    let w: number;
+    let h: number;
+    if (rect.width / aspect <= rect.height) {
+      w = rect.width;
+      h = rect.width / aspect;
+    } else {
+      h = rect.height;
+      w = rect.height * aspect;
+    }
+
+    const cropAspect = 1.58;
+    let cropW = w * 0.92;
+    let cropH = cropW / cropAspect;
+    if (cropH > h * 0.92) {
+      cropH = h * 0.92;
+      cropW = cropH * cropAspect;
+    }
+    setDisplayed({ w, h });
+    setBox({ x: (w - cropW) / 2, y: (h - cropH) / 2, w: cropW, h: cropH });
+  };
+
+  useEffect(() => {
+    const onResize = () => recalcular();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+
+  const mover = (e: React.PointerEvent) => {
+    if (!displayed) return;
+    e.preventDefault();
+    dragInfo.current = { px: e.clientX, py: e.clientY, box: { ...box } };
+    const onMove = (ev: PointerEvent) => {
+      if (!dragInfo.current || !displayed) return;
+      ev.preventDefault();
+      const dx = ev.clientX - dragInfo.current.px;
+      const dy = ev.clientY - dragInfo.current.py;
+      const start = dragInfo.current.box;
+      setBox({
+        ...start,
+        x: clamp(start.x + dx, 0, displayed.w - start.w),
+        y: clamp(start.y + dy, 0, displayed.h - start.h),
+      });
+    };
+    const onUp = () => {
+      dragInfo.current = null;
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    };
+    document.addEventListener('pointermove', onMove, { passive: false });
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+  };
+
+  const ajustar = (delta: number) => {
+    if (!displayed) return;
+    const aspect = 1.58;
+    const nextW = clamp(box.w + delta, 140, displayed.w);
+    const nextH = nextW / aspect;
+    if (nextH > displayed.h) return;
+    const cx = box.x + box.w / 2;
+    const cy = box.y + box.h / 2;
+    setBox({
+      x: clamp(cx - nextW / 2, 0, displayed.w - nextW),
+      y: clamp(cy - nextH / 2, 0, displayed.h - nextH),
+      w: nextW,
+      h: nextH,
+    });
+  };
+
+  const usar = () => {
+    const img = imgRef.current;
+    if (!img || !displayed) return;
+    const scaleX = img.naturalWidth / displayed.w;
+    const scaleY = img.naturalHeight / displayed.h;
+    const sx = box.x * scaleX;
+    const sy = box.y * scaleY;
+    const sw = box.w * scaleX;
+    const sh = box.h * scaleY;
+    const outputScale = sw > DNI_PUBLIC_MAX_WIDTH ? DNI_PUBLIC_MAX_WIDTH / sw : 1;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(sw * outputScale);
+    canvas.height = Math.round(sh * outputScale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', DNI_PUBLIC_JPEG_QUALITY);
+    canvas.width = 0;
+    canvas.height = 0;
+    onApply(dataUrl);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+      <div className="p-4 bg-black text-white flex justify-between items-center shrink-0">
+        <div>
+          <h3 className="font-bold text-lg">Recortar {cara} del DNI</h3>
+          <p className="text-xs text-white/60 mt-0.5">Mové el marco hasta cubrir el DNI.</p>
+        </div>
+        <button type="button" onClick={onClose} className="text-white font-bold px-3 py-1 bg-red-600 rounded">Cerrar</button>
+      </div>
+
+      <div ref={wrapperRef} className="flex-1 relative bg-black flex items-center justify-center min-h-0 overflow-hidden p-3">
+        <div className="relative touch-none select-none" style={displayed ? { width: displayed.w, height: displayed.h } : { width: 1, height: 1, opacity: 0 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img ref={imgRef} src={imagen} alt={`DNI ${cara}`} onLoad={recalcular} draggable={false} className="block w-full h-full pointer-events-none" />
+          {displayed && (
+            <div
+              className="absolute border-4 border-emerald-400 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] cursor-move"
+              style={{ left: box.x, top: box.y, width: box.w, height: box.h, touchAction: 'none' }}
+              onPointerDown={mover}
+            >
+              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded bg-black/45 text-white/85 text-xs font-bold uppercase tracking-wide pointer-events-none">
+                {cara}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-black p-3 md:p-4 shrink-0">
+        <div className="flex gap-2 mb-2">
+          <button type="button" onClick={() => ajustar(-40)} className="flex-1 py-3 rounded-lg bg-slate-800 text-white font-bold text-sm active:bg-slate-700">
+            Achicar marco
+          </button>
+          <button type="button" onClick={() => ajustar(40)} className="flex-1 py-3 rounded-lg bg-slate-800 text-white font-bold text-sm active:bg-slate-700">
+            Agrandar marco
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} className="flex-1 py-3 rounded-lg bg-white text-slate-900 font-bold text-sm active:bg-slate-100">
+            Cancelar
+          </button>
+          <button type="button" onClick={usar} className="flex-1 py-3 rounded-lg bg-emerald-600 text-white font-bold text-sm active:bg-emerald-700">
+            Usar recorte
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
 }

@@ -41,6 +41,9 @@ interface FichaFormProps {
   publicLink?: string | null;
   creandoPublicLink?: boolean;
   onCrearPublicLink?: () => void;
+  hideBackButton?: boolean;
+  hideCancelButton?: boolean;
+  submitLabel?: string;
   dni: {
     modo: 'escaner' | 'unico';
     setModo: (m: 'escaner' | 'unico') => void;
@@ -60,17 +63,17 @@ interface FichaFormProps {
   decodeStatus?: 'idle' | 'processing' | 'success' | 'failed';
 }
 
-export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, publicLink, creandoPublicLink, onCrearPublicLink, dni, decodeStatus }: FichaFormProps) {
+export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, publicLink, creandoPublicLink, onCrearPublicLink, hideBackButton, hideCancelButton, submitLabel, dni, decodeStatus }: FichaFormProps) {
   return (
     <form onSubmit={onSubmit} className="max-w-4xl mx-auto pb-24 md:pb-8" data-screen-label={editando ? 'Editar ficha' : 'Nueva ficha'}>
-      <button type="button" onClick={onCancel} className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 mb-4">
+      <button type="button" onClick={onCancel} className={`${hideBackButton ? 'hidden' : 'inline-flex'} items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 mb-4`}>
         <Icon name="arrowLeft" className="w-4 h-4" strokeWidth={2.2} /> {editando ? 'Cancelar edición' : 'Volver'}
       </button>
       <PageHeader title={editando ? 'Editar ficha' : 'Nueva ficha'} sub={editando ? `${formData.apellidos}, ${formData.nombres}` : 'Cargá los datos del afiliado'} />
 
       <Card className="px-5 md:px-7 divide-y divide-slate-100">
         <FormSection n="1" title="Documentación" sub="Foto del DNI: frente y dorso, o un archivo único">
-          <DniUploader dni={dni} decodeStatus={decodeStatus} />
+          <DniUploader dni={dni} />
           {decodeStatus && decodeStatus !== 'idle' && <DecodeStatusIndicator status={decodeStatus} />}
           {onCrearPublicLink && !editando && (
             <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -132,15 +135,15 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
 
       <div className="fixed md:static bottom-16 inset-x-0 md:mt-5 px-4 md:px-0 z-20">
         <div className="flex gap-2.5 bg-white/95 md:bg-transparent backdrop-blur md:backdrop-blur-0 p-3 md:p-0 rounded-xl ring-1 ring-slate-200 md:ring-0 shadow-pop md:shadow-none">
-          <Button type="button" variant="secondary" className="flex-1 md:flex-none" onClick={onCancel}>Cancelar</Button>
-          <Button type="submit" icon="check" disabled={subiendo} className="flex-1 md:flex-none md:ml-auto">{subiendo ? 'Guardando…' : editando ? 'Guardar cambios' : 'Crear ficha'}</Button>
+          {!hideCancelButton && <Button type="button" variant="secondary" className="flex-1 md:flex-none" onClick={onCancel}>Cancelar</Button>}
+          <Button type="submit" icon="check" disabled={subiendo} className="flex-1 md:flex-none md:ml-auto">{subiendo ? 'Guardando…' : submitLabel || (editando ? 'Guardar cambios' : 'Crear ficha')}</Button>
         </div>
       </div>
     </form>
   );
 }
 
-function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decodeStatus?: FichaFormProps['decodeStatus'] }) {
+function DniUploader({ dni }: { dni: FichaFormProps['dni'] }) {
   const archivoInputRef = useRef<HTMLInputElement>(null);
   return (
     <div>
@@ -181,7 +184,7 @@ function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decode
       </>
       {dni.procesandoArchivo && <p className="text-xs text-slate-500 font-medium mt-3">Procesando archivo del DNI…</p>}
       {(dni.frenteOk || dni.dorsoOk) && <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado</p>}
-      {dni.onScanBarcode && decodeStatus === 'failed' && (dni.frenteOk || dni.dorsoOk) && (
+      {dni.onScanBarcode && (dni.frenteOk || dni.dorsoOk) && (
         <button type="button" onClick={dni.onScanBarcode}
           className="mt-4 w-full py-2.5 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 active:bg-slate-950 transition flex items-center justify-center gap-2">
           <BarcodeIcon className="w-5 h-5" /> Reintentar lectura del código
