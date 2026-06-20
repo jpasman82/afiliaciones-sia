@@ -193,19 +193,23 @@ service cloud.firestore {
     }
 
     match /dniIndex/{dni} {
-      allow read: if request.auth != null && rolActivo(request.auth.uid);
-      allow create: if request.auth != null &&
+      // Cualquier usuario activo puede chequear un DNI puntual, pero no listar toda la coleccion.
+      allow get: if request.auth != null && rolActivo(request.auth.uid);
+      allow list: if request.auth != null && esAdminOSupervisor(request.auth.uid);
+      allow create: if (
+        request.auth != null &&
         rolActivo(request.auth.uid) &&
         request.resource.data.keys().hasOnly(['dni', 'fichaId', 'afiliadorUid', 'fecha']) &&
         request.resource.data.dni == dni &&
         request.resource.data.afiliadorUid == request.auth.uid
-        ||
+      ) || (
         request.auth == null &&
         request.resource.data.keys().hasOnly(['dni', 'fichaId', 'afiliadorUid', 'fecha']) &&
         request.resource.data.dni == dni &&
         existsAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)) &&
         getAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)).data.dni == dni &&
-        getAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)).data.afiliadorUid == request.resource.data.afiliadorUid;
+        getAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)).data.afiliadorUid == request.resource.data.afiliadorUid
+      );
       allow update: if false;
       allow delete: if request.auth != null && (
         esAdmin(request.auth.uid) ||
@@ -217,8 +221,11 @@ service cloud.firestore {
       allow get: if resource.data.usado == false && resource.data.venceEn > request.time;
       allow list: if false;
       allow create: if request.auth != null &&
+        rolActivo(request.auth.uid) &&
         request.resource.data.keys().hasOnly(['afiliadorUid', 'afiliadorEmail', 'afiliadorNombre', 'creadoEn', 'venceEn', 'usado']) &&
         request.resource.data.afiliadorUid == request.auth.uid &&
+        request.resource.data.afiliadorEmail is string &&
+        request.resource.data.afiliadorNombre is string &&
         request.resource.data.usado == false &&
         request.resource.data.venceEn > request.time;
       allow update: if usoLinkPublicoValido(token);
