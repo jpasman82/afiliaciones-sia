@@ -1,0 +1,423 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Guía del Afiliador · SIA</title>
+  <meta name="theme-color" content="#4a148c" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+        colors: { brand: {
+          50:'#f4f1fb',100:'#e9e3f7',200:'#d4c7ef',300:'#b29ee0',400:'#8f6fcf',
+          500:'#714cbb',600:'#5b37a0',700:'#4a148c',800:'#3d1173',900:'#2f0d59',950:'#1d0838',
+        }},
+        boxShadow: {
+          card:'0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06)',
+          pop:'0 10px 30px -10px rgb(15 23 42 / 0.25)',
+        },
+      }},
+    };
+  </script>
+  <style>
+    html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+    body { margin: 0; }
+    .tnum { font-variant-numeric: tabular-nums; }
+    section[id] { scroll-margin-top: 84px; }
+    .step-num { background-image: linear-gradient(135deg, #5b37a0, #4a148c); }
+    @keyframes fadeUp { from { opacity:0; transform: translateY(10px);} to { opacity:1; transform:none;} }
+    /* Visible por defecto (progressive enhancement). Solo se oculta si el JS
+       confirma que el IntersectionObserver puede animar la entrada. */
+    .js-reveal { opacity: 0; }
+    .js-reveal.in { animation: fadeUp .5s ease-out both; }
+    /* phone screen scroll hint */
+    .mock { box-shadow: 0 1px 2px 0 rgb(15 23 42 / .04), 0 1px 3px 0 rgb(15 23 42 / .06); }
+  </style>
+</head>
+<body class="font-sans text-slate-800 bg-slate-100 antialiased">
+
+  <!-- ===================== TOP BAR ===================== -->
+  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-[480px] mx-auto px-4 h-14 flex items-center gap-2.5">
+      <img src="/logo.png" alt="SIA" class="w-8 h-8 object-contain" />
+      <div class="leading-none">
+        <div class="text-[13px] font-bold text-slate-900">Guía del Afiliador</div>
+        <div class="text-[10px] font-semibold tracking-[0.18em] text-brand-700 mt-0.5">SIA</div>
+      </div>
+      <a href="#pasos" class="ml-auto text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 transition rounded-lg px-3 py-1.5">Ver pasos</a>
+    </div>
+    <div class="h-0.5 bg-slate-100">
+      <div id="progress" class="h-full bg-brand-600 transition-[width] duration-150" style="width:0%"></div>
+    </div>
+  </header>
+
+  <main class="max-w-[480px] mx-auto px-4 pb-20">
+
+    <!-- ===================== HERO ===================== -->
+    <section class="pt-8 pb-6 text-center">
+      <span class="inline-flex items-center gap-1.5 rounded-full bg-white ring-1 ring-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-card">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Guía rápida · 5 pasos
+      </span>
+      <h1 class="text-[26px] leading-tight font-extrabold text-slate-900 tracking-tight mt-4">
+        Cómo cargar una<br><span class="text-brand-700">ficha de afiliación</span>
+      </h1>
+      <p class="text-sm text-slate-500 mt-3 px-4 text-balance">
+        Todo lo que necesitás para empezar a afiliar desde el celular. Seguí los pasos en orden.
+      </p>
+    </section>
+
+    <!-- ===================== STEP INDEX ===================== -->
+    <nav id="pasos" class="grid grid-cols-1 gap-2 mb-8">
+      <a href="#paso-1" class="flex items-center gap-3 bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3.5 py-3 active:scale-[.99] transition">
+        <span class="step-num w-9 h-9 rounded-lg text-white font-bold flex items-center justify-center shrink-0 text-sm">1</span>
+        <span class="text-sm font-semibold text-slate-800">Ingresar a la app</span>
+        <svg class="ml-auto w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+      </a>
+      <a href="#paso-2" class="flex items-center gap-3 bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3.5 py-3 active:scale-[.99] transition">
+        <span class="step-num w-9 h-9 rounded-lg text-white font-bold flex items-center justify-center shrink-0 text-sm">2</span>
+        <span class="text-sm font-semibold text-slate-800">Cargar un nuevo afiliado</span>
+        <svg class="ml-auto w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+      </a>
+      <a href="#paso-3" class="flex items-center gap-3 bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3.5 py-3 active:scale-[.99] transition">
+        <span class="step-num w-9 h-9 rounded-lg text-white font-bold flex items-center justify-center shrink-0 text-sm">3</span>
+        <span class="text-sm font-semibold text-slate-800">Escanear los datos del DNI</span>
+        <svg class="ml-auto w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+      </a>
+      <a href="#paso-4" class="flex items-center gap-3 bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3.5 py-3 active:scale-[.99] transition">
+        <span class="step-num w-9 h-9 rounded-lg text-white font-bold flex items-center justify-center shrink-0 text-sm">4</span>
+        <span class="text-sm font-semibold text-slate-800">Modificar una ficha</span>
+        <svg class="ml-auto w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+      </a>
+      <a href="#paso-5" class="flex items-center gap-3 bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3.5 py-3 active:scale-[.99] transition">
+        <span class="step-num w-9 h-9 rounded-lg text-white font-bold flex items-center justify-center shrink-0 text-sm">5</span>
+        <span class="text-sm font-semibold text-slate-800">Ver el estado</span>
+        <svg class="ml-auto w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+      </a>
+    </nav>
+
+    <!-- ===================== PASO 1 · LOGIN ===================== -->
+    <section id="paso-1" class="mb-10 reveal">
+      <div class="flex items-center gap-2.5 mb-3">
+        <span class="step-num w-7 h-7 rounded-lg text-white font-bold flex items-center justify-center text-xs">1</span>
+        <h2 class="text-lg font-bold text-slate-900">Ingresar a la app</h2>
+      </div>
+      <p class="text-sm text-slate-600 leading-relaxed mb-4">
+        Abrí la app y tocá <b class="text-slate-900">Ingresar con Gmail</b>. Usá tu cuenta de Google de siempre.
+      </p>
+
+      <!-- mock: login -->
+      <div class="rounded-2xl bg-white ring-1 ring-slate-200 mock overflow-hidden">
+        <div class="bg-slate-50 px-5 pt-8 pb-7 flex flex-col items-center text-center">
+          <img src="/logo.png" alt="" class="w-16 h-16 object-contain mb-3" />
+          <div class="text-lg font-bold text-slate-900">Afiliaciones <span class="text-brand-700">SIA</span></div>
+          <div class="text-xs text-slate-400 mt-1 mb-5">Sistema interno de afiliaciones</div>
+          <div class="w-full inline-flex items-center justify-center gap-2.5 rounded-xl bg-white ring-1 ring-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm relative">
+            <svg class="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.3 9.14 5.38 12 5.38Z"/></svg>
+            Ingresar con Gmail
+            <!-- finger tap -->
+            <span class="absolute -right-1 -bottom-2 text-2xl">👆</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- callout -->
+      <div class="flex gap-3 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 mt-4">
+        <svg class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
+        <p class="text-[13px] text-amber-800 leading-relaxed">
+          <b>La primera vez</b> vas a completar tu <b>nombre y apellido</b> y esperar a que un administrador te apruebe. Hasta entonces verás “Acceso pendiente”.
+        </p>
+      </div>
+    </section>
+
+    <!-- ===================== PASO 2 · NUEVA FICHA ===================== -->
+    <section id="paso-2" class="mb-10 reveal">
+      <div class="flex items-center gap-2.5 mb-3">
+        <span class="step-num w-7 h-7 rounded-lg text-white font-bold flex items-center justify-center text-xs">2</span>
+        <h2 class="text-lg font-bold text-slate-900">Cargar un nuevo afiliado</h2>
+      </div>
+      <p class="text-sm text-slate-600 leading-relaxed mb-4">
+        Tocá el botón <b class="text-brand-700">+</b> (violeta, abajo en el centro) para empezar una ficha nueva. Completá los datos por secciones.
+      </p>
+
+      <!-- mock: bottom nav with FAB -->
+      <div class="rounded-2xl bg-white ring-1 ring-slate-200 mock overflow-hidden mb-4">
+        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+          <span class="text-sm font-bold text-slate-900">Registros</span>
+          <span class="text-[11px] text-slate-400">Tus fichas</span>
+        </div>
+        <div class="px-4 py-4 space-y-2 bg-slate-50/60">
+          <div class="bg-white rounded-lg ring-1 ring-slate-200 px-3 py-2.5 flex items-center gap-2.5">
+            <span class="w-8 h-8 rounded-full bg-brand-100 text-brand-700 text-[11px] font-bold flex items-center justify-center">SP</span>
+            <div class="min-w-0">
+              <div class="text-[13px] font-semibold text-slate-800 leading-tight">Paredes, Sofía</div>
+              <div class="text-[11px] text-slate-400 tnum">DNI 38.421.907</div>
+            </div>
+            <span class="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 px-2 py-0.5 text-[10px] font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Aprobada</span>
+          </div>
+        </div>
+        <!-- nav -->
+        <div class="relative grid grid-cols-3 h-14 border-t border-slate-200 bg-white">
+          <div class="flex flex-col items-center justify-center gap-0.5 text-brand-700">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.1"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+            <span class="text-[9px] font-semibold">Registros</span>
+          </div>
+          <div class="flex items-start justify-center">
+            <div class="-mt-5 w-14 h-14 rounded-full step-num text-white shadow-pop flex items-center justify-center ring-4 ring-white relative">
+              <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+              <span class="absolute -right-2 -bottom-3 text-2xl">👆</span>
+            </div>
+          </div>
+          <div class="flex flex-col items-center justify-center gap-0.5 text-slate-400">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/></svg>
+            <span class="text-[9px] font-semibold">Control</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- mini form sections -->
+      <p class="text-[13px] font-semibold text-slate-700 mb-2">La ficha está ordenada así:</p>
+      <div class="grid grid-cols-2 gap-2">
+        <div class="bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3 py-3">
+          <div class="flex items-center gap-1.5"><span class="w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[10px] font-bold flex items-center justify-center">1</span><span class="text-[13px] font-semibold text-slate-800">Documentación</span></div>
+          <p class="text-[11px] text-slate-400 mt-1 ml-6">Escaneo y fotos del DNI</p>
+        </div>
+        <div class="bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3 py-3">
+          <div class="flex items-center gap-1.5"><span class="w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[10px] font-bold flex items-center justify-center">2</span><span class="text-[13px] font-semibold text-slate-800">Personales</span></div>
+          <p class="text-[11px] text-slate-400 mt-1 ml-6">Nombre, DNI, clase…</p>
+        </div>
+        <div class="bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3 py-3">
+          <div class="flex items-center gap-1.5"><span class="w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[10px] font-bold flex items-center justify-center">3</span><span class="text-[13px] font-semibold text-slate-800">Domicilio</span></div>
+          <p class="text-[11px] text-slate-400 mt-1 ml-6">Localidad, calle…</p>
+        </div>
+        <div class="bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3 py-3">
+          <div class="flex items-center gap-1.5"><span class="w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[10px] font-bold flex items-center justify-center">4</span><span class="text-[13px] font-semibold text-slate-800">Contacto</span></div>
+          <p class="text-[11px] text-slate-400 mt-1 ml-6">Celular, email</p>
+        </div>
+      </div>
+
+      <div class="flex gap-3 rounded-xl bg-brand-50 ring-1 ring-inset ring-brand-200 px-4 py-3 mt-4">
+        <span class="text-base leading-none mt-0.5">💡</span>
+        <p class="text-[13px] text-brand-800 leading-relaxed">Los campos con <span class="text-rose-500 font-bold">*</span> son obligatorios. Cuando termines, tocá <b>Crear ficha</b> abajo.</p>
+      </div>
+    </section>
+
+    <!-- ===================== PASO 3 · ESCANEO DNI ===================== -->
+    <section id="paso-3" class="mb-10 reveal">
+      <div class="flex items-center gap-2.5 mb-3">
+        <span class="step-num w-7 h-7 rounded-lg text-white font-bold flex items-center justify-center text-xs">3</span>
+        <h2 class="text-lg font-bold text-slate-900">Escanear los datos del DNI</h2>
+      </div>
+      <p class="text-sm text-slate-600 leading-relaxed mb-4">
+        En <b>Documentación</b>, tocá <b>Escanear datos del DNI</b>. Se abre la cámara nativa del celular: sacá foto del <b>dorso</b>, donde está el código de barras PDF417.
+      </p>
+
+      <!-- mock: nuevo botón de escaneo -->
+      <div class="rounded-2xl bg-white ring-1 ring-slate-200 mock overflow-hidden mb-4">
+        <div class="px-4 py-3 border-b border-slate-100 text-sm font-bold text-slate-900">Documentación</div>
+        <div class="p-4 bg-slate-50/60">
+          <div class="w-full py-3 rounded-xl bg-brand-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-sm relative">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 5.25v13.5M6.75 5.25v13.5M9.75 5.25v13.5M13.5 5.25v13.5M16.5 5.25v13.5M20.25 5.25v13.5" /></svg>
+            Escanear datos del DNI
+            <span class="absolute -right-1 -bottom-2 text-2xl">👆</span>
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-3">
+            <div class="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white py-5">
+              <svg class="w-7 h-7 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"/></svg>
+              <span class="text-[13px] font-medium text-slate-600">Frente</span>
+            </div>
+            <div class="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/60 py-5">
+              <svg class="w-7 h-7 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+              <span class="text-[13px] font-medium text-emerald-700">Dorso leído</span>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center gap-2 text-xs text-emerald-700 font-semibold">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+            Datos del DNI leídos automáticamente. Revisalos antes de guardar.
+          </div>
+        </div>
+      </div>
+
+      <!-- mock: cámara nativa + recorte -->
+      <div class="rounded-2xl overflow-hidden mb-4 bg-black ring-1 ring-slate-900/20 mock">
+        <div class="px-4 py-3 bg-black text-white text-sm font-bold border-b border-white/10">Recortar foto del DNI</div>
+        <div class="p-6 flex items-center justify-center" style="background: repeating-linear-gradient(135deg,#1e293b,#1e293b 14px,#172033 14px,#172033 28px);">
+          <div class="relative w-[82%] aspect-[1.58] rounded-lg border-4 border-emerald-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.38)]">
+            <span class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-white/90 rounded-tl"></span>
+            <span class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-white/90 rounded-tr"></span>
+            <span class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-white/90 rounded-bl"></span>
+            <span class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-white/90 rounded-br"></span>
+            <span class="absolute inset-0 flex items-center justify-center text-white/80 text-[10px] font-semibold uppercase tracking-[0.2em]">Ajustá el recorte al DNI</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2 p-3 bg-black">
+          <div class="py-2.5 rounded-lg bg-slate-800 text-white text-center text-xs font-bold">Reintentar</div>
+          <div class="py-2.5 rounded-lg bg-emerald-600 text-white text-center text-xs font-bold">Usar recorte</div>
+        </div>
+      </div>
+
+      <ul class="space-y-2">
+        <li class="flex gap-2.5 text-[13px] text-slate-600"><span class="text-emerald-500 mt-0.5">✓</span><span>Fotografiá el <b>dorso</b> del DNI con buena luz y sin reflejos.</span></li>
+        <li class="flex gap-2.5 text-[13px] text-slate-600"><span class="text-emerald-500 mt-0.5">✓</span><span>Después de sacar la foto, mové el marco para que encierre el DNI completo.</span></li>
+        <li class="flex gap-2.5 text-[13px] text-slate-600"><span class="text-emerald-500 mt-0.5">✓</span><span>Si la lectura fue correcta, revisá los datos cargados automáticamente antes de crear la ficha.</span></li>
+      </ul>
+      <p class="text-[13px] text-slate-500 mt-3">Si no lee el código, podés cargar los datos manualmente y usar <b>Frente</b>/<b>Dorso</b> o <b>Archivo único</b> para adjuntar la documentación.</p>
+    </section>
+    <!-- ===================== PASO 4 · MODIFICAR ===================== -->
+    <section id="paso-4" class="mb-10 reveal">
+      <div class="flex items-center gap-2.5 mb-3">
+        <span class="step-num w-7 h-7 rounded-lg text-white font-bold flex items-center justify-center text-xs">4</span>
+        <h2 class="text-lg font-bold text-slate-900">Modificar una ficha</h2>
+      </div>
+      <p class="text-sm text-slate-600 leading-relaxed mb-4">
+        En <b>Registros</b>, tocá la ficha que querés cambiar. Se abre el detalle: tocá <b>Editar</b>, corregí lo que haga falta y <b>Guardá</b>.
+      </p>
+
+      <!-- mock: detalle con Editar -->
+      <div class="rounded-2xl bg-white ring-1 ring-slate-200 mock overflow-hidden">
+        <div class="p-4 flex items-start gap-3 border-b border-slate-100">
+          <span class="w-11 h-11 rounded-full bg-brand-100 text-brand-700 text-sm font-bold flex items-center justify-center">LV</span>
+          <div class="min-w-0 flex-1">
+            <div class="text-[15px] font-bold text-slate-900 leading-tight">Villalba, Joaquín</div>
+            <div class="text-[11px] text-slate-400 tnum mt-0.5">DNI 40.129.833</div>
+          </div>
+          <div class="inline-flex items-center gap-1.5 rounded-lg bg-white ring-1 ring-slate-300 px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 relative">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"/></svg>
+            Editar
+            <span class="absolute -right-1 -bottom-3 text-xl">👆</span>
+          </div>
+        </div>
+        <div class="p-4 grid grid-cols-2 gap-y-3 gap-x-4 bg-slate-50/40">
+          <div><div class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Localidad</div><div class="text-[13px] font-medium text-slate-800">Martínez</div></div>
+          <div><div class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Celular</div><div class="text-[13px] font-medium text-slate-800 tnum">11 6021 7788</div></div>
+        </div>
+      </div>
+
+      <div class="flex gap-3 rounded-xl bg-slate-100 ring-1 ring-inset ring-slate-200 px-4 py-3 mt-4">
+        <svg class="w-5 h-5 text-slate-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
+        <p class="text-[13px] text-slate-600 leading-relaxed">Si la ficha ya avanzó en el control (ya entró a la JE), quizás no puedas editarla. En ese caso, avisale a tu supervisor.</p>
+      </div>
+    </section>
+
+    <!-- ===================== PASO 5 · ESTADO ===================== -->
+    <section id="paso-5" class="mb-10 reveal">
+      <div class="flex items-center gap-2.5 mb-3">
+        <span class="step-num w-7 h-7 rounded-lg text-white font-bold flex items-center justify-center text-xs">5</span>
+        <h2 class="text-lg font-bold text-slate-900">Ver el estado</h2>
+      </div>
+      <p class="text-sm text-slate-600 leading-relaxed mb-4">
+        Cada ficha tiene una <b>etiqueta de color</b> que te dice en qué parte del proceso está. La ves en el listado y en el detalle.
+      </p>
+
+      <!-- stepper circuito -->
+      <div class="rounded-2xl bg-white ring-1 ring-slate-200 mock p-4 mb-4">
+        <div class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-4">El recorrido de una ficha</div>
+        <div class="flex items-center">
+          <div class="flex flex-col items-center gap-1.5 shrink-0">
+            <div class="w-7 h-7 rounded-full bg-emerald-500 text-white ring-2 ring-emerald-500 flex items-center justify-center"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+            <span class="text-[9px] font-semibold text-slate-700">Cargada</span>
+          </div>
+          <div class="flex-1 h-0.5 mx-1 mb-5 bg-emerald-400 rounded"></div>
+          <div class="flex flex-col items-center gap-1.5 shrink-0">
+            <div class="w-7 h-7 rounded-full bg-emerald-500 text-white ring-2 ring-emerald-500 flex items-center justify-center"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+            <span class="text-[9px] font-semibold text-slate-700">Escaneada</span>
+          </div>
+          <div class="flex-1 h-0.5 mx-1 mb-5 bg-slate-200 rounded"></div>
+          <div class="flex flex-col items-center gap-1.5 shrink-0">
+            <div class="w-7 h-7 rounded-full step-num text-white ring-2 ring-brand-700 flex items-center justify-center text-[11px] font-bold">3</div>
+            <span class="text-[9px] font-semibold text-slate-700">En JE</span>
+          </div>
+          <div class="flex-1 h-0.5 mx-1 mb-5 bg-slate-200 rounded"></div>
+          <div class="flex flex-col items-center gap-1.5 shrink-0">
+            <div class="w-7 h-7 rounded-full bg-white text-slate-400 ring-2 ring-slate-200 flex items-center justify-center text-[11px] font-bold">4</div>
+            <span class="text-[9px] font-semibold text-slate-400">Aprobada</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- leyenda de estados -->
+      <p class="text-[13px] font-semibold text-slate-700 mb-2">Qué significa cada etiqueta:</p>
+      <div class="space-y-2">
+        <div class="flex items-center gap-3 bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3.5 py-2.5">
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 px-2.5 py-1 text-[11px] font-semibold shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Pendiente</span>
+          <span class="text-[12px] text-slate-500">Recién cargada, falta procesar.</span>
+        </div>
+        <div class="flex items-center gap-3 bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3.5 py-2.5">
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200 px-2.5 py-1 text-[11px] font-semibold shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-violet-500"></span>Escaneada</span>
+          <span class="text-[12px] text-slate-500">La ficha física ya fue escaneada.</span>
+        </div>
+        <div class="flex items-center gap-3 bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3.5 py-2.5">
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 px-2.5 py-1 text-[11px] font-semibold shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>En JE</span>
+          <span class="text-[12px] text-slate-500">Presentada ante la Junta Electoral.</span>
+        </div>
+        <div class="flex items-center gap-3 bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3.5 py-2.5">
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 px-2.5 py-1 text-[11px] font-semibold shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Aprobada</span>
+          <span class="text-[12px] text-slate-500">¡Listo! Afiliación confirmada.</span>
+        </div>
+        <div class="flex items-center gap-3 bg-white rounded-xl ring-1 ring-slate-200 shadow-card px-3.5 py-2.5">
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200 px-2.5 py-1 text-[11px] font-semibold shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>Con error</span>
+          <span class="text-[12px] text-slate-500">Hay algo a corregir. Revisá el detalle.</span>
+        </div>
+      </div>
+
+      <div class="flex gap-3 rounded-xl bg-rose-50 ring-1 ring-inset ring-rose-200 px-4 py-3 mt-4">
+        <span class="text-base leading-none mt-0.5">⚠️</span>
+        <p class="text-[13px] text-rose-800 leading-relaxed">Si una ficha figura <b>Con error</b>, abrila para ver el motivo y corregí lo que indique (por ejemplo, volver a Escanear los datos del DNI).</p>
+      </div>
+    </section>
+
+    <!-- ===================== CIERRE ===================== -->
+    <section class="reveal">
+      <div class="rounded-2xl step-num text-white p-6 text-center shadow-pop">
+        <div class="text-3xl mb-2">🎉</div>
+        <h2 class="text-lg font-bold">¡Eso es todo!</h2>
+        <p class="text-[13px] text-brand-100 mt-2 leading-relaxed">Ya podés afiliar desde el celular. Ante cualquier duda, escribile a tu supervisor.</p>
+        <a href="#paso-1" class="inline-flex items-center gap-1.5 mt-4 bg-white text-brand-700 font-semibold text-sm rounded-lg px-4 py-2.5">
+          Volver al inicio
+          <svg class="w-4 h-4 rotate-[-90deg]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+        </a>
+      </div>
+      <p class="text-center text-[11px] text-slate-400 mt-6">Afiliaciones SIA · Guía para afiliadores</p>
+    </section>
+
+  </main>
+
+  <script>
+    // Barra de progreso de lectura
+    const bar = document.getElementById('progress');
+    const onScroll = () => {
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      bar.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + '%';
+    };
+    document.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    // Reveal on scroll — progressive enhancement.
+    // El contenido es visible por defecto; solo lo ocultamos (.js-reveal) si
+    // podemos garantizar que algo lo va a volver a mostrar.
+    (function () {
+      const els = Array.from(document.querySelectorAll('.reveal'));
+      if (!('IntersectionObserver' in window) || !els.length) return;
+
+      els.forEach(el => el.classList.add('js-reveal'));
+
+      const show = el => { el.classList.add('in'); };
+      const io = new IntersectionObserver((entries, obs) => {
+        entries.forEach(e => { if (e.isIntersecting) { show(e.target); obs.unobserve(e.target); } });
+      }, { threshold: 0.12 });
+      els.forEach(el => io.observe(el));
+
+      // Failsafe: si el observer no corrió (webview viejo, sin ciclo de scroll),
+      // revelamos todo igual para que nunca quede contenido invisible.
+      setTimeout(() => els.forEach(show), 1200);
+    })();
+  </script>
+</body>
+</html>
+
+
