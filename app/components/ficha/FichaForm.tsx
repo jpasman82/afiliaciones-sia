@@ -154,6 +154,9 @@ function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decode
           <DniSlot label="Frente" ok={dni.frenteOk} preview={dni.fotoFrente} onClick={dni.onScanFrente} />
           <DniSlot label="Dorso" ok={dni.dorsoOk} preview={dni.fotoDorso} onClick={dni.onScanDorso} />
         </div>
+        <p className="mt-2 text-center text-xs font-medium text-slate-500">
+          Subir archivos separados
+        </p>
       </>
       {dni.procesandoArchivo && <p className="text-xs text-slate-500 font-medium mt-3">Procesando archivo del DNI…</p>}
       {(dni.frenteOk || dni.dorsoOk) && <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado</p>}
