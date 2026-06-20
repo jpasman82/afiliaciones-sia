@@ -26,13 +26,19 @@ const IconControl = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" vi
 const DNI_CAPTURE_MAX_WIDTH = 1800;
 const DNI_CAPTURE_JPEG_QUALITY = 0.87;
 
-const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClose: () => void, onCapture: (imgData: string, originalFile?: File) => void, titulo: string, tipo?: 'dni' | 'ficha' }) => {
+type RecorteDniPendiente = {
+  cara: 'frente' | 'dorso' | 'unico';
+  imagen: string;
+  siguienteImagen?: string;
+};
+
+const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInicial }: { onClose: () => void, onCapture: (imgData: string, originalFile?: File) => void, titulo: string, tipo?: 'dni' | 'ficha', imagenInicial?: string }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const marcoRef = useRef<HTMLDivElement>(null);
   const nativeImgRef = useRef<HTMLImageElement>(null);
   const nativeWrapRef = useRef<HTMLDivElement>(null);
   const nativeObjectUrlRef = useRef<string | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(imagenInicial || null);
   const [nativeDisplayed, setNativeDisplayed] = useState<{ w: number; h: number } | null>(null);
   const [nativeCrop, setNativeCrop] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const proporcionMarco = tipo === 'ficha' ? 'aspect-[1.66]' : 'aspect-[1.58]';
@@ -288,8 +294,8 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
                 </button>
               </div>
               <div className="flex gap-2">
-                <button onClick={limpiarPreviewNativa} className="flex-1 py-3 rounded-lg bg-white text-slate-900 font-bold text-sm active:bg-slate-100">
-                  Reintentar
+                <button onClick={imagenInicial ? onClose : limpiarPreviewNativa} className="flex-1 py-3 rounded-lg bg-white text-slate-900 font-bold text-sm active:bg-slate-100">
+                  {imagenInicial ? 'Cancelar' : 'Reintentar'}
                 </button>
                 <button onClick={usarRecorteNativo} className="flex-1 py-3 rounded-lg bg-emerald-600 text-white font-bold text-sm active:bg-emerald-700">
                   Usar recorte
@@ -304,24 +310,39 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni' }: { onClos
               <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
             </svg>
           </div>
-          <p className="text-center mb-1 max-w-sm text-base font-semibold">Usar cámara del celular</p>
+          <p className="text-center mb-1 max-w-sm text-base font-semibold">Cargar {ladoDniLabel}</p>
           <p className="text-center text-white/60 text-sm max-w-sm mb-6">
-            Se va a abrir la cámara nativa. Sacá foto del {ladoDniLabel} y confirmala cuando se vea nítida.
+            Sacá una foto con la cámara o elegí una imagen de la galería. Después vas a poder recortar el DNI.
           </p>
-          <label className="block w-full max-w-sm py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg text-center cursor-pointer active:bg-emerald-700">
-            Abrir cámara
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) tomarFotoNativa(file);
-                e.target.value = '';
-              }}
-            />
-          </label>
+          <div className="w-full max-w-sm grid gap-2.5">
+            <label className="block w-full py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg text-center cursor-pointer active:bg-emerald-700">
+              Abrir cámara
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) tomarFotoNativa(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            <label className="block w-full py-3.5 rounded-lg bg-white text-slate-900 font-bold text-sm shadow-lg text-center cursor-pointer active:bg-slate-100">
+              Elegir de galería
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) tomarFotoNativa(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+          </div>
         </div>
         )}
       </div>
@@ -410,6 +431,9 @@ export default function Home() {
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
   const [archivoUnico, setArchivoUnico] = useState<File | null>(null);
+  const [imagenUnicaB64, setImagenUnicaB64] = useState<string | null>(null);
+  const [recorteDniPendiente, setRecorteDniPendiente] = useState<RecorteDniPendiente | null>(null);
+  const [procesandoArchivoDni, setProcesandoArchivoDni] = useState(false);
   
   const [subiendo, setSubiendo] = useState(false);
   const [descargandoZip, setDescargandoZip] = useState<string | null>(null);
@@ -784,6 +808,120 @@ export default function Home() {
     }
   };
 
+  const procesarArchivoUnicoImagen = async (file: File): Promise<Blob> => {
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Subí una imagen del DNI en JPG o PNG. Para mantener el formato único, los PDF no se procesan en esta opción.');
+    }
+
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('No se pudo leer la imagen del DNI.'));
+        image.src = url;
+      });
+
+      const scale = img.width > DNI_CAPTURE_MAX_WIDTH ? DNI_CAPTURE_MAX_WIDTH / img.width : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No se pudo preparar la imagen del DNI.');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      return await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          canvas.width = 0;
+          canvas.height = 0;
+          if (blob) resolve(blob);
+          else reject(new Error('No se pudo convertir la imagen del DNI.'));
+        }, 'image/jpeg', DNI_CAPTURE_JPEG_QUALITY);
+      });
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
+    const res = await fetch(dataUrl);
+    return await res.blob();
+  };
+
+  const renderizarPdfDni = async (file: File): Promise<string[]> => {
+    const pdfjs = await import('pdfjs-dist');
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+
+    const data = new Uint8Array(await file.arrayBuffer());
+    const pdf = await pdfjs.getDocument({ data }).promise;
+    const cantidad = Math.min(pdf.numPages, 2);
+    const paginas: string[] = [];
+
+    try {
+      for (let i = 1; i <= cantidad; i++) {
+        const page = await pdf.getPage(i);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const maxSide = 2200;
+        const scale = Math.min(2.5, maxSide / Math.max(baseViewport.width, baseViewport.height));
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('No se pudo preparar una página del PDF.');
+
+        await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+        paginas.push(canvas.toDataURL('image/jpeg', 0.9));
+        canvas.width = 0;
+        canvas.height = 0;
+        page.cleanup();
+      }
+    } finally {
+      const destroy = (pdf as { destroy?: () => Promise<void> }).destroy;
+      if (destroy) await destroy.call(pdf);
+    }
+
+    return paginas;
+  };
+
+  const cargarArchivoUnicoDni = async (file: File) => {
+    setProcesandoArchivoDni(true);
+    try {
+      setArchivoUnico(null);
+      setImagenUnicaB64(null);
+      setFotoFrenteB64(null);
+      setFotoDorsoB64(null);
+      setDecodeStatus('idle');
+      setDniDatosLeidos(false);
+
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        const paginas = await renderizarPdfDni(file);
+        if (paginas.length === 0) throw new Error('El PDF no tiene páginas para procesar.');
+        if (paginas.length > 1) {
+          setModoArchivo('escaner');
+          setRecorteDniPendiente({ cara: 'frente', imagen: paginas[0], siguienteImagen: paginas[1] });
+        } else {
+          setModoArchivo('unico');
+          setRecorteDniPendiente({ cara: 'unico', imagen: paginas[0] });
+        }
+      } else if (file.type.startsWith('image/')) {
+        setArchivoUnico(file);
+      } else {
+        alert('Subí una imagen JPG/PNG o un PDF del DNI.');
+      }
+    } catch (error: any) {
+      console.error('Error al procesar archivo del DNI:', error);
+      alert(error?.message || 'No se pudo procesar el archivo del DNI.');
+    } finally {
+      setProcesandoArchivoDni(false);
+    }
+  };
+
   const normalizarFichaPayload = (data: any) => ({
     tipoDocumento: data.tipoDocumento || 'DNI',
     dni: String(data.dni || '').replace(/\D/g, ''),
@@ -826,7 +964,7 @@ export default function Home() {
 
     try {
       let pathDni = '';
-      if (!editandoId || fotoFrenteB64 || archivoUnico) {
+      if (!editandoId || fotoFrenteB64 || archivoUnico || imagenUnicaB64) {
         const timestamp = Date.now();
         const ownerUid = editandoId
           ? (registros.find(r => r.id === editandoId)?.afiliadorUid || (user as any).uid)
@@ -839,11 +977,12 @@ export default function Home() {
           const blob = await procesarDNIUnicoImagen();
           await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
           pathDni = ruta;
-        } else if (modoArchivo === 'unico' && archivoUnico) {
-          const rutaUnico = `dnis/${ownerUid}/${dniSeguro}-${timestamp}`;
-          const storageRefUnico = ref(storage, rutaUnico);
-          await uploadBytes(storageRefUnico, archivoUnico);
-          pathDni = rutaUnico;
+        } else if (modoArchivo === 'unico' && (archivoUnico || imagenUnicaB64)) {
+          const blob = imagenUnicaB64
+            ? await dataUrlToBlob(imagenUnicaB64)
+            : await procesarArchivoUnicoImagen(archivoUnico!);
+          await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+          pathDni = ruta;
         }
       }
 
@@ -887,7 +1026,8 @@ export default function Home() {
 
       setEditandoId(null);
       setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
-      setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
+      setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null); setImagenUnicaB64(null);
+      setRecorteDniPendiente(null);
       setDecodeStatus('idle');
       setEscaneoDniGuiado(false);
       setContinuacionDniPendiente(null);
@@ -935,7 +1075,8 @@ export default function Home() {
   const prepararNueva = () => {
     setEditandoId(null);
     setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
-    setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null);
+    setFotoFrenteB64(null); setFotoDorsoB64(null); setArchivoUnico(null); setImagenUnicaB64(null);
+    setRecorteDniPendiente(null);
     setDecodeStatus('idle');
     setEscaneoDniGuiado(false);
     setContinuacionDniPendiente(null);
@@ -1079,25 +1220,49 @@ export default function Home() {
       onNueva={prepararNueva}
       onLogout={logout}
     >
-      {camaraActiva && (
+      {(camaraActiva || recorteDniPendiente) && (
         <EscanerDocumento
-          titulo={camaraActiva === 'frente' ? "Escanear Frente DNI" : camaraActiva === 'dorso' ? "Escanear Dorso DNI" : "Escanear Ficha"}
-          tipo={camaraActiva.includes('ficha') ? 'ficha' : 'dni'}
+          key={recorteDniPendiente ? recorteDniPendiente.cara : camaraActiva || 'dni'}
+          titulo={
+            recorteDniPendiente
+              ? recorteDniPendiente.cara === 'frente'
+                ? 'Recortar Frente DNI'
+                : recorteDniPendiente.cara === 'dorso'
+                  ? 'Recortar Dorso DNI'
+                  : 'Recortar DNI'
+              : camaraActiva === 'frente'
+                ? 'Escanear Frente DNI'
+                : camaraActiva === 'dorso'
+                  ? 'Escanear Dorso DNI'
+                  : 'Escanear Ficha'
+          }
+          tipo={camaraActiva?.includes('ficha') ? 'ficha' : 'dni'}
+          imagenInicial={recorteDniPendiente?.imagen}
           onClose={() => {
             setEscaneoDniGuiado(false);
             setContinuacionDniPendiente(null);
             setCamaraActiva(null);
+            setRecorteDniPendiente(null);
           }}
           onCapture={async (dataUrl) => {
-            const cara = camaraActiva;
+            const recorteActual = recorteDniPendiente;
+            const cara = camaraActiva || recorteActual?.cara;
             const continuarConDorso = escaneoDniGuiado && cara === 'frente';
-            if (cara === 'frente') setFotoFrenteB64(dataUrl);
+            if (cara === 'unico') {
+              setImagenUnicaB64(dataUrl);
+              setArchivoUnico(null);
+            } else if (cara === 'frente') setFotoFrenteB64(dataUrl);
             else if (cara === 'dorso') setFotoDorsoB64(dataUrl);
             else if (cara === 'fichaControl') {
               const targetId = fichaControlDetalleId || (fichaSeleccionada ? fichaSeleccionada.id : null);
               if (targetId) subirFichaControlExtra(targetId, dataUrl);
             }
             setCamaraActiva(null);
+            if (recorteActual?.cara === 'frente' && recorteActual.siguienteImagen) {
+              setRecorteDniPendiente({ cara: 'dorso', imagen: recorteActual.siguienteImagen });
+            } else if (recorteActual) {
+              setRecorteDniPendiente(null);
+            }
             if (continuarConDorso) {
               setContinuacionDniPendiente('dorso');
             }
@@ -1220,11 +1385,16 @@ export default function Home() {
             setModo: setModoArchivo,
             frenteOk: !!fotoFrenteB64,
             dorsoOk: !!fotoDorsoB64,
+            unicoOk: !!archivoUnico || !!imagenUnicaB64,
+            procesandoArchivo: procesandoArchivoDni,
             onScanFrente: () => {
               setEscaneoDniGuiado(false);
               setContinuacionDniPendiente(null);
               setDniDatosLeidos(false);
               setDecodeStatus('idle');
+              setArchivoUnico(null);
+              setImagenUnicaB64(null);
+              setRecorteDniPendiente(null);
               setCamaraActiva('frente');
             },
             onScanDorso: () => {
@@ -1232,14 +1402,20 @@ export default function Home() {
               setContinuacionDniPendiente(null);
               setDniDatosLeidos(false);
               setDecodeStatus('idle');
+              setArchivoUnico(null);
+              setImagenUnicaB64(null);
+              setRecorteDniPendiente(null);
               setCamaraActiva('dorso');
             },
-            onPickFile: (file) => setArchivoUnico(file),
+            onPickFile: cargarArchivoUnicoDni,
             onScanDniData: () => {
               setModoArchivo('escaner');
               setDecodeStatus('idle');
               setDniDatosLeidos(false);
               setContinuacionDniPendiente(null);
+              setArchivoUnico(null);
+              setImagenUnicaB64(null);
+              setRecorteDniPendiente(null);
               setEscaneoDniGuiado(true);
               setCamaraActiva('frente');
             },

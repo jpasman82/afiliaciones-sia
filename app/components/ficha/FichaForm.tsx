@@ -42,6 +42,8 @@ interface FichaFormProps {
     setModo: (m: 'escaner' | 'unico') => void;
     frenteOk: boolean;
     dorsoOk: boolean;
+    unicoOk?: boolean;
+    procesandoArchivo?: boolean;
     onScanFrente: () => void;
     onScanDorso: () => void;
     onPickFile: (file: File) => void;
@@ -136,12 +138,12 @@ function DniUploader({ dni, decodeStatus }: { dni: FichaFormProps['dni']; decode
       ) : (
         <label className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 py-8 cursor-pointer hover:border-brand-300 hover:bg-brand-50/40 transition">
           <Icon name="upload" className="w-7 h-7 text-slate-400" />
-          <span className="text-sm font-medium text-slate-600">Subir imagen o PDF del DNI</span>
-          <span className="text-xs text-slate-400">JPG, PNG o PDF</span>
-          <input type="file" accept="image/*,application/pdf" className="hidden" onChange={e => e.target.files?.[0] && dni.onPickFile(e.target.files[0])} />
+          <span className="text-sm font-medium text-slate-600">{dni.procesandoArchivo ? 'Procesando archivo…' : 'Subir imagen o PDF del DNI'}</span>
+          <span className="text-xs text-slate-400">JPG, PNG o PDF; se guarda como JPEG</span>
+          <input type="file" accept="image/*,application/pdf" className="hidden" disabled={dni.procesandoArchivo} onChange={e => e.target.files?.[0] && dni.onPickFile(e.target.files[0])} />
         </label>
       )}
-      {(dni.frenteOk || dni.dorsoOk) && <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado</p>}
+      {(dni.frenteOk || dni.dorsoOk || dni.unicoOk) && <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5"><Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado</p>}
       {dni.onScanBarcode && decodeStatus === 'failed' && (dni.frenteOk || dni.dorsoOk) && (
         <button type="button" onClick={dni.onScanBarcode}
           className="mt-4 w-full py-2.5 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 active:bg-slate-950 transition flex items-center justify-center gap-2">
