@@ -140,7 +140,7 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Celular"><Input name="celular" inputMode="tel" value={formData.celular} onChange={onChange} placeholder="11 5555 5555" /></Field>
             <Field label="Email"><Input name="mail" type="email" value={formData.mail} onChange={onChange} placeholder="correo@gmail.com" /></Field>
-            <Field label="Observaciones" required className="sm:col-span-2"><Textarea name="observaciones" required rows={3} value={formData.observaciones} onChange={onChange} placeholder="Notas internas" /></Field>
+            <Field label="Observaciones" className="sm:col-span-2"><Textarea name="observaciones" rows={3} value={formData.observaciones} onChange={onChange} placeholder="Notas internas (opcional)" /></Field>
           </div>
         </FormSection>
       </Card>
