@@ -292,11 +292,14 @@ export default function CargaPublicaPage() {
       return;
     }
     setSubiendo(true);
+    let paso = 'preparar imagen';
     try {
       const blob = await procesarDNIUnicoImagen();
       const ruta = `dnisPublicos/${token}/${dni}-${Date.now()}.jpg`;
+      paso = 'subir DNI';
       await uploadBytes(ref(storage, ruta), blob, { contentType: 'image/jpeg' });
 
+      paso = 'guardar ficha';
       const fichaRef = doc(collection(db, 'afiliaciones'));
       const indiceRef = doc(db, 'dniIndex', dni);
       const linkRef = doc(db, 'linksCargaPublica', token);
@@ -330,7 +333,7 @@ export default function CargaPublicaPage() {
       setEnviado(true);
     } catch (e: any) {
       console.error('Error al guardar ficha publica:', e);
-      alert('No se pudo enviar la ficha. El link puede estar vencido, usado o el DNI ya cargado.');
+      alert(`No se pudo enviar la ficha (${paso}). ${e?.message || 'El link puede estar vencido, usado o el DNI ya cargado.'}`);
     } finally {
       setSubiendo(false);
     }

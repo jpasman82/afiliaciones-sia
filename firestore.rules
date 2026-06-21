@@ -123,8 +123,7 @@ service cloud.firestore {
 
     function creacionFichaPublicaValida(docId) {
       let token = request.resource.data.linkToken;
-      return request.auth == null &&
-        request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
+      return request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
         request.resource.data.origen == 'link_publico' &&
         token is string &&
         request.resource.data.archivoDniPath.matches('dnisPublicos/' + token + '/.*') &&
@@ -135,8 +134,7 @@ service cloud.firestore {
 
     function usoLinkPublicoValido(token) {
       let ficha = getAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)).data;
-      return request.auth == null &&
-        resource.data.usado == false &&
+      return resource.data.usado == false &&
         resource.data.venceEn > request.time &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usado', 'usadoEn', 'fichaId', 'dni']) &&
         request.resource.data.usado == true &&
@@ -203,7 +201,6 @@ service cloud.firestore {
         request.resource.data.dni == dni &&
         request.resource.data.afiliadorUid == request.auth.uid
       ) || (
-        request.auth == null &&
         request.resource.data.keys().hasOnly(['dni', 'fichaId', 'afiliadorUid', 'fecha']) &&
         request.resource.data.dni == dni &&
         existsAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)) &&
