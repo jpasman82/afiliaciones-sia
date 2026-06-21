@@ -474,94 +474,60 @@
         </p>
       </section>
 
-      <!-- VIDEO 1 · principal -->
-      <article class="mb-6 reveal video-card">
-        <div class="flex items-center gap-2.5 mb-3">
-          <span class="step-num w-7 h-7 rounded-lg text-white font-bold flex items-center justify-center text-xs">1</span>
-          <h2 class="text-base font-bold text-slate-900">Proceso completo con foto</h2>
-          <span class="ml-auto text-[10px] font-bold text-brand-700 bg-brand-50 ring-1 ring-brand-200 rounded-full px-2 py-0.5">Principal</span>
-        </div>
-        <p class="text-[13px] text-slate-500 leading-relaxed mb-3">
-          De principio a fin: <b>Escanear DNI: frente y dorso</b>. La app saca las dos fotos en orden, lee el código y completa los datos sola.
-        </p>
-        <div class="rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-card bg-black">
-          <video
-            controls
-            playsinline
-            preload="metadata"
-            controlsList="nodownload"
-            class="w-full block bg-black"
-            poster="guia/poster-proceso-completo.jpg"
-            src="guia/proceso-completo.mp4"></video>
-        </div>
-        <div class="flex gap-3 rounded-xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-4 py-3 mt-3">
-          <svg class="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
-          <p class="text-[13px] text-emerald-800 leading-relaxed"><b>Usá esta forma</b> cuando tengas el DNI físico al lado y puedas sacarle foto.</p>
-        </div>
-      </article>
+      <!-- GRILLA DE VIDEOS · 2 columnas -->
+      <div class="grid grid-cols-2 gap-3 mb-6">
+        <button type="button" class="video-thumb reveal text-left rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-card bg-white active:scale-[.98] transition"
+          data-src="guia/proceso-completo.mp4" data-title="Proceso completo con foto">
+          <div class="relative">
+            <img src="guia/poster-proceso-completo.jpg" alt="" class="w-full block" />
+          </div>
+          <div class="p-3">
+            <div class="flex items-center gap-1.5 mb-1">
+              <span class="text-[10px] font-bold text-brand-700 bg-brand-50 ring-1 ring-brand-200 rounded-full px-2 py-0.5">PRINCIPAL</span>
+            </div>
+            <p class="text-[13px] font-bold text-slate-900 leading-tight">Proceso completo con foto</p>
+            <p class="text-[11px] text-slate-400 mt-1 leading-snug">Frente y dorso con la cámara.</p>
+          </div>
+        </button>
 
-      <!-- VIDEO 2 · archivo único 1 hoja -->
-      <article class="mb-6 reveal video-card">
-        <div class="flex items-center gap-2.5 mb-3">
-          <span class="step-num w-7 h-7 rounded-lg text-white font-bold flex items-center justify-center text-xs">2</span>
-          <h2 class="text-base font-bold text-slate-900">Archivo único · 1 hoja</h2>
-        </div>
-        <p class="text-[13px] text-slate-500 leading-relaxed mb-3">
-          Cuando tenés <b>una imagen o PDF de una sola hoja</b> con frente y dorso juntos. El recortador te deja marcar primero el frente y después el dorso.
-        </p>
-        <div class="rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-card bg-black">
-          <video
-            controls
-            playsinline
-            preload="metadata"
-            controlsList="nodownload"
-            class="w-full block bg-black"
-            poster="guia/poster-archivo-unico-1hoja.jpg"
-            src="guia/archivo-unico-1hoja.mp4"></video>
-        </div>
-      </article>
+        <button type="button" class="video-thumb reveal text-left rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-card bg-white active:scale-[.98] transition"
+          data-src="guia/archivo-unico-1hoja.mp4" data-title="Archivo único · 1 hoja">
+          <div class="relative">
+            <img src="guia/poster-archivo-unico-1hoja.jpg" alt="" class="w-full block" />
+          </div>
+          <div class="p-3">
+            <p class="text-[13px] font-bold text-slate-900 leading-tight">Archivo único · 1 hoja</p>
+            <p class="text-[11px] text-slate-400 mt-1 leading-snug">Imagen o PDF de una hoja.</p>
+          </div>
+        </button>
 
-      <!-- VIDEO 3 · archivo único 2 hojas -->
-      <article class="mb-6 reveal video-card">
-        <div class="flex items-center gap-2.5 mb-3">
-          <span class="step-num w-7 h-7 rounded-lg text-white font-bold flex items-center justify-center text-xs">3</span>
-          <h2 class="text-base font-bold text-slate-900">Archivo único · 2 hojas</h2>
-        </div>
-        <p class="text-[13px] text-slate-500 leading-relaxed mb-3">
-          Cuando el <b>PDF tiene 2 páginas</b>: una con el frente y otra con el dorso. La app las separa automáticamente y vos solo recortás cada una.
-        </p>
-        <div class="rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-card bg-black">
-          <video
-            controls
-            playsinline
-            preload="metadata"
-            controlsList="nodownload"
-            class="w-full block bg-black"
-            poster="guia/poster-archivo-unico-2hojas.jpg"
-            src="guia/archivo-unico-2hojas.mp4"></video>
-        </div>
-      </article>
+        <button type="button" class="video-thumb reveal text-left rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-card bg-white active:scale-[.98] transition"
+          data-src="guia/archivo-unico-2hojas.mp4" data-title="Archivo único · 2 hojas">
+          <div class="relative">
+            <img src="guia/poster-archivo-unico-2hojas.jpg" alt="" class="w-full block" />
+          </div>
+          <div class="p-3">
+            <p class="text-[13px] font-bold text-slate-900 leading-tight">Archivo único · 2 hojas</p>
+            <p class="text-[11px] text-slate-400 mt-1 leading-snug">PDF con 2 páginas.</p>
+          </div>
+        </button>
 
-      <!-- VIDEO 4 · archivos independientes -->
-      <article class="mb-6 reveal video-card">
-        <div class="flex items-center gap-2.5 mb-3">
-          <span class="step-num w-7 h-7 rounded-lg text-white font-bold flex items-center justify-center text-xs">4</span>
-          <h2 class="text-base font-bold text-slate-900">Archivos independientes</h2>
-        </div>
-        <p class="text-[13px] text-slate-500 leading-relaxed mb-3">
-          Cuando ya tenés <b>dos archivos separados</b>: uno para el frente, otro para el dorso. Tocás cada slot por separado y subís cada imagen.
-        </p>
-        <div class="rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-card bg-black">
-          <video
-            controls
-            playsinline
-            preload="metadata"
-            controlsList="nodownload"
-            class="w-full block bg-black"
-            poster="guia/poster-archivos-independientes.jpg"
-            src="guia/archivos-independientes.mp4"></video>
-        </div>
-      </article>
+        <button type="button" class="video-thumb reveal text-left rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-card bg-white active:scale-[.98] transition"
+          data-src="guia/archivos-independientes.mp4" data-title="Archivos independientes">
+          <div class="relative">
+            <img src="guia/poster-archivos-independientes.jpg" alt="" class="w-full block" />
+          </div>
+          <div class="p-3">
+            <p class="text-[13px] font-bold text-slate-900 leading-tight">Archivos independientes</p>
+            <p class="text-[11px] text-slate-400 mt-1 leading-snug">Frente y dorso por separado.</p>
+          </div>
+        </button>
+      </div>
+
+      <div class="flex gap-3 rounded-xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-4 py-3 mb-6">
+        <svg class="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+        <p class="text-[13px] text-emerald-800 leading-relaxed"><b>Empezá por el video 1 (principal).</b> Los otros muestran formas alternativas según cómo tengas el DNI.</p>
+      </div>
 
       <!-- CIERRE -->
       <section class="reveal mt-2">
@@ -578,6 +544,21 @@
     </div><!-- /panel-videos -->
 
   </main>
+
+  <!-- ====================================================================
+       LIGHTBOX · reproductor fullscreen para los tutoriales
+       ==================================================================== -->
+  <div id="lightbox" class="fixed inset-0 z-[80] bg-black flex flex-col" hidden role="dialog" aria-modal="true" aria-label="Reproductor de video">
+    <div class="absolute top-0 inset-x-0 z-10 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] flex items-center gap-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+      <button id="lightbox-close" type="button" aria-label="Cerrar video"
+        class="rounded-full bg-white/15 hover:bg-white/25 backdrop-blur p-2.5 text-white active:scale-95 transition">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+      <div id="lightbox-title" class="text-white text-sm font-semibold truncate flex-1"></div>
+    </div>
+    <video id="lightbox-video" controls playsinline preload="metadata" controlsList="nodownload"
+      class="w-full h-full object-contain bg-black"></video>
+  </div>
 
   <script>
     // ===== Barra de progreso =====
@@ -641,14 +622,60 @@
       setTimeout(() => els.forEach(show), 1200);
     })();
 
-    // ===== Pausar el resto de los videos al reproducir uno =====
-    document.querySelectorAll('video').forEach(v => {
-      v.addEventListener('play', () => {
-        document.querySelectorAll('video').forEach(other => {
-          if (other !== v) { try { other.pause(); } catch (e) {} }
+    // ===== Lightbox / reproductor fullscreen =====
+    (function () {
+      const lb = document.getElementById('lightbox');
+      const lbVideo = document.getElementById('lightbox-video');
+      const lbTitle = document.getElementById('lightbox-title');
+      const lbClose = document.getElementById('lightbox-close');
+      let opening = false;
+
+      function openLightbox(src, title) {
+        opening = true;
+        lbTitle.textContent = title || '';
+        lbVideo.src = src;
+        lb.hidden = false;
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.overflow = 'hidden';
+        // Botón atrás del celular cierra el modal en vez de salir de la app
+        history.pushState({ sia_lightbox: true }, '', location.pathname + location.hash);
+        // Intento de autoplay (en iOS puede requerir gesto, igual ya hay uno: el tap)
+        lbVideo.play().catch(() => {});
+        setTimeout(() => { opening = false; }, 50);
+      }
+
+      function closeLightbox(triggeredByPopstate) {
+        if (lb.hidden) return;
+        try { lbVideo.pause(); } catch (e) {}
+        lbVideo.removeAttribute('src');
+        try { lbVideo.load(); } catch (e) {}
+        lb.hidden = true;
+        document.documentElement.style.overflow = '';
+        document.body.style.overflow = '';
+        // Si el cierre vino del botón X, consumimos el state que pusimos al abrir
+        if (!triggeredByPopstate && history.state && history.state.sia_lightbox) {
+          history.back();
+        }
+      }
+
+      document.querySelectorAll('.video-thumb').forEach(btn => {
+        btn.addEventListener('click', () => {
+          openLightbox(btn.dataset.src, btn.dataset.title);
         });
       });
-    });
+      lbClose.addEventListener('click', () => closeLightbox(false));
+
+      // Botón atrás del dispositivo: si el lightbox está abierto, ciérralo en vez de salir
+      window.addEventListener('popstate', () => {
+        if (opening) return;
+        if (!lb.hidden) closeLightbox(true);
+      });
+
+      // Esc en desktop
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !lb.hidden) closeLightbox(false);
+      });
+    })();
   </script>
 </body>
 </html>

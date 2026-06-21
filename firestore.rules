@@ -64,6 +64,19 @@ service cloud.firestore {
         request.resource.data.email == resource.data.email;
     }
 
+    function fichaCamposValidos(data) {
+      return data.dni is string &&
+        data.dni.size() >= 7 && data.dni.size() <= 9 &&
+        data.dni.matches('^[0-9]+$') &&
+        data.nombres is string && data.nombres.size() > 0 && data.nombres.size() <= 100 &&
+        data.apellidos is string && data.apellidos.size() > 0 && data.apellidos.size() <= 100 &&
+        data.observaciones is string && data.observaciones.size() <= 500 &&
+        data.localidad in ['Acassuso', 'Beccar', 'Boulogne', 'Martínez', 'San Isidro', 'Villa Adelina'] &&
+        data.tipoDocumento in ['DNI', 'LE', 'LC'] &&
+        data.sexo in ['Masculino', 'Femenino', ''] &&
+        (data.mail == '' || data.mail.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'));
+    }
+
     function camposCreacionFicha() {
       return [
         'tipoDocumento', 'dni', 'apellidos', 'nombres', 'sexo', 'clase',
@@ -95,6 +108,7 @@ service cloud.firestore {
     function creacionFichaValida(docId) {
       return rolActivo(request.auth.uid) &&
         request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
+        fichaCamposValidos(request.resource.data) &&
         request.resource.data.afiliadorUid == request.auth.uid &&
         request.resource.data.afiliadorEmail == emailUsuario(request.auth.uid) &&
         (!('origen' in request.resource.data) || request.resource.data.origen == 'app') &&
@@ -125,6 +139,8 @@ service cloud.firestore {
       let afiliadorUid = request.resource.data.afiliadorUid;
       let usuarioAfiliador = get(/databases/$(database)/documents/usuarios/$(afiliadorUid)).data;
       return request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
+        !('archivoDni' in request.resource.data) &&
+        fichaCamposValidos(request.resource.data) &&
         request.resource.data.origen == 'link_publico' &&
         token is string &&
         request.resource.data.archivoDniPath.matches('dnisPublicos/' + token + '/.*') &&

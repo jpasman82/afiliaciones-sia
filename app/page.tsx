@@ -918,7 +918,21 @@ export default function Home() {
     }
     setCreandoPublicLink(true);
     try {
-      const token = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, '')}`;
+      const idToken = await (user as any).getIdToken();
+      const checkRes = await fetch('/api/links-publicos/activo', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (checkRes.ok) {
+        const { activo, token: existingToken } = await checkRes.json();
+        if (activo && existingToken) {
+          const url = `${window.location.origin}/cargar/${existingToken}`;
+          setPublicLink(url);
+          try { await navigator.clipboard?.writeText(url); } catch {}
+          return;
+        }
+      }
+
+      const token = crypto.randomUUID().replace(/-/g, '');
       const vence = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
       await setDoc(doc(db, 'linksCargaPublica', token), {
