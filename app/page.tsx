@@ -410,7 +410,7 @@ export default function Home() {
   const [formData, setFormData] = useState({
     tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', 
     sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', 
-    nacionalidad: '', profesion: '', estadoCivil: '', 
+    nacionalidad: 'Argentina', profesion: '', estadoCivil: '', 
     celular: '', mail: '',
     distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '',
     localidad: '', observaciones: '', estadoControl: 'pendiente'
@@ -967,7 +967,7 @@ export default function Home() {
     clase: data.clase || '',
     fechaNacimiento: data.fechaNacimiento || '',
     lugarNacimiento: data.lugarNacimiento || '',
-    nacionalidad: data.nacionalidad || '',
+    nacionalidad: data.nacionalidad || 'Argentina',
     profesion: data.profesion || '',
     estadoCivil: data.estadoCivil || '',
     celular: data.celular || '',
@@ -1055,7 +1055,7 @@ export default function Home() {
       }
 
       setEditandoId(null);
-      setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
+      setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: 'Argentina', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
       setFotoFrenteB64(null); setFotoDorsoB64(null);
       setRecorteDniPendiente(null);
       setDecodeStatus('idle');
@@ -1092,6 +1092,7 @@ export default function Home() {
       tipoDocumento: reg.tipoDocumento || 'DNI',
       clase: reg.clase || '',
       lugarNacimiento: reg.lugarNacimiento || '',
+      nacionalidad: reg.nacionalidad || 'Argentina',
       profesion: reg.profesion || '',
       estadoCivil: reg.estadoCivil || '',
       celular: reg.celular || '',
@@ -1105,7 +1106,7 @@ export default function Home() {
 
   const prepararNueva = () => {
     setEditandoId(null);
-    setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: '', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
+    setFormData({ tipoDocumento: 'DNI', dni: '', apellidos: '', nombres: '', sexo: '', clase: '', fechaNacimiento: '', lugarNacimiento: '', nacionalidad: 'Argentina', profesion: '', estadoCivil: '', celular: '', mail: '', distrito: 'Buenos Aires', calle: '', numero: '', piso: '', dpto: '', localidad: '', observaciones: '', estadoControl: 'pendiente' });
     setFotoFrenteB64(null); setFotoDorsoB64(null);
     setRecorteDniPendiente(null);
     setDecodeStatus('idle');

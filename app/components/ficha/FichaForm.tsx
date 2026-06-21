@@ -14,6 +14,18 @@ import { Card, PageHeader } from '../ui/Primitives';
 
 const SEXO = ['Masculino', 'Femenino'];
 const ESTCIVIL = ['Soltero/a', 'Casado/a', 'Divorciado/a', 'Viudo/a'];
+const PROFESIONES = [
+  'Empleado/a',
+  'Jubilado/a o pensionado/a',
+  'Autonomo/a',
+  'Monotributista',
+  'Comerciante',
+  'Profesional',
+  'Estudiante',
+  'Ama de casa',
+  'Desocupado/a',
+  'Otro',
+];
 
 export function FormSection({ n, title, sub, children }:
   { n: string; title: string; sub?: string; children: React.ReactNode }) {
@@ -99,15 +111,15 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Apellidos" required><Input name="apellidos" required value={formData.apellidos} onChange={onChange} placeholder="Pérez" /></Field>
             <Field label="Nombres" required><Input name="nombres" required value={formData.nombres} onChange={onChange} placeholder="Juan Carlos" /></Field>
-            <Field label="Tipo doc." required><Select name="tipoDocumento" value={formData.tipoDocumento} onChange={onChange}><option>DNI</option><option>LE</option><option>LC</option></Select></Field>
+            <Field label="Tipo doc." required><Select name="tipoDocumento" required value={formData.tipoDocumento} onChange={onChange}><option>DNI</option><option>LE</option><option>LC</option></Select></Field>
             <Field label="Número de documento" required><Input name="dni" required inputMode="numeric" className="tnum" value={formData.dni} onChange={onChange} placeholder="00000000" /></Field>
             <Field label="Sexo" required><Select name="sexo" required value={formData.sexo} onChange={onChange}><option value="">Seleccionar…</option>{SEXO.map(s => <option key={s}>{s}</option>)}</Select></Field>
-            <Field label="Clase (año)"><Input name="clase" inputMode="numeric" maxLength={4} className="tnum" value={formData.clase} onChange={onChange} placeholder="1990" /></Field>
+            <Field label="Clase (año)" required><Input name="clase" required inputMode="numeric" maxLength={4} className="tnum" value={formData.clase} onChange={onChange} placeholder="1990" /></Field>
             <Field label="Fecha de nacimiento" required hint="DD/MM/AAAA"><Input name="fechaNacimiento" required className="tnum" value={formData.fechaNacimiento} onChange={onChange} placeholder="01/01/1990" /></Field>
-            <Field label="Lugar de nacimiento"><Input name="lugarNacimiento" value={formData.lugarNacimiento} onChange={onChange} placeholder="Buenos Aires" /></Field>
+            <Field label="Lugar de nacimiento" required><Input name="lugarNacimiento" required value={formData.lugarNacimiento} onChange={onChange} placeholder="Buenos Aires" /></Field>
             <Field label="Nacionalidad" required><Input name="nacionalidad" required value={formData.nacionalidad} onChange={onChange} /></Field>
-            <Field label="Estado civil"><Select name="estadoCivil" value={formData.estadoCivil} onChange={onChange}><option value="">Seleccionar…</option>{ESTCIVIL.map(s => <option key={s}>{s}</option>)}</Select></Field>
-            <Field label="Profesión" className="sm:col-span-2"><Input name="profesion" value={formData.profesion} onChange={onChange} placeholder="Opcional" /></Field>
+            <Field label="Estado civil" required><Select name="estadoCivil" required value={formData.estadoCivil} onChange={onChange}><option value="">Seleccionar…</option>{ESTCIVIL.map(s => <option key={s}>{s}</option>)}</Select></Field>
+            <Field label="Profesión" required className="sm:col-span-2"><Select name="profesion" required value={formData.profesion} onChange={onChange}><option value="">Seleccionar…</option>{PROFESIONES.map(p => <option key={p}>{p}</option>)}</Select></Field>
           </div>
         </FormSection>
 
@@ -128,7 +140,7 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Celular"><Input name="celular" inputMode="tel" value={formData.celular} onChange={onChange} placeholder="11 5555 5555" /></Field>
             <Field label="Email"><Input name="mail" type="email" value={formData.mail} onChange={onChange} placeholder="correo@gmail.com" /></Field>
-            <Field label="Observaciones" className="sm:col-span-2"><Textarea name="observaciones" rows={3} value={formData.observaciones} onChange={onChange} placeholder="Notas internas (opcional)" /></Field>
+            <Field label="Observaciones" required className="sm:col-span-2"><Textarea name="observaciones" required rows={3} value={formData.observaciones} onChange={onChange} placeholder="Notas internas" /></Field>
           </div>
         </FormSection>
       </Card>
