@@ -1,9 +1,22 @@
+import { createHmac, timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN!;
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID!;
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN!;
+const APP_SECRET = process.env.WHATSAPP_APP_SECRET!;
 const GRAPH_URL = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
+
+function verificarFirma(body: string, signatureHeader: string | null): boolean {
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false;
+  const expected = createHmac('sha256', APP_SECRET).update(body).digest('hex');
+  const received = signatureHeader.slice(7);
+  try {
+    return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(received, 'hex'));
+  } catch {
+    return false;
+  }
+}
 
 // GET: verificación inicial de Meta
 export async function GET(req: NextRequest) {
@@ -20,7 +33,12 @@ export async function GET(req: NextRequest) {
 
 // POST: mensajes entrantes
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  const rawBody = await req.text();
+  const signature = req.headers.get('x-hub-signature-256');
+  if (!verificarFirma(rawBody, signature)) {
+    return new Response('Forbidden', { status: 403 });
+  }
+  const body = JSON.parse(rawBody);
 
   try {
     const entry = body.entry?.[0]?.changes?.[0]?.value;
@@ -28,8 +46,7 @@ export async function POST(req: NextRequest) {
 
     if (message) {
       const from = message.from;
-      const texto = message.text?.body ?? message.interactive?.button_reply?.title ?? '(sin texto)';
-      console.log(`📩 Mensaje de ${from}: ${texto}`);
+      console.log(`Mensaje recibido (id: ${message.id || 'sin id'})`);
 
       // Por ahora, cualquier mensaje dispara el menú
       await sendMenu(from);

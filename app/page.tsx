@@ -920,15 +920,9 @@ export default function Home() {
     try {
       const token = `${Date.now().toString(36)}-${crypto.randomUUID().replace(/-/g, '')}`;
       const vence = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      const afiliadorEmail = ((userData as any)?.email || (user as any).email || '').trim();
-      const nombreAfiliador = userData
-        ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim()
-        : ((user as any).displayName || '');
 
       await setDoc(doc(db, 'linksCargaPublica', token), {
         afiliadorUid: (user as any).uid,
-        afiliadorEmail,
-        afiliadorNombre: nombreAfiliador,
         creadoEn: Timestamp.fromDate(new Date()),
         venceEn: Timestamp.fromDate(vence),
         usado: false,

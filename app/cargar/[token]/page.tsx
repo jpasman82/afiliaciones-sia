@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { collection, doc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
 import { db, storage } from '../../../firebaseConfig';
 import { FichaForm } from '../../components/ficha/FichaForm';
@@ -76,12 +76,13 @@ export default function CargaPublicaPage() {
       setValidando(true);
       setError('');
       try {
-        const snap = await getDoc(doc(db, 'linksCargaPublica', token));
-        if (!snap.exists()) {
-          setError('Este link no existe, ya fue usado o esta vencido.');
+        const r = await fetch(`/api/link-publico/${token}`);
+        if (!r.ok) {
+          setError('Este link no existe, ya fue usado o está vencido.');
           return;
         }
-        setLink(snap.data() as LinkPublico);
+        const data = await r.json();
+        setLink(data as LinkPublico);
       } catch {
         setError('No se pudo validar el link. Puede estar vencido o ya usado.');
       } finally {

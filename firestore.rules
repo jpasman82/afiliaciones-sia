@@ -109,8 +109,7 @@ service cloud.firestore {
         link.fichaId == docId &&
         link.dni == request.resource.data.dni &&
         link.venceEn > request.time &&
-        link.afiliadorUid == request.resource.data.afiliadorUid &&
-        link.afiliadorEmail == request.resource.data.afiliadorEmail;
+        link.afiliadorUid == request.resource.data.afiliadorUid;
     }
 
     function indiceDniPublicoValido(docId, token) {
@@ -123,11 +122,14 @@ service cloud.firestore {
 
     function creacionFichaPublicaValida(docId) {
       let token = request.resource.data.linkToken;
+      let afiliadorUid = request.resource.data.afiliadorUid;
+      let usuarioAfiliador = get(/databases/$(database)/documents/usuarios/$(afiliadorUid)).data;
       return request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
         request.resource.data.origen == 'link_publico' &&
         token is string &&
         request.resource.data.archivoDniPath.matches('dnisPublicos/' + token + '/.*') &&
         estadoPendiente(request.resource.data) &&
+        request.resource.data.afiliadorEmail == usuarioAfiliador.email &&
         linkPublicoUsadoValido(token, docId) &&
         indiceDniPublicoValido(docId, token);
     }
@@ -139,8 +141,6 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usado', 'usadoEn', 'fichaId', 'dni']) &&
         request.resource.data.usado == true &&
         request.resource.data.afiliadorUid == resource.data.afiliadorUid &&
-        request.resource.data.afiliadorEmail == resource.data.afiliadorEmail &&
-        request.resource.data.afiliadorNombre == resource.data.afiliadorNombre &&
         request.resource.data.creadoEn == resource.data.creadoEn &&
         request.resource.data.venceEn == resource.data.venceEn &&
         ficha.linkToken == token &&
@@ -219,10 +219,8 @@ service cloud.firestore {
       allow list: if false;
       allow create: if request.auth != null &&
         rolActivo(request.auth.uid) &&
-        request.resource.data.keys().hasOnly(['afiliadorUid', 'afiliadorEmail', 'afiliadorNombre', 'creadoEn', 'venceEn', 'usado']) &&
+        request.resource.data.keys().hasOnly(['afiliadorUid', 'creadoEn', 'venceEn', 'usado']) &&
         request.resource.data.afiliadorUid == request.auth.uid &&
-        request.resource.data.afiliadorEmail is string &&
-        request.resource.data.afiliadorNombre is string &&
         request.resource.data.usado == false &&
         request.resource.data.venceEn > request.time;
       allow update: if usoLinkPublicoValido(token);
