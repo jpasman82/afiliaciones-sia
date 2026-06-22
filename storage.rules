@@ -32,7 +32,8 @@ service firebase.storage {
         firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.venceEn > request.time &&
         request.resource.size < 5 * 1024 * 1024 &&
         request.resource.contentType == 'image/jpeg';
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if esAdmin();
     }
 
     match /dnis/{ownerUid}/{fileName} {
@@ -41,14 +42,15 @@ service firebase.storage {
       allow list: if false;
       allow create, update: if request.auth != null &&
         ((request.auth.uid == ownerUid && rolActivo()) || esAdminOSupervisor());
-      allow delete: if false;
+      allow delete: if request.auth != null &&
+        (request.auth.uid == ownerUid || esAdminOSupervisor());
     }
 
     match /fichas/{docId}/{fileName} {
       allow get: if esAdminOSupervisor();
       allow list: if false;
       allow create, update: if esAdmin();
-      allow delete: if false;
+      allow delete: if esAdmin();
     }
 
     // Legacy: archivos subidos antes de incluir uid/docId en el path.
@@ -57,13 +59,13 @@ service firebase.storage {
       allow get: if esAdminOSupervisor();
       allow list: if false;
       allow write: if false;
-      allow delete: if false;
+      allow delete: if esAdmin();
     }
     match /fichas/{fileName} {
       allow get: if esAdminOSupervisor();
       allow list: if false;
       allow write: if false;
-      allow delete: if false;
+      allow delete: if esAdmin();
     }
   }
 }

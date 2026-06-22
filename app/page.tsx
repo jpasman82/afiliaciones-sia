@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, storage } from '../firebaseConfig';
 import { collection, serverTimestamp, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, orderBy, arrayUnion, writeBatch, Timestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getBlob } from 'firebase/storage';
+import { ref, uploadBytes, getBlob, deleteObject } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
 import { RecordsView } from './components/records/RecordsView';
@@ -787,6 +787,18 @@ export default function Home() {
 
   const eliminarFicha = async (ficha: any) => {
     try {
+      // Borrar archivos de Storage (best-effort: si falla, seguimos con Firestore)
+      const pathsABorrar = [ficha.archivoDniPath, ficha.archivoFichaPath].filter(Boolean);
+      for (const path of pathsABorrar) {
+        try {
+          await deleteObject(ref(storage, path));
+        } catch (e: any) {
+          if (e?.code !== 'storage/object-not-found') {
+            console.warn('No se pudo borrar archivo de Storage:', path, e?.message);
+          }
+        }
+      }
+
       const batch = writeBatch(db);
       batch.delete(doc(db, 'afiliaciones', ficha.id));
 
