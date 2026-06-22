@@ -113,6 +113,7 @@ service cloud.firestore {
         (!('origen' in request.resource.data) || request.resource.data.origen == 'app') &&
         !('linkToken' in request.resource.data) &&
         estadoPendiente(request.resource.data) &&
+        fichaCamposValidos(request.resource.data) &&
         indiceDniValido(docId);
     }
 
@@ -145,6 +146,7 @@ service cloud.firestore {
         estadoPendiente(request.resource.data) &&
         usuarioAfiliador.rol in ['admin', 'supervisor', 'afiliador'] &&
         request.resource.data.afiliadorEmail is string &&
+        fichaCamposValidos(request.resource.data) &&
         linkPublicoUsadoValido(token, docId) &&
         indiceDniPublicoValido(docId, token);
     }
