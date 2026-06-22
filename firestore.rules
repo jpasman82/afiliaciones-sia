@@ -108,9 +108,8 @@ service cloud.firestore {
     function creacionFichaValida(docId) {
       return rolActivo(request.auth.uid) &&
         request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
-        fichaCamposValidos(request.resource.data) &&
         request.resource.data.afiliadorUid == request.auth.uid &&
-        request.resource.data.afiliadorEmail == emailUsuario(request.auth.uid) &&
+        request.resource.data.afiliadorEmail is string &&
         (!('origen' in request.resource.data) || request.resource.data.origen == 'app') &&
         !('linkToken' in request.resource.data) &&
         estadoPendiente(request.resource.data) &&
@@ -140,12 +139,12 @@ service cloud.firestore {
       let usuarioAfiliador = get(/databases/$(database)/documents/usuarios/$(afiliadorUid)).data;
       return request.resource.data.keys().hasOnly(camposCreacionFicha()) &&
         !('archivoDni' in request.resource.data) &&
-        fichaCamposValidos(request.resource.data) &&
         request.resource.data.origen == 'link_publico' &&
         token is string &&
         request.resource.data.archivoDniPath.matches('dnisPublicos/' + token + '/.*') &&
         estadoPendiente(request.resource.data) &&
-        request.resource.data.afiliadorEmail == usuarioAfiliador.email &&
+        usuarioAfiliador.rol in ['admin', 'supervisor', 'afiliador'] &&
+        request.resource.data.afiliadorEmail is string &&
         linkPublicoUsadoValido(token, docId) &&
         indiceDniPublicoValido(docId, token);
     }
