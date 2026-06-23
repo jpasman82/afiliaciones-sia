@@ -483,11 +483,10 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('didit_session');
+    const sessionId = sessionStorage.getItem('didit_session');
     if (!sessionId) return;
+    sessionStorage.removeItem('didit_session');
     diditSessionIdRef.current = sessionId;
-    window.history.replaceState({ tab: 'nueva' }, '', `${window.location.pathname}?tab=nueva`);
     const t = setTimeout(() => {
       setMostrarIntro(false);
       setTab('nueva');
@@ -710,7 +709,8 @@ export default function Home() {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as any).error || 'Error al iniciar sesión con Didit');
       }
-      const { url } = await res.json();
+      const { sessionId, url } = await res.json();
+      sessionStorage.setItem('didit_session', sessionId);
       window.location.href = url;
     } catch (err: any) {
       setDiditError(err.message || 'No se pudo iniciar el escaneo. Intentá de nuevo.');

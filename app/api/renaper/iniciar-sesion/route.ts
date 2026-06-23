@@ -59,8 +59,7 @@ export async function POST(request: Request) {
       timestamp: new Date().toISOString(),
     });
 
-    // {session_id} es el template que Didit sustituye con el ID real antes de redirigir.
-    const callback = `${APP_URL}/?tab=nueva&didit_session={session_id}`;
+    const callback = `${APP_URL}/?tab=nueva`;
 
     // Mostrar rol del usuario encontrado para diagnóstico
     console.log('Usuario encontrado, rol:', auth.user.role);
