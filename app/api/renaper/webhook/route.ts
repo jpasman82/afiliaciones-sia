@@ -61,25 +61,28 @@ export async function POST(req: NextRequest) {
 
   const status = typeof rawPayload.status === 'string' ? rawPayload.status : '';
 
-  // Paso 5: idempotencia.
+  // Paso 5: idempotencia — solo saltar si ya llegó a un estado final.
   const docRef = adminDb.collection('sesionesDidit').doc(sessionId);
   const existing = await docRef.get();
-  if (existing.exists && existing.data()?.procesadoEn != null) {
+  const existingStatus = existing.exists ? existing.data()?.status : null;
+  if (existingStatus === 'Approved' || existingStatus === 'Declined') {
     return NextResponse.json({ ok: true });
   }
 
-  // Paso 6: extraer datos del documento del DNI.
-  const kyc = rawPayload.kyc as { data?: Record<string, string> } | undefined;
-  const kycData = kyc?.data ?? {};
-
-  const datosExtraidos = {
-    dni:             kycData.document_number ?? '',  // TODO: verificar nombre de campo en respuesta real de Didit
-    nombres:         kycData.first_name      ?? '',  // TODO: verificar nombre de campo en respuesta real de Didit
-    apellidos:       kycData.last_name       ?? '',  // TODO: verificar nombre de campo en respuesta real de Didit
-    sexo:            mapearSexo(kycData.gender),
-    fechaNacimiento: formatearFecha(kycData.date_of_birth),
-    nacionalidad:    kycData.nationality     ?? '',
-  };
+  // Paso 6: extraer datos del DNI solo cuando el status es Approved.
+  let datosExtraidos: Record<string, string> = {};
+  if (status === 'Approved') {
+    const kyc = rawPayload.kyc as { data?: Record<string, string> } | undefined;
+    const kycData = kyc?.data ?? {};
+    datosExtraidos = {
+      dni:             kycData.document_number ?? '',  // TODO: verificar nombre de campo en respuesta real de Didit
+      nombres:         kycData.first_name      ?? '',  // TODO: verificar nombre de campo en respuesta real de Didit
+      apellidos:       kycData.last_name       ?? '',  // TODO: verificar nombre de campo en respuesta real de Didit
+      sexo:            mapearSexo(kycData.gender),
+      fechaNacimiento: formatearFecha(kycData.date_of_birth),
+      nacionalidad:    kycData.nationality     ?? '',
+    };
+  }
 
   // Parsear vendorData que se mandó al crear la sesión.
   let vendorData: Record<string, unknown> = {};
@@ -91,18 +94,19 @@ export async function POST(req: NextRequest) {
   }
 
   const payloadHash = createHash('sha256').update(rawBody).digest('hex');
+  const esFinal = status === 'Approved' || status === 'Declined';
 
-  // Paso 7: persistir en sesionesDidit.
+  // Paso 7: persistir en sesionesDidit (merge para preservar recibidoEn del primer webhook).
   await docRef.set({
     sessionId,
     status,
     datosExtraidos,
     vendorData,
     payloadHash,
-    recibidoEn:  FieldValue.serverTimestamp(),
-    procesadoEn: FieldValue.serverTimestamp(),
+    recibidoEn: FieldValue.serverTimestamp(),
+    ...(esFinal ? { procesadoEn: FieldValue.serverTimestamp() } : {}),
     rawPayload,
-  });
+  }, { merge: true });
 
   // Paso 8: respuesta rápida.
   return NextResponse.json({ ok: true });
