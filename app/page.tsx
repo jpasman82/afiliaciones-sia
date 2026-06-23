@@ -540,6 +540,13 @@ export default function Home() {
           tryAdd('sexo', raw.sexo);
           tryAdd('fechaNacimiento', raw.fechaNacimiento);
           tryAdd('nacionalidad', raw.nacionalidad);
+          tryAdd('lugarNacimiento', raw.lugarNacimiento);
+          tryAdd('calle', raw.calle);
+          tryAdd('numero', raw.numero);
+          const LOCALIDADES_VALIDAS = ['Acassuso', 'Beccar', 'Boulogne', 'Martínez', 'San Isidro', 'Villa Adelina'];
+          if (raw.localidad && LOCALIDADES_VALIDAS.includes(String(raw.localidad))) {
+            tryAdd('localidad', raw.localidad);
+          }
           setFormData(prev => ({ ...prev, ...campos }));
           setDiditCamposAutocompletados(completados);
           setDiditAutocompleted(completados.size > 0);

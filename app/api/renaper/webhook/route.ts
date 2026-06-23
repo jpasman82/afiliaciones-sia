@@ -6,8 +6,6 @@ import { verificarFirmaDidit, verificarTimestamp } from '@/app/lib/diditWebhook'
 
 const WEBHOOK_SECRET = process.env.DIDIT_WEBHOOK_SECRET ?? '';
 
-// Mapea el gender que devuelve Didit al valor del dominio.
-// TODO: verificar valores reales de gender en la respuesta de Didit.
 function mapearSexo(gender: string | undefined): 'Masculino' | 'Femenino' | '' {
   if (!gender) return '';
   const g = gender.toUpperCase();
@@ -17,12 +15,36 @@ function mapearSexo(gender: string | undefined): 'Masculino' | 'Femenino' | '' {
 }
 
 // Convierte YYYY-MM-DD → DD/MM/AAAA.
-// TODO: verificar formato de date_of_birth en la respuesta real de Didit.
 function formatearFecha(dateStr: string | undefined): string {
   if (!dateStr) return '';
   const parts = dateStr.split('-');
   if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
   return dateStr;
+}
+
+const PAISES_ISO3: Record<string, string> = {
+  ARG: 'Argentina', BRA: 'Brasil',          BOL: 'Bolivia',
+  CHL: 'Chile',     PRY: 'Paraguay',        URY: 'Uruguay',
+  PER: 'Perú',      COL: 'Colombia',        VEN: 'Venezuela',
+  ECU: 'Ecuador',   ESP: 'España',          ITA: 'Italia',
+  CHN: 'China',     USA: 'Estados Unidos',
+};
+
+function mapearNacionalidad(code: string | undefined): string {
+  if (!code) return '';
+  return PAISES_ISO3[code.toUpperCase()] ?? code;
+}
+
+function toTitleCase(str: string | undefined): string {
+  if (!str) return '';
+  return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function separarCalleNumero(street: string | undefined): { calle: string; numero: string } {
+  if (!street) return { calle: '', numero: '' };
+  const match = street.match(/^(.*?)\s+(\d+)\s*$/);
+  if (match) return { calle: match[1].trim(), numero: match[2] };
+  return { calle: street.trim(), numero: '' };
 }
 
 export async function POST(req: NextRequest) {
@@ -72,15 +94,25 @@ export async function POST(req: NextRequest) {
   // Paso 6: extraer datos del DNI solo cuando el status es Approved.
   let datosExtraidos: Record<string, string> = {};
   if (status === 'Approved') {
-    const kyc = rawPayload.kyc as { data?: Record<string, string> } | undefined;
-    const kycData = kyc?.data ?? {};
+    const decision = rawPayload.decision as { id_verifications?: Record<string, unknown>[] } | undefined;
+    const idv = (decision?.id_verifications?.[0] ?? {}) as Record<string, unknown>;
+    const extraFields  = (idv.extra_fields   ?? {}) as Record<string, string>;
+    const parsedAddress = (idv.parsed_address ?? {}) as Record<string, string>;
+    const { calle, numero } = separarCalleNumero(parsedAddress.street_1);
     datosExtraidos = {
-      dni:             kycData.document_number ?? '',  // TODO: verificar nombre de campo en respuesta real de Didit
-      nombres:         kycData.first_name      ?? '',  // TODO: verificar nombre de campo en respuesta real de Didit
-      apellidos:       kycData.last_name       ?? '',  // TODO: verificar nombre de campo en respuesta real de Didit
-      sexo:            mapearSexo(kycData.gender),
-      fechaNacimiento: formatearFecha(kycData.date_of_birth),
-      nacionalidad:    kycData.nationality     ?? '',
+      dni:             String(idv.document_number ?? ''),
+      nombres:         String(idv.first_name      ?? ''),
+      apellidos:       String(idv.last_name       ?? ''),
+      sexo:            mapearSexo(idv.gender as string | undefined),
+      fechaNacimiento: formatearFecha(idv.date_of_birth as string | undefined),
+      nacionalidad:    mapearNacionalidad(idv.nationality as string | undefined),
+      lugarNacimiento: toTitleCase(idv.place_of_birth as string | undefined),
+      cuil:            extraFields.tax_number ?? '',
+      calle,
+      numero,
+      localidad:       parsedAddress.city ?? '',
+      frontImageUrl:   String(idv.front_image ?? ''),
+      backImageUrl:    String(idv.back_image  ?? ''),
     };
   }
 
