@@ -463,6 +463,9 @@ export default function Home() {
   const [diditMensajePendiente, setDiditMensajePendiente] = useState<string | null>(null);
   const [diditAutocompleted, setDiditAutocompleted] = useState(false);
   const [diditCamposAutocompletados, setDiditCamposAutocompletados] = useState<Set<string>>(new Set());
+  const [diditFrenteStorageUrl, setDiditFrenteStorageUrl] = useState<string | null>(null);
+  const [diditDorsoStorageUrl, setDiditDorsoStorageUrl] = useState<string | null>(null);
+  const [diditFrenteStoragePath, setDiditFrenteStoragePath] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && !window.history.state) {
@@ -568,6 +571,9 @@ export default function Home() {
           setFormData(prev => ({ ...prev, ...campos }));
           setDiditCamposAutocompletados(completados);
           setDiditAutocompleted(completados.size > 0);
+          if (raw.frontImageStorageUrl) setDiditFrenteStorageUrl(String(raw.frontImageStorageUrl));
+          if (raw.backImageStorageUrl)  setDiditDorsoStorageUrl(String(raw.backImageStorageUrl));
+          if (raw.frontImageStoragePath) setDiditFrenteStoragePath(String(raw.frontImageStoragePath));
           setDiditProcesandoRetorno(false);
           setDiditSessionPendiente(null);
           return;
@@ -1158,7 +1164,13 @@ export default function Home() {
 
     try {
       let pathDni = '';
-      if (!editandoId || fotoFrenteB64) {
+      let urlDni: string | null = null;
+
+      if (diditFrenteStoragePath) {
+        // Las fotos ya están en Storage (subidas por el webhook de Didit). No re-subir.
+        pathDni = diditFrenteStoragePath;
+        urlDni  = diditFrenteStorageUrl;
+      } else if (!editandoId || fotoFrenteB64) {
         const timestamp = Date.now();
         const ownerUid = editandoId
           ? (registros.find(r => r.id === editandoId)?.afiliadorUid || (user as any).uid)
@@ -1175,7 +1187,7 @@ export default function Home() {
       }
 
       if (editandoId) {
-        const payload: any = { ...normalizarFichaPayload(formData), ultimaModificacion: serverTimestamp(), ...(pathDni && { archivoDniPath: pathDni, archivoDni: null }) };
+        const payload: any = { ...normalizarFichaPayload(formData), ultimaModificacion: serverTimestamp(), ...(pathDni && { archivoDniPath: pathDni, archivoDni: urlDni ?? null }) };
         const est = (formData as any).estadoControl || 'pendiente';
         if (isAdmin && ['escaneado', 'cargado_je', 'aprobado', 'error', 'suspendido', 'baja'].includes(est)) {
           payload.editadoPorAdmin = (user as any).displayName || (user as any).email;
@@ -1188,6 +1200,7 @@ export default function Home() {
         const payload = {
           ...normalizarFichaPayload(formData),
           archivoDniPath: pathDni,
+          ...(urlDni ? { archivoDni: urlDni } : {}),
           afiliadorNombre: nombreAfiliador,
           afiliadorEmail: (user as any).email,
           afiliadorUid: (user as any).uid,
@@ -1223,6 +1236,7 @@ export default function Home() {
       setPublicLink(null);
       setDiditAutocompleted(false);
       setDiditCamposAutocompletados(new Set());
+      setDiditFrenteStorageUrl(null); setDiditDorsoStorageUrl(null); setDiditFrenteStoragePath(null);
       cambiarTab('registros');
 
     } catch (error: any) {
@@ -1278,6 +1292,7 @@ export default function Home() {
     setDiditCamposAutocompletados(new Set());
     setDiditError(null);
     setDiditMensajePendiente(null);
+    setDiditFrenteStorageUrl(null); setDiditDorsoStorageUrl(null); setDiditFrenteStoragePath(null);
     cambiarTab('nueva');
   };
 
@@ -1580,10 +1595,10 @@ export default function Home() {
           dni={{
             modo: modoArchivo,
             setModo: setModoArchivo,
-            frenteOk: !!fotoFrenteB64,
-            dorsoOk: !!fotoDorsoB64,
-            fotoFrente: fotoFrenteB64,
-            fotoDorso: fotoDorsoB64,
+            frenteOk: !!(fotoFrenteB64 || diditFrenteStorageUrl),
+            dorsoOk: !!(fotoDorsoB64 || diditDorsoStorageUrl),
+            fotoFrente: fotoFrenteB64 || diditFrenteStorageUrl,
+            fotoDorso: fotoDorsoB64 || diditDorsoStorageUrl,
             procesandoArchivo: procesandoArchivoDni,
             onScanFrente: () => {
               setEscaneoDniGuiado(false);

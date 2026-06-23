@@ -1,7 +1,8 @@
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '@/app/lib/firebaseAdmin';
+import { getStorage } from 'firebase-admin/storage';
+import { adminDb, adminApp } from '@/app/lib/firebaseAdmin';
 import { verificarFirmaDidit, verificarTimestamp } from '@/app/lib/diditWebhook';
 
 const WEBHOOK_SECRET = process.env.DIDIT_WEBHOOK_SECRET ?? '';
@@ -114,6 +115,49 @@ export async function POST(req: NextRequest) {
       frontImageUrl:   String(idv.front_image ?? ''),
       backImageUrl:    String(idv.back_image  ?? ''),
     };
+  }
+
+  // Paso 6b: descargar fotos de Didit y subirlas a Firebase Storage (non-blocking).
+  // Las URLs de Didit son firmadas de S3 y expiran en ~4 h; hay que persistirlas ahora.
+  if (status === 'Approved' && adminApp && (datosExtraidos.frontImageUrl || datosExtraidos.backImageUrl)) {
+    try {
+      const bucket = getStorage(adminApp).bucket();
+      const timestamp = Date.now();
+      const dniSeguro = String(datosExtraidos.dni || 'sin-dni').replace(/\D/g, '') || 'sin-dni';
+
+      const subirImagen = async (url: string, sufijo: 'frente' | 'dorso') => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status} al descargar ${sufijo}`);
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const path = `dnis/${dniSeguro}-didit-${sufijo}-${timestamp}.jpg`;
+        const file = bucket.file(path);
+        await file.save(buffer, { contentType: 'image/jpeg' });
+        await file.makePublic();
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${path}`;
+        return { path, publicUrl };
+      };
+
+      const results = await Promise.allSettled([
+        datosExtraidos.frontImageUrl ? subirImagen(datosExtraidos.frontImageUrl, 'frente') : Promise.resolve(null),
+        datosExtraidos.backImageUrl  ? subirImagen(datosExtraidos.backImageUrl,  'dorso')  : Promise.resolve(null),
+      ]);
+
+      const frente = results[0].status === 'fulfilled' ? results[0].value : null;
+      const dorso  = results[1].status === 'fulfilled' ? results[1].value : null;
+
+      if (frente) {
+        datosExtraidos.frontImageStorageUrl  = frente.publicUrl;
+        datosExtraidos.frontImageStoragePath = frente.path;
+      }
+      if (dorso) {
+        datosExtraidos.backImageStorageUrl  = dorso.publicUrl;
+        datosExtraidos.backImageStoragePath = dorso.path;
+      }
+      if (results[0].status === 'rejected') console.error('[webhook] Error subiendo frente:', results[0].reason);
+      if (results[1].status === 'rejected') console.error('[webhook] Error subiendo dorso:',  results[1].reason);
+    } catch (err) {
+      console.error('[webhook] Error general al subir imágenes a Storage:', err);
+    }
   }
 
   // Parsear vendorData que se mandó al crear la sesión.
