@@ -488,9 +488,15 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('didit_session');
+    let sessionId = params.get('didit_session');
+
+    if (!sessionId) {
+      sessionId = localStorage.getItem('didit_session_pendiente');
+    }
+
     if (!sessionId) return;
 
+    localStorage.removeItem('didit_session_pendiente');
     history.replaceState(null, '', window.location.pathname);
 
     setTab('nueva');
@@ -556,6 +562,7 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
               if (raw.frontImageStoragePath) setDiditFrenteStoragePath(String(raw.frontImageStoragePath));
               if (raw.dniImageStorageUrl)    setDiditDniImageUrl(String(raw.dniImageStorageUrl));
               if (raw.dniImageStoragePath)   setDiditDniImagePath(String(raw.dniImageStoragePath));
+              localStorage.removeItem('didit_session_pendiente');
               setDiditProcesandoRetorno(false);
               return;
             }
@@ -568,6 +575,7 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
       }
 
       if (!cancelado) {
+        localStorage.removeItem('didit_session_pendiente');
         setDiditProcesandoRetorno(false);
         setDiditError('El escaneo está tardando. Podés completar los datos manualmente o intentar de nuevo.');
       }
@@ -721,7 +729,8 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
         const err = await res.json().catch(() => ({}));
         throw new Error((err as any).error || 'Error al iniciar sesión con Didit');
       }
-      const { url } = await res.json();
+      const { sessionId, url } = await res.json();
+      localStorage.setItem('didit_session_pendiente', sessionId);
       window.location.href = url;
     } catch (err: any) {
       setDiditError(err.message || 'No se pudo iniciar el escaneo. Intentá de nuevo.');
@@ -1275,6 +1284,7 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
     setDiditMensajePendiente(null);
     setDiditFrenteStorageUrl(null); setDiditDorsoStorageUrl(null); setDiditFrenteStoragePath(null);
     setDiditDniImageUrl(null); setDiditDniImagePath(null);
+    localStorage.removeItem('didit_session_pendiente');
     cambiarTab('nueva');
   };
 
