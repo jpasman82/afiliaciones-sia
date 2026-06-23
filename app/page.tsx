@@ -398,12 +398,14 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
 export default function Home() {
   const { user, loading, role, userData, isAdmin, isSupervisor, isAdminOrSupervisor, loginConGoogle, logout } = useAuth();
   
-  const [mostrarIntro, setMostrarIntro] = useState(true);
+  const tieneRetornoDidit = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('didit_session') !== null;
+  const [mostrarIntro, setMostrarIntro] = useState(!tieneRetornoDidit);
 
   useEffect(() => {
+    if (tieneRetornoDidit) return;
     const timer = setTimeout(() => setMostrarIntro(false), 6000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [tieneRetornoDidit]);
 
   const [tab, setTab] = useState<'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar' | 'control'>('registros');
   
