@@ -14,6 +14,8 @@ export const ESTADOS: Record<string, { label: string; cls: string; dot: string; 
   baja:       { label: 'Dado de baja', cls: 'bg-slate-200 text-slate-600 ring-slate-300',      dot: 'bg-slate-500',   step: 0 },
   // 'firmado' existe en el modelo pero el flujo real va de pendiente → escaneado.
   firmado:    { label: 'Firmada',      cls: 'bg-sky-50 text-sky-700 ring-sky-200',             dot: 'bg-sky-500',     step: 2 },
+  // Validación digital vía RENAPER/Didit — flujo aditivo, no modifica el circuito manual.
+  validado_renaper: { label: 'Validado RENAPER', cls: 'bg-teal-50 text-teal-700 ring-teal-200', dot: 'bg-teal-500', step: 2 },
 };
 
 /** Circuito principal para el Stepper. Estados fuera de flujo: error/suspendido/baja. */

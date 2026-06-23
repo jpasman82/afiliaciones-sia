@@ -5,7 +5,7 @@
 
 export type EstadoControl =
   | 'pendiente' | 'escaneado' | 'cargado_je' | 'aprobado'
-  | 'error' | 'suspendido' | 'baja' | 'firmado';
+  | 'error' | 'suspendido' | 'baja' | 'firmado' | 'validado_renaper';
 
 export type Rol = 'pendiente' | 'afiliador' | 'supervisor' | 'admin';
 
