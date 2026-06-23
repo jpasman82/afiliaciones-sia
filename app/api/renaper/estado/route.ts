@@ -20,12 +20,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Falta session_id' }, { status: 400 });
   }
 
-  const snap = await adminDb.collection('sesionesDidit').doc(sessionId).get();
-  if (!snap.exists || snap.data()?.procesadoEn == null) {
+  // Buscar por localId (UUID generado en iniciar-sesion, no el session_id de Didit).
+  const q = await adminDb.collection('sesionesDidit').where('localId', '==', sessionId).limit(1).get();
+  if (q.empty || q.docs[0].data()?.procesadoEn == null) {
     return NextResponse.json({ status: 'pendiente', datos: null });
   }
 
-  const data = snap.data()!;
+  const data = q.docs[0].data();
   return NextResponse.json({
     status:  'completado',
     datos:   data.datosExtraidos as Record<string, string>,

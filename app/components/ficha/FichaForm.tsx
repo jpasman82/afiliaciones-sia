@@ -83,7 +83,11 @@ interface FichaFormProps {
 }
 
 export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, publicLink, creandoPublicLink, onCrearPublicLink, hideBackButton, hideCancelButton, submitLabel, dni, decodeStatus, diditLoading, diditError, diditMensajePendiente, diditAutocompleted, diditCamposAutocompletados, onIniciarSesionDidit, iniciandoSesionDidit }: FichaFormProps) {
-  const af = (name: string) => diditCamposAutocompletados?.has(name) ? 'bg-emerald-50' : '';
+  const af = (name: string) => {
+    if (diditCamposAutocompletados?.has(name)) return 'bg-emerald-50';
+    if (diditAutocompleted && !formData[name]) return 'ring-amber-400 bg-amber-50/40';
+    return '';
+  };
   return (
     <form onSubmit={onSubmit} className="max-w-4xl mx-auto pb-24 md:pb-8" data-screen-label={editando ? 'Editar ficha' : 'Nueva ficha'}>
       <button type="button" onClick={onCancel} className={`${hideBackButton ? 'hidden' : 'inline-flex'} items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 mb-4`}>
@@ -131,21 +135,21 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
             <Field label="Tipo doc." required><Select name="tipoDocumento" required value={formData.tipoDocumento} onChange={onChange}><option>DNI</option><option>LE</option><option>LC</option></Select></Field>
             <Field label="Número de documento" required><Input name="dni" required inputMode="numeric" className={`tnum ${af('dni')}`} value={formData.dni} onChange={onChange} placeholder="00000000" /></Field>
             <Field label="Sexo" required><Select name="sexo" required value={formData.sexo} onChange={onChange} className={af('sexo')}><option value="">Seleccionar…</option>{SEXO.map(s => <option key={s}>{s}</option>)}</Select></Field>
-            <Field label="Clase (año)" required><Input name="clase" required inputMode="numeric" maxLength={4} className="tnum" value={formData.clase} onChange={onChange} placeholder="1990" /></Field>
+            <Field label="Clase (año)" required><Input name="clase" required inputMode="numeric" maxLength={4} className={`tnum ${af('clase')}`} value={formData.clase} onChange={onChange} placeholder="1990" /></Field>
             <Field label="Fecha de nacimiento" required hint="DD/MM/AAAA"><Input name="fechaNacimiento" required className={`tnum ${af('fechaNacimiento')}`} value={formData.fechaNacimiento} onChange={onChange} placeholder="01/01/1990" /></Field>
-            <Field label="Lugar de nacimiento" required><Input name="lugarNacimiento" required value={formData.lugarNacimiento} onChange={onChange} placeholder="Buenos Aires" /></Field>
+            <Field label="Lugar de nacimiento" required><Input name="lugarNacimiento" required value={formData.lugarNacimiento} onChange={onChange} placeholder="Buenos Aires" className={af('lugarNacimiento')} /></Field>
             <Field label="Nacionalidad" required><Input name="nacionalidad" required value={formData.nacionalidad} onChange={onChange} className={af('nacionalidad')} /></Field>
-            <Field label="Estado civil" required><Select name="estadoCivil" required value={formData.estadoCivil} onChange={onChange}><option value="">Seleccionar…</option>{ESTCIVIL.map(s => <option key={s}>{s}</option>)}</Select></Field>
-            <Field label="Profesión" required className="sm:col-span-2"><Select name="profesion" required value={formData.profesion} onChange={onChange}><option value="">Seleccionar…</option>{PROFESIONES.map(p => <option key={p}>{p}</option>)}</Select></Field>
+            <Field label="Estado civil" required><Select name="estadoCivil" required value={formData.estadoCivil} onChange={onChange} className={af('estadoCivil')}><option value="">Seleccionar…</option>{ESTCIVIL.map(s => <option key={s}>{s}</option>)}</Select></Field>
+            <Field label="Profesión" required className="sm:col-span-2"><Select name="profesion" required value={formData.profesion} onChange={onChange} className={af('profesion')}><option value="">Seleccionar…</option>{PROFESIONES.map(p => <option key={p}>{p}</option>)}</Select></Field>
           </div>
         </FormSection>
 
         <FormSection n="3" title="Domicilio" sub="Dirección del afiliado">
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Distrito"><Input name="distrito" value={formData.distrito} disabled className="bg-slate-50 text-slate-500" /></Field>
-            <Field label="Localidad" required><Select name="localidad" required value={formData.localidad} onChange={onChange}><option value="">Seleccionar…</option>{LOCALIDADES.map(l => <option key={l}>{l}</option>)}</Select></Field>
-            <Field label="Calle" required className="sm:col-span-2"><Input name="calle" required value={formData.calle} onChange={onChange} placeholder="Av. del Libertador" /></Field>
-            <Field label="Número" required><Input name="numero" required inputMode="numeric" className="tnum" value={formData.numero} onChange={onChange} placeholder="1234" /></Field>
+            <Field label="Localidad" required><Select name="localidad" required value={formData.localidad} onChange={onChange} className={af('localidad')}><option value="">Seleccionar…</option>{LOCALIDADES.map(l => <option key={l}>{l}</option>)}</Select></Field>
+            <Field label="Calle" required className="sm:col-span-2"><Input name="calle" required value={formData.calle} onChange={onChange} placeholder="Av. del Libertador" className={af('calle')} /></Field>
+            <Field label="Número" required><Input name="numero" required inputMode="numeric" className={`tnum ${af('numero')}`} value={formData.numero} onChange={onChange} placeholder="1234" /></Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Piso"><Input name="piso" value={formData.piso} onChange={onChange} /></Field>
               <Field label="Dpto"><Input name="dpto" value={formData.dpto} onChange={onChange} /></Field>
@@ -155,8 +159,8 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
 
         <FormSection n="4" title="Contacto" sub="Datos de comunicación">
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Celular"><Input name="celular" inputMode="tel" value={formData.celular} onChange={onChange} placeholder="11 5555 5555" /></Field>
-            <Field label="Email"><Input name="mail" type="email" value={formData.mail} onChange={onChange} placeholder="correo@gmail.com" /></Field>
+            <Field label="Celular"><Input name="celular" inputMode="tel" value={formData.celular} onChange={onChange} placeholder="11 5555 5555" className={af('celular')} /></Field>
+            <Field label="Email"><Input name="mail" type="email" value={formData.mail} onChange={onChange} placeholder="correo@gmail.com" className={af('mail')} /></Field>
             <Field label="Observaciones" className="sm:col-span-2"><Textarea name="observaciones" rows={3} value={formData.observaciones} onChange={onChange} placeholder="Notas internas (opcional)" /></Field>
           </div>
         </FormSection>

@@ -125,6 +125,10 @@ export async function POST(req: NextRequest) {
     // vendor_data malformado no es fatal; guardamos vacío.
   }
 
+  // localId es el UUID que generamos en iniciar-sesion y que viajó en la callback URL.
+  // Lo guardamos en el doc para que /api/renaper/estado pueda buscarlo por este campo.
+  const localId = typeof vendorData.localId === 'string' ? vendorData.localId : null;
+
   const payloadHash = createHash('sha256').update(rawBody).digest('hex');
   const esFinal = status === 'Approved' || status === 'Declined';
 
@@ -134,6 +138,7 @@ export async function POST(req: NextRequest) {
     status,
     datosExtraidos,
     vendorData,
+    ...(localId ? { localId } : {}),
     payloadHash,
     recibidoEn: FieldValue.serverTimestamp(),
     ...(esFinal ? { procesadoEn: FieldValue.serverTimestamp() } : {}),

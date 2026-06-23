@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
 import { requireRole } from '../../_auth';
 import { crearSesionDidit } from '@/app/lib/diditClient';
@@ -53,13 +54,19 @@ export async function POST(request: Request) {
   }
 
   try {
+    // localId es el identificador que viaja en la URL de callback y en vendorData.
+    // No podemos usar el session_id de Didit en el callback porque aún no existe
+    // cuando construimos la URL. El webhook extrae localId de vendorData y lo
+    // persiste en Firestore para que el endpoint /estado pueda encontrar la sesión.
+    const localId = randomUUID();
     const vendorData = JSON.stringify({
       afiliadorUid,
       afiliadorNombre,
+      localId,
       timestamp: new Date().toISOString(),
     });
 
-    const callback = `${APP_URL}/?tab=nueva`;
+    const callback = `${APP_URL}/?tab=nueva&didit_session=${localId}`;
 
     // Mostrar rol del usuario encontrado para diagnóstico
     console.log('Usuario encontrado, rol:', auth.user.role);
@@ -76,7 +83,7 @@ export async function POST(request: Request) {
 
     const sesion = await crearSesionDidit({ vendorData, callback });
 
-    return NextResponse.json({ sessionId: sesion.session_id, url: sesion.url });
+    return NextResponse.json({ sessionId: localId, url: sesion.url });
   } catch (err) {
     console.error('[renaper/iniciar-sesion] Error al crear sesión Didit:', err);
     return NextResponse.json({ error: 'Error al crear sesión' }, { status: 500 });

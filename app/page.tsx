@@ -483,9 +483,20 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const sessionId = sessionStorage.getItem('didit_session');
+    // Leer el localId: primero del query param que Didit incluye en el redirect,
+    // luego de sessionStorage como fallback (por si el redirect lo omitió).
+    const params = new URLSearchParams(window.location.search);
+    let sessionId = params.get('didit_session');
+    if (sessionId) {
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('didit_session');
+      history.replaceState(null, '', cleanUrl.toString());
+      sessionStorage.removeItem('didit_session');
+    } else {
+      sessionId = sessionStorage.getItem('didit_session');
+      if (sessionId) sessionStorage.removeItem('didit_session');
+    }
     if (!sessionId) return;
-    sessionStorage.removeItem('didit_session');
     diditSessionIdRef.current = sessionId;
     const t = setTimeout(() => {
       setMostrarIntro(false);
@@ -539,6 +550,13 @@ export default function Home() {
           tryAdd('apellidos', raw.apellidos);
           tryAdd('sexo', raw.sexo);
           tryAdd('fechaNacimiento', raw.fechaNacimiento);
+          if (campos.fechaNacimiento) {
+            const partes = (campos.fechaNacimiento as string).split('/');
+            if (partes.length === 3 && partes[2]) {
+              campos.clase = partes[2];
+              completados.add('clase');
+            }
+          }
           tryAdd('nacionalidad', raw.nacionalidad);
           tryAdd('lugarNacimiento', raw.lugarNacimiento);
           tryAdd('calle', raw.calle);
