@@ -84,8 +84,8 @@ interface FichaFormProps {
 
 export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, publicLink, creandoPublicLink, onCrearPublicLink, hideBackButton, hideCancelButton, submitLabel, dni, decodeStatus, diditLoading, diditError, diditMensajePendiente, diditAutocompleted, diditCamposAutocompletados, onIniciarSesionDidit, iniciandoSesionDidit }: FichaFormProps) {
   const af = (name: string) => {
-    if (diditCamposAutocompletados?.has(name)) return 'bg-emerald-50';
-    if (diditAutocompleted && !formData[name]) return 'ring-amber-400 bg-amber-50/40';
+    if (diditCamposAutocompletados?.has(name)) return '!ring-2 !ring-emerald-400 bg-emerald-50';
+    if (diditAutocompleted && !formData[name]) return '!ring-2 !ring-amber-400 bg-amber-50/40';
     return '';
   };
   return (
@@ -197,9 +197,9 @@ function DniUploader({ dni, onIniciarSesionDidit, iniciandoSesionDidit, diditLoa
         </button>
       )}
       {diditLoading && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5">
-          <span className="w-4 h-4 rounded-full border-2 border-emerald-300 border-t-emerald-600 animate-spin shrink-0" />
-          <span className="text-sm text-emerald-800 font-medium">Procesando escaneo de DNI…</span>
+        <div className="mb-3 flex items-start gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5">
+          <span className="w-4 h-4 rounded-full border-2 border-emerald-300 border-t-emerald-600 animate-spin shrink-0 mt-0.5" />
+          <span className="text-sm text-emerald-800 font-medium">Completá el escaneo en la ventana de Didit. Los datos aparecerán automáticamente cuando termine.</span>
         </div>
       )}
       {diditError && (

@@ -455,8 +455,7 @@ export default function Home() {
   const [accionSuspension, setAccionSuspension] = useState<'suspendido' | 'baja' | null>(null);
   const [subiendoControl, setSubiendoControl] = useState(false);
 
-  const diditSessionIdRef = useRef<string | null>(null);
-  const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
+const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
   const [diditSessionPendiente, setDiditSessionPendiente] = useState<string | null>(null);
   const [diditProcesandoRetorno, setDiditProcesandoRetorno] = useState(false);
   const [diditError, setDiditError] = useState<string | null>(null);
@@ -466,6 +465,8 @@ export default function Home() {
   const [diditFrenteStorageUrl, setDiditFrenteStorageUrl] = useState<string | null>(null);
   const [diditDorsoStorageUrl, setDiditDorsoStorageUrl] = useState<string | null>(null);
   const [diditFrenteStoragePath, setDiditFrenteStoragePath] = useState<string | null>(null);
+  const [diditDniImageUrl, setDiditDniImageUrl] = useState<string | null>(null);
+  const [diditDniImagePath, setDiditDniImagePath] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && !window.history.state) {
@@ -485,42 +486,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    // Leer el localId: primero del query param que Didit incluye en el redirect,
-    // luego de sessionStorage como fallback (por si el redirect lo omitió).
-    const params = new URLSearchParams(window.location.search);
-    let sessionId = params.get('didit_session');
-    if (sessionId) {
-      const cleanUrl = new URL(window.location.href);
-      cleanUrl.searchParams.delete('didit_session');
-      history.replaceState(null, '', cleanUrl.toString());
-      sessionStorage.removeItem('didit_session');
-    } else {
-      sessionId = sessionStorage.getItem('didit_session');
-      if (sessionId) sessionStorage.removeItem('didit_session');
-    }
-    if (!sessionId) return;
-    diditSessionIdRef.current = sessionId;
-    const t = setTimeout(() => {
-      setMostrarIntro(false);
-      setTab('nueva');
-    }, 0);
-    return () => clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (!user || role === 'pendiente' || !diditSessionIdRef.current) return;
-    const sessionId = diditSessionIdRef.current;
-    diditSessionIdRef.current = null;
-    const t = setTimeout(() => setDiditSessionPendiente(sessionId), 0);
-    return () => clearTimeout(t);
-  }, [user, role]);
-
-  useEffect(() => {
     if (!user || !diditSessionPendiente) return;
     let cancelled = false;
     let attempts = 0;
-    const MAX_ATTEMPTS = 10;
+    const MAX_ATTEMPTS = 60;
 
     const poll = async () => {
       if (cancelled) return;
@@ -571,15 +540,17 @@ export default function Home() {
           setFormData(prev => ({ ...prev, ...campos }));
           setDiditCamposAutocompletados(completados);
           setDiditAutocompleted(completados.size > 0);
-          if (raw.frontImageStorageUrl) setDiditFrenteStorageUrl(String(raw.frontImageStorageUrl));
-          if (raw.backImageStorageUrl)  setDiditDorsoStorageUrl(String(raw.backImageStorageUrl));
+          if (raw.frontImageStorageUrl)  setDiditFrenteStorageUrl(String(raw.frontImageStorageUrl));
+          if (raw.backImageStorageUrl)   setDiditDorsoStorageUrl(String(raw.backImageStorageUrl));
           if (raw.frontImageStoragePath) setDiditFrenteStoragePath(String(raw.frontImageStoragePath));
+          if (raw.dniImageStorageUrl)    setDiditDniImageUrl(String(raw.dniImageStorageUrl));
+          if (raw.dniImageStoragePath)   setDiditDniImagePath(String(raw.dniImageStoragePath));
           setDiditProcesandoRetorno(false);
           setDiditSessionPendiente(null);
           return;
         }
         if (attempts >= MAX_ATTEMPTS) {
-          setDiditMensajePendiente('El escaneo está tardando más de lo esperado. Podés completar los datos manualmente o intentar de nuevo.');
+          setDiditMensajePendiente('No se recibió respuesta en 3 minutos. Podés cerrar la ventana de Didit y completar los datos manualmente, o intentar de nuevo.');
           setDiditProcesandoRetorno(false);
           setDiditSessionPendiente(null);
           return;
@@ -726,6 +697,7 @@ export default function Home() {
     if (!user) return;
     setIniciandoSesionDidit(true);
     setDiditError(null);
+    setDiditMensajePendiente(null);
     try {
       const idToken = await (user as any).getIdToken();
       const nombreAfiliador = userData
@@ -741,8 +713,10 @@ export default function Home() {
         throw new Error((err as any).error || 'Error al iniciar sesión con Didit');
       }
       const { sessionId, url } = await res.json();
-      sessionStorage.setItem('didit_session', sessionId);
-      window.location.href = url;
+      // Abrir Didit en nueva pestaña y arrancar polling en esta página.
+      window.open(url, '_blank');
+      setIniciandoSesionDidit(false);
+      setDiditSessionPendiente(sessionId);
     } catch (err: any) {
       setDiditError(err.message || 'No se pudo iniciar el escaneo. Intentá de nuevo.');
       setIniciandoSesionDidit(false);
@@ -1166,10 +1140,10 @@ export default function Home() {
       let pathDni = '';
       let urlDni: string | null = null;
 
-      if (diditFrenteStoragePath) {
-        // Las fotos ya están en Storage (subidas por el webhook de Didit). No re-subir.
-        pathDni = diditFrenteStoragePath;
-        urlDni  = diditFrenteStorageUrl;
+      if (diditDniImagePath) {
+        // Imagen combinada frente+dorso ya subida por el webhook de Didit. No re-subir.
+        pathDni = diditDniImagePath;
+        urlDni  = diditDniImageUrl;
       } else if (!editandoId || fotoFrenteB64) {
         const timestamp = Date.now();
         const ownerUid = editandoId
@@ -1237,6 +1211,7 @@ export default function Home() {
       setDiditAutocompleted(false);
       setDiditCamposAutocompletados(new Set());
       setDiditFrenteStorageUrl(null); setDiditDorsoStorageUrl(null); setDiditFrenteStoragePath(null);
+      setDiditDniImageUrl(null); setDiditDniImagePath(null);
       cambiarTab('registros');
 
     } catch (error: any) {
@@ -1293,6 +1268,7 @@ export default function Home() {
     setDiditError(null);
     setDiditMensajePendiente(null);
     setDiditFrenteStorageUrl(null); setDiditDorsoStorageUrl(null); setDiditFrenteStoragePath(null);
+    setDiditDniImageUrl(null); setDiditDniImagePath(null);
     cambiarTab('nueva');
   };
 
@@ -1595,9 +1571,9 @@ export default function Home() {
           dni={{
             modo: modoArchivo,
             setModo: setModoArchivo,
-            frenteOk: !!(fotoFrenteB64 || diditFrenteStorageUrl),
-            dorsoOk: !!(fotoDorsoB64 || diditDorsoStorageUrl),
-            fotoFrente: fotoFrenteB64 || diditFrenteStorageUrl,
+            frenteOk: !!(fotoFrenteB64 || diditDniImageUrl || diditFrenteStorageUrl),
+            dorsoOk: !!(fotoDorsoB64 || diditDniImageUrl || diditDorsoStorageUrl),
+            fotoFrente: fotoFrenteB64 || diditDniImageUrl || diditFrenteStorageUrl,
             fotoDorso: fotoDorsoB64 || diditDorsoStorageUrl,
             procesandoArchivo: procesandoArchivoDni,
             onScanFrente: () => {

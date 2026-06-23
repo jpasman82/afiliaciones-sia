@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import sharp from 'sharp';
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
     };
   }
 
-  // Paso 6b: descargar fotos de Didit y subirlas a Firebase Storage (non-blocking).
+  // Paso 6b: descargar fotos de Didit, combinarlas verticalmente y subirlas a Storage.
   // Las URLs de Didit son firmadas de S3 y expiran en ~4 h; hay que persistirlas ahora.
   if (status === 'Approved' && adminApp && (datosExtraidos.frontImageUrl || datosExtraidos.backImageUrl)) {
     try {
@@ -125,36 +126,68 @@ export async function POST(req: NextRequest) {
       const timestamp = Date.now();
       const dniSeguro = String(datosExtraidos.dni || 'sin-dni').replace(/\D/g, '') || 'sin-dni';
 
-      const subirImagen = async (url: string, sufijo: 'frente' | 'dorso') => {
+      const descargarBuffer = async (url: string, sufijo: string): Promise<Buffer | null> => {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status} al descargar ${sufijo}`);
-        const buffer = Buffer.from(await res.arrayBuffer());
-        const path = `dnis/${dniSeguro}-didit-${sufijo}-${timestamp}.jpg`;
-        const file = bucket.file(path);
-        await file.save(buffer, { contentType: 'image/jpeg' });
-        await file.makePublic();
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${path}`;
-        return { path, publicUrl };
+        if (!res.ok) { console.error(`[webhook] HTTP ${res.status} al descargar ${sufijo}`); return null; }
+        return Buffer.from(await res.arrayBuffer());
       };
 
-      const results = await Promise.allSettled([
-        datosExtraidos.frontImageUrl ? subirImagen(datosExtraidos.frontImageUrl, 'frente') : Promise.resolve(null),
-        datosExtraidos.backImageUrl  ? subirImagen(datosExtraidos.backImageUrl,  'dorso')  : Promise.resolve(null),
+      const [bufFrente, bufDorso] = await Promise.all([
+        datosExtraidos.frontImageUrl ? descargarBuffer(datosExtraidos.frontImageUrl, 'frente') : Promise.resolve(null),
+        datosExtraidos.backImageUrl  ? descargarBuffer(datosExtraidos.backImageUrl,  'dorso')  : Promise.resolve(null),
       ]);
 
-      const frente = results[0].status === 'fulfilled' ? results[0].value : null;
-      const dorso  = results[1].status === 'fulfilled' ? results[1].value : null;
+      // Subir frente y dorso por separado (para referencia).
+      const subirBuffer = async (buf: Buffer, sufijo: string) => {
+        const path = `dnis/${dniSeguro}-didit-${sufijo}-${timestamp}.jpg`;
+        const file = bucket.file(path);
+        await file.save(buf, { contentType: 'image/jpeg' });
+        await file.makePublic();
+        return { path, publicUrl: `https://storage.googleapis.com/${bucket.name}/${path}` };
+      };
 
-      if (frente) {
-        datosExtraidos.frontImageStorageUrl  = frente.publicUrl;
-        datosExtraidos.frontImageStoragePath = frente.path;
+      const [frente, dorso] = await Promise.all([
+        bufFrente ? subirBuffer(bufFrente, 'frente') : Promise.resolve(null),
+        bufDorso  ? subirBuffer(bufDorso,  'dorso')  : Promise.resolve(null),
+      ]);
+
+      if (frente) { datosExtraidos.frontImageStorageUrl = frente.publicUrl; datosExtraidos.frontImageStoragePath = frente.path; }
+      if (dorso)  { datosExtraidos.backImageStorageUrl  = dorso.publicUrl;  datosExtraidos.backImageStoragePath  = dorso.path; }
+
+      // Combinar frente + dorso verticalmente (igual que el flujo manual con canvas).
+      if (bufFrente && bufDorso) {
+        try {
+          const metaF = await sharp(bufFrente).metadata();
+          const metaD = await sharp(bufDorso).metadata();
+          const ancho = Math.max(metaF.width ?? 0, metaD.width ?? 0);
+          const dorsoResized = await sharp(bufDorso).resize({ width: ancho, fit: 'contain', background: { r: 255, g: 255, b: 255 } }).jpeg().toBuffer();
+          const frenteResized = await sharp(bufFrente).resize({ width: ancho, fit: 'contain', background: { r: 255, g: 255, b: 255 } }).jpeg().toBuffer();
+          const metaFR = await sharp(frenteResized).metadata();
+          const metaDR = await sharp(dorsoResized).metadata();
+          const alturaTotal = (metaFR.height ?? 0) + (metaDR.height ?? 0);
+          const combinado = await sharp({
+            create: { width: ancho, height: alturaTotal, channels: 3, background: { r: 255, g: 255, b: 255 } },
+          }).composite([
+            { input: frenteResized, top: 0, left: 0 },
+            { input: dorsoResized,  top: metaFR.height ?? 0, left: 0 },
+          ]).jpeg({ quality: 85 }).toBuffer();
+
+          const pathCombinado = `dnis/${dniSeguro}-didit-${timestamp}.jpg`;
+          const fileCombinado = bucket.file(pathCombinado);
+          await fileCombinado.save(combinado, { contentType: 'image/jpeg' });
+          await fileCombinado.makePublic();
+          datosExtraidos.dniImageStorageUrl  = `https://storage.googleapis.com/${bucket.name}/${pathCombinado}`;
+          datosExtraidos.dniImageStoragePath = pathCombinado;
+        } catch (errCombinar) {
+          console.error('[webhook] Error combinando imágenes, se usará solo el frente:', errCombinar);
+          // Fallback: usar la imagen del frente como imagen combinada.
+          if (frente) { datosExtraidos.dniImageStorageUrl = frente.publicUrl; datosExtraidos.dniImageStoragePath = frente.path; }
+        }
+      } else if (frente) {
+        // Solo hay frente disponible.
+        datosExtraidos.dniImageStorageUrl  = frente.publicUrl;
+        datosExtraidos.dniImageStoragePath = frente.path;
       }
-      if (dorso) {
-        datosExtraidos.backImageStorageUrl  = dorso.publicUrl;
-        datosExtraidos.backImageStoragePath = dorso.path;
-      }
-      if (results[0].status === 'rejected') console.error('[webhook] Error subiendo frente:', results[0].reason);
-      if (results[1].status === 'rejected') console.error('[webhook] Error subiendo dorso:',  results[1].reason);
     } catch (err) {
       console.error('[webhook] Error general al subir imágenes a Storage:', err);
     }
