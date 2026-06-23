@@ -28,6 +28,11 @@ export async function POST(request: Request) {
 
   // Token validado — mostrar uid para diagnóstico
   console.log('Token validado, uid:', auth.user.uid);
+  // UID extraído del token (diagnóstico solicitado)
+  const uid = auth.user.uid;
+  console.log('UID del token:', uid);
+  // Mostrar project id de Firebase Admin (diagnóstico solicitado)
+  console.log('Firebase project:', process.env.FIREBASE_ADMIN_PROJECT_ID);
 
   let afiliadorUid: string;
   let afiliadorNombre: string;
