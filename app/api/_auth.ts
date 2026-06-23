@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { adminDb } from '@/app/lib/firebaseAdmin';
 
 type FirebaseUser = {
   uid: string;
@@ -62,26 +63,14 @@ export async function requireRole(request: Request, roles: string[]): Promise<Au
   const auth = await verifyFirebaseUser(request);
   if (!auth.ok) return auth;
 
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  if (!projectId) {
-    return { ok: false, response: forbidden('Firestore no configurado') };
+  if (!adminDb) {
+    return { ok: false, response: forbidden('Firestore Admin no configurado') };
   }
-  console.log('[_auth] projectId:', projectId);
-
-  const userDoc = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/usuarios/${auth.user.uid}`,
-    { headers: { Authorization: `Bearer ${auth.idToken}` } }
-  );
-  console.log('[_auth] Firestore response status:', userDoc.status);
-
-  if (!userDoc.ok) {
-    const errorText = await userDoc.text();
-    console.log('[_auth] Firestore error:', errorText);
-    return { ok: false, response: forbidden() };
+  const userSnap = await adminDb.collection('usuarios').doc(auth.user.uid).get();
+  if (!userSnap.exists) {
+    return { ok: false, response: forbidden('Usuario no encontrado') };
   }
-
-  const data = await userDoc.json();
-  const role = data.fields?.rol?.stringValue;
+  const role = userSnap.data()?.rol;
   console.log('[_auth] uid:', auth.user.uid, 'rol encontrado:', role);
   if (!roles.includes(role)) {
     return { ok: false, response: forbidden() };
