@@ -66,18 +66,23 @@ export async function requireRole(request: Request, roles: string[]): Promise<Au
   if (!projectId) {
     return { ok: false, response: forbidden('Firestore no configurado') };
   }
+  console.log('[_auth] projectId:', projectId);
 
   const userDoc = await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/usuarios/${auth.user.uid}`,
     { headers: { Authorization: `Bearer ${auth.idToken}` } }
   );
+  console.log('[_auth] Firestore response status:', userDoc.status);
 
   if (!userDoc.ok) {
+    const errorText = await userDoc.text();
+    console.log('[_auth] Firestore error:', errorText);
     return { ok: false, response: forbidden() };
   }
 
   const data = await userDoc.json();
   const role = data.fields?.rol?.stringValue;
+  console.log('[_auth] uid:', auth.user.uid, 'rol encontrado:', role);
   if (!roles.includes(role)) {
     return { ok: false, response: forbidden() };
   }
