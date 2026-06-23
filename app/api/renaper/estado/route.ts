@@ -1,37 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/app/lib/firebaseAdmin';
+import { adminDb } from '@/app/lib/firebaseAdmin';
+import { requireRole } from '../../_auth';
 
 export const dynamic = 'force-dynamic';
 
 const ROLES_PERMITIDOS = ['admin', 'supervisor', 'afiliador'];
 
 export async function GET(request: NextRequest) {
-  if (!adminAuth || !adminDb) {
+  if (!adminDb) {
     return NextResponse.json({ error: 'Servicio no disponible' }, { status: 503 });
   }
 
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
-
-  const idToken = authHeader.slice(7);
-  let uid: string;
-  try {
-    const decoded = await adminAuth.verifyIdToken(idToken);
-    uid = decoded.uid;
-  } catch {
-    return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-  }
-
-  const userSnap = await adminDb.collection('usuarios').doc(uid).get();
-  if (!userSnap.exists) {
-    return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
-  }
-  const rol = userSnap.data()?.rol as string | undefined;
-  if (!rol || !ROLES_PERMITIDOS.includes(rol)) {
-    return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
-  }
+  const auth = await requireRole(request, ROLES_PERMITIDOS);
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('session_id');

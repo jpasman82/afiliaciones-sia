@@ -1,37 +1,13 @@
 import { NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/app/lib/firebaseAdmin';
+import { requireRole } from '../../_auth';
 import { crearSesionDidit } from '@/app/lib/diditClient';
 
 const ROLES_PERMITIDOS = ['admin', 'supervisor', 'afiliador'];
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? '';
 
 export async function POST(request: Request) {
-  if (!adminAuth || !adminDb) {
-    return NextResponse.json({ error: 'Servicio no disponible' }, { status: 503 });
-  }
-
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
-
-  const idToken = authHeader.slice(7);
-  let uid: string;
-  try {
-    const decoded = await adminAuth.verifyIdToken(idToken);
-    uid = decoded.uid;
-  } catch {
-    return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-  }
-
-  const userSnap = await adminDb.collection('usuarios').doc(uid).get();
-  if (!userSnap.exists) {
-    return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
-  }
-  const rol = userSnap.data()?.rol as string | undefined;
-  if (!rol || !ROLES_PERMITIDOS.includes(rol)) {
-    return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
-  }
+  const auth = await requireRole(request, ROLES_PERMITIDOS);
+  if (!auth.ok) return auth.response;
 
   let afiliadorUid: string;
   let afiliadorNombre: string;
