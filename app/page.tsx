@@ -1,7 +1,7 @@
 ﻿'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { db, storage } from '../firebaseConfig';
+import { auth, db, storage } from '../firebaseConfig';
 import { collection, serverTimestamp, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, orderBy, arrayUnion, writeBatch, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getBlob, deleteObject } from 'firebase/storage';
 import JSZip from 'jszip';
@@ -456,7 +456,6 @@ export default function Home() {
   const [subiendoControl, setSubiendoControl] = useState(false);
 
 const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
-  const [diditSessionPendiente, setDiditSessionPendiente] = useState<string | null>(null);
   const [diditProcesandoRetorno, setDiditProcesandoRetorno] = useState(false);
   const [diditError, setDiditError] = useState<string | null>(null);
   const [diditMensajePendiente, setDiditMensajePendiente] = useState<string | null>(null);
@@ -486,87 +485,95 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
   }, []);
 
   useEffect(() => {
-    if (!user || !diditSessionPendiente) return;
-    let cancelled = false;
-    let attempts = 0;
-    const MAX_ATTEMPTS = 60;
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('didit_session');
+    if (!sessionId) return;
+
+    history.replaceState(null, '', window.location.pathname);
+
+    setTab('nueva');
+    setDiditProcesandoRetorno(true);
+    setDiditError('');
+
+    let intentos = 0;
+    const maxIntentos = 60;
+    let cancelado = false;
 
     const poll = async () => {
-      if (cancelled) return;
-      if (attempts === 0) {
-        setDiditProcesandoRetorno(true);
-        setDiditError(null);
-        setDiditMensajePendiente(null);
-      }
-      attempts++;
-      try {
-        const idToken = await (user as any).getIdToken();
-        const res = await fetch(`/api/renaper/estado?session_id=${diditSessionPendiente}`, {
-          headers: { Authorization: `Bearer ${idToken}` },
-        });
-        if (cancelled) return;
-        if (!res.ok) throw new Error('Error al consultar estado');
-        const data = await res.json();
-        if (cancelled) return;
-        if (data.status === 'completado') {
-          const raw: Record<string, unknown> = data.datos ?? {};
-          const campos: Record<string, string> = {};
-          const completados = new Set<string>();
-          const tryAdd = (key: string, val: unknown) => {
-            if (!val) return;
-            const str = key === 'dni' ? String(val).replace(/\D/g, '') : String(val);
-            if (str) { campos[key] = str; completados.add(key); }
-          };
-          tryAdd('dni', raw.dni);
-          tryAdd('nombres', raw.nombres);
-          tryAdd('apellidos', raw.apellidos);
-          tryAdd('sexo', raw.sexo);
-          tryAdd('fechaNacimiento', raw.fechaNacimiento);
-          if (campos.fechaNacimiento) {
-            const partes = (campos.fechaNacimiento as string).split('/');
-            if (partes.length === 3 && partes[2]) {
-              campos.clase = partes[2];
-              completados.add('clase');
+      while (intentos < maxIntentos && !cancelado) {
+        intentos++;
+
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+
+        try {
+          const token = await currentUser.getIdToken();
+          const res = await fetch(`/api/renaper/estado?session_id=${sessionId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'completado' && data.datos) {
+              const raw: Record<string, unknown> = data.datos;
+              const campos: Record<string, string> = {};
+              const completados = new Set<string>();
+              const tryAdd = (key: string, val: unknown) => {
+                if (!val) return;
+                const str = key === 'dni' ? String(val).replace(/\D/g, '') : String(val);
+                if (str) { campos[key] = str; completados.add(key); }
+              };
+              tryAdd('dni', raw.dni);
+              tryAdd('nombres', raw.nombres);
+              tryAdd('apellidos', raw.apellidos);
+              tryAdd('sexo', raw.sexo);
+              tryAdd('fechaNacimiento', raw.fechaNacimiento);
+              if (campos.fechaNacimiento) {
+                const partes = (campos.fechaNacimiento as string).split('/');
+                if (partes.length === 3 && partes[2]) {
+                  campos.clase = partes[2];
+                  completados.add('clase');
+                }
+              }
+              tryAdd('nacionalidad', raw.nacionalidad);
+              tryAdd('lugarNacimiento', raw.lugarNacimiento);
+              tryAdd('calle', raw.calle);
+              tryAdd('numero', raw.numero);
+              const LOCALIDADES_VALIDAS = ['Acassuso', 'Beccar', 'Boulogne', 'Martínez', 'San Isidro', 'Villa Adelina'];
+              if (raw.localidad && LOCALIDADES_VALIDAS.includes(String(raw.localidad))) {
+                tryAdd('localidad', raw.localidad);
+              }
+              setFormData(prev => ({ ...prev, ...campos }));
+              setDiditCamposAutocompletados(completados);
+              setDiditAutocompleted(completados.size > 0);
+              if (raw.frontImageStorageUrl)  setDiditFrenteStorageUrl(String(raw.frontImageStorageUrl));
+              if (raw.backImageStorageUrl)   setDiditDorsoStorageUrl(String(raw.backImageStorageUrl));
+              if (raw.frontImageStoragePath) setDiditFrenteStoragePath(String(raw.frontImageStoragePath));
+              if (raw.dniImageStorageUrl)    setDiditDniImageUrl(String(raw.dniImageStorageUrl));
+              if (raw.dniImageStoragePath)   setDiditDniImagePath(String(raw.dniImageStoragePath));
+              setDiditProcesandoRetorno(false);
+              return;
             }
           }
-          tryAdd('nacionalidad', raw.nacionalidad);
-          tryAdd('lugarNacimiento', raw.lugarNacimiento);
-          tryAdd('calle', raw.calle);
-          tryAdd('numero', raw.numero);
-          const LOCALIDADES_VALIDAS = ['Acassuso', 'Beccar', 'Boulogne', 'Martínez', 'San Isidro', 'Villa Adelina'];
-          if (raw.localidad && LOCALIDADES_VALIDAS.includes(String(raw.localidad))) {
-            tryAdd('localidad', raw.localidad);
-          }
-          setFormData(prev => ({ ...prev, ...campos }));
-          setDiditCamposAutocompletados(completados);
-          setDiditAutocompleted(completados.size > 0);
-          if (raw.frontImageStorageUrl)  setDiditFrenteStorageUrl(String(raw.frontImageStorageUrl));
-          if (raw.backImageStorageUrl)   setDiditDorsoStorageUrl(String(raw.backImageStorageUrl));
-          if (raw.frontImageStoragePath) setDiditFrenteStoragePath(String(raw.frontImageStoragePath));
-          if (raw.dniImageStorageUrl)    setDiditDniImageUrl(String(raw.dniImageStorageUrl));
-          if (raw.dniImageStoragePath)   setDiditDniImagePath(String(raw.dniImageStoragePath));
-          setDiditProcesandoRetorno(false);
-          setDiditSessionPendiente(null);
-          return;
+        } catch (e) {
+          console.error('Error polling Didit:', e);
         }
-        if (attempts >= MAX_ATTEMPTS) {
-          setDiditMensajePendiente('No se recibió respuesta en 3 minutos. Podés cerrar la ventana de Didit y completar los datos manualmente, o intentar de nuevo.');
-          setDiditProcesandoRetorno(false);
-          setDiditSessionPendiente(null);
-          return;
-        }
-        setTimeout(poll, 3000);
-      } catch {
-        if (cancelled) return;
-        setDiditError('No se pudo obtener el resultado del escaneo. Completá los datos manualmente.');
+
+        await new Promise(r => setTimeout(r, 3000));
+      }
+
+      if (!cancelado) {
         setDiditProcesandoRetorno(false);
-        setDiditSessionPendiente(null);
+        setDiditError('El escaneo está tardando. Podés completar los datos manualmente o intentar de nuevo.');
       }
     };
 
     poll();
-    return () => { cancelled = true; };
-  }, [user, diditSessionPendiente]);
+    return () => { cancelado = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cambiarTab = (nuevoTab: 'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar' | 'control') => {
     setTab(nuevoTab);
@@ -712,11 +719,8 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
         const err = await res.json().catch(() => ({}));
         throw new Error((err as any).error || 'Error al iniciar sesión con Didit');
       }
-      const { sessionId, url } = await res.json();
-      // Abrir Didit en nueva pestaña y arrancar polling en esta página.
-      window.open(url, '_blank');
-      setIniciandoSesionDidit(false);
-      setDiditSessionPendiente(sessionId);
+      const { url } = await res.json();
+      window.location.href = url;
     } catch (err: any) {
       setDiditError(err.message || 'No se pudo iniciar el escaneo. Intentá de nuevo.');
       setIniciandoSesionDidit(false);
