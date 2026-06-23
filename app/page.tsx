@@ -455,6 +455,15 @@ export default function Home() {
   const [accionSuspension, setAccionSuspension] = useState<'suspendido' | 'baja' | null>(null);
   const [subiendoControl, setSubiendoControl] = useState(false);
 
+  const diditSessionIdRef = useRef<string | null>(null);
+  const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
+  const [diditSessionPendiente, setDiditSessionPendiente] = useState<string | null>(null);
+  const [diditProcesandoRetorno, setDiditProcesandoRetorno] = useState(false);
+  const [diditError, setDiditError] = useState<string | null>(null);
+  const [diditMensajePendiente, setDiditMensajePendiente] = useState<string | null>(null);
+  const [diditAutocompleted, setDiditAutocompleted] = useState(false);
+  const [diditCamposAutocompletados, setDiditCamposAutocompletados] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (typeof window !== "undefined" && !window.history.state) {
       window.history.replaceState({ tab: 'registros' }, '', '');
@@ -471,6 +480,92 @@ export default function Home() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('didit_session');
+    if (!sessionId) return;
+    diditSessionIdRef.current = sessionId;
+    window.history.replaceState({ tab: 'nueva' }, '', `${window.location.pathname}?tab=nueva`);
+    const t = setTimeout(() => {
+      setMostrarIntro(false);
+      setTab('nueva');
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (!user || role === 'pendiente' || !diditSessionIdRef.current) return;
+    const sessionId = diditSessionIdRef.current;
+    diditSessionIdRef.current = null;
+    const t = setTimeout(() => setDiditSessionPendiente(sessionId), 0);
+    return () => clearTimeout(t);
+  }, [user, role]);
+
+  useEffect(() => {
+    if (!user || !diditSessionPendiente) return;
+    let cancelled = false;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 10;
+
+    const poll = async () => {
+      if (cancelled) return;
+      if (attempts === 0) {
+        setDiditProcesandoRetorno(true);
+        setDiditError(null);
+        setDiditMensajePendiente(null);
+      }
+      attempts++;
+      try {
+        const idToken = await (user as any).getIdToken();
+        const res = await fetch(`/api/renaper/estado?session_id=${diditSessionPendiente}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (cancelled) return;
+        if (!res.ok) throw new Error('Error al consultar estado');
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.status === 'completado') {
+          const raw: Record<string, unknown> = data.datos ?? {};
+          const campos: Record<string, string> = {};
+          const completados = new Set<string>();
+          const tryAdd = (key: string, val: unknown) => {
+            if (!val) return;
+            const str = key === 'dni' ? String(val).replace(/\D/g, '') : String(val);
+            if (str) { campos[key] = str; completados.add(key); }
+          };
+          tryAdd('dni', raw.dni);
+          tryAdd('nombres', raw.nombres);
+          tryAdd('apellidos', raw.apellidos);
+          tryAdd('sexo', raw.sexo);
+          tryAdd('fechaNacimiento', raw.fechaNacimiento);
+          tryAdd('nacionalidad', raw.nacionalidad);
+          setFormData(prev => ({ ...prev, ...campos }));
+          setDiditCamposAutocompletados(completados);
+          setDiditAutocompleted(completados.size > 0);
+          setDiditProcesandoRetorno(false);
+          setDiditSessionPendiente(null);
+          return;
+        }
+        if (attempts >= MAX_ATTEMPTS) {
+          setDiditMensajePendiente('El escaneo está tardando más de lo esperado. Podés completar los datos manualmente o intentar de nuevo.');
+          setDiditProcesandoRetorno(false);
+          setDiditSessionPendiente(null);
+          return;
+        }
+        setTimeout(poll, 3000);
+      } catch {
+        if (cancelled) return;
+        setDiditError('No se pudo obtener el resultado del escaneo. Completá los datos manualmente.');
+        setDiditProcesandoRetorno(false);
+        setDiditSessionPendiente(null);
+      }
+    };
+
+    poll();
+    return () => { cancelled = true; };
+  }, [user, diditSessionPendiente]);
 
   const cambiarTab = (nuevoTab: 'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar' | 'control') => {
     setTab(nuevoTab);
@@ -597,6 +692,32 @@ export default function Home() {
       />
     );
   }
+  const iniciarSesionDidit = async () => {
+    if (!user) return;
+    setIniciandoSesionDidit(true);
+    setDiditError(null);
+    try {
+      const idToken = await (user as any).getIdToken();
+      const nombreAfiliador = userData
+        ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim()
+        : ((user as any).displayName || '');
+      const res = await fetch('/api/renaper/iniciar-sesion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ afiliadorUid: (user as any).uid, afiliadorNombre: nombreAfiliador }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || 'Error al iniciar sesión con Didit');
+      }
+      const { url } = await res.json();
+      window.location.href = url;
+    } catch (err: any) {
+      setDiditError(err.message || 'No se pudo iniciar el escaneo. Intentá de nuevo.');
+      setIniciandoSesionDidit(false);
+    }
+  };
+
   const actualizarRol = async (uid: string, nuevoRol: string) => {
     try {
       await updateDoc(doc(db, 'usuarios', uid), { rol: nuevoRol });
@@ -1075,8 +1196,10 @@ export default function Home() {
       setContinuacionDniPendiente(null);
       setDniDatosLeidos(false);
       setPublicLink(null);
+      setDiditAutocompleted(false);
+      setDiditCamposAutocompletados(new Set());
       cambiarTab('registros');
-      
+
     } catch (error: any) {
       console.error('Error al guardar ficha:', error);
       if (error?.code === 'already-exists' || error?.message?.toLowerCase?.().includes('already exists')) {
@@ -1126,6 +1249,10 @@ export default function Home() {
     setContinuacionDniPendiente(null);
     setDniDatosLeidos(false);
     setPublicLink(null);
+    setDiditAutocompleted(false);
+    setDiditCamposAutocompletados(new Set());
+    setDiditError(null);
+    setDiditMensajePendiente(null);
     cambiarTab('nueva');
   };
 
@@ -1462,6 +1589,13 @@ export default function Home() {
             onScanBarcode: () => setEscanerBarcodeAbierto(true),
           }}
           decodeStatus={decodeStatus}
+          diditLoading={diditProcesandoRetorno}
+          diditError={diditError}
+          diditMensajePendiente={diditMensajePendiente}
+          diditAutocompleted={diditAutocompleted}
+          diditCamposAutocompletados={diditCamposAutocompletados}
+          onIniciarSesionDidit={!editandoId ? iniciarSesionDidit : undefined}
+          iniciandoSesionDidit={iniciandoSesionDidit}
         />
       )}
 

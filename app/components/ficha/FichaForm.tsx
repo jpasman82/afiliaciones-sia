@@ -73,9 +73,17 @@ interface FichaFormProps {
   /** Estado del intento de auto-decode del PDF417 del DNI tras sacar foto.
    *  Se muestra como spinner / ✓ / mensaje de fallo en la sección Documentación. */
   decodeStatus?: 'idle' | 'processing' | 'success' | 'failed';
+  diditLoading?: boolean;
+  diditError?: string | null;
+  diditMensajePendiente?: string | null;
+  diditAutocompleted?: boolean;
+  diditCamposAutocompletados?: Set<string>;
+  onIniciarSesionDidit?: () => void;
+  iniciandoSesionDidit?: boolean;
 }
 
-export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, publicLink, creandoPublicLink, onCrearPublicLink, hideBackButton, hideCancelButton, submitLabel, dni, decodeStatus }: FichaFormProps) {
+export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, subiendo, publicLink, creandoPublicLink, onCrearPublicLink, hideBackButton, hideCancelButton, submitLabel, dni, decodeStatus, diditLoading, diditError, diditMensajePendiente, diditAutocompleted, diditCamposAutocompletados, onIniciarSesionDidit, iniciandoSesionDidit }: FichaFormProps) {
+  const af = (name: string) => diditCamposAutocompletados?.has(name) ? 'bg-emerald-50' : '';
   return (
     <form onSubmit={onSubmit} className="max-w-4xl mx-auto pb-24 md:pb-8" data-screen-label={editando ? 'Editar ficha' : 'Nueva ficha'}>
       <button type="button" onClick={onCancel} className={`${hideBackButton ? 'hidden' : 'inline-flex'} items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 mb-4`}>
@@ -83,9 +91,18 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
       </button>
       <PageHeader title={editando ? 'Editar ficha' : 'Nueva ficha'} sub={editando ? `${formData.apellidos}, ${formData.nombres}` : 'Cargá los datos del afiliado'} />
 
+      {diditAutocompleted && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3">
+          <svg className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
+          <p className="text-sm text-emerald-800 font-medium">Datos extraídos del DNI automáticamente. Verificá que sean correctos y completá los campos faltantes.</p>
+        </div>
+      )}
+
       <Card className="px-5 md:px-7 divide-y divide-slate-100">
         <FormSection n="1" title="Documentación" sub="Foto del DNI: frente y dorso, o un archivo único">
-          <DniUploader dni={dni} />
+          <DniUploader dni={dni} onIniciarSesionDidit={onIniciarSesionDidit} iniciandoSesionDidit={iniciandoSesionDidit} diditLoading={diditLoading} diditError={diditError} diditMensajePendiente={diditMensajePendiente} />
           {decodeStatus && decodeStatus !== 'idle' && <DecodeStatusIndicator status={decodeStatus} />}
           {onCrearPublicLink && !editando && (
             <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -109,15 +126,15 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
 
         <FormSection n="2" title="Datos personales" sub="Identidad del afiliado">
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Apellidos" required><Input name="apellidos" required value={formData.apellidos} onChange={onChange} placeholder="Pérez" /></Field>
-            <Field label="Nombres" required><Input name="nombres" required value={formData.nombres} onChange={onChange} placeholder="Juan Carlos" /></Field>
+            <Field label="Apellidos" required><Input name="apellidos" required value={formData.apellidos} onChange={onChange} placeholder="Pérez" className={af('apellidos')} /></Field>
+            <Field label="Nombres" required><Input name="nombres" required value={formData.nombres} onChange={onChange} placeholder="Juan Carlos" className={af('nombres')} /></Field>
             <Field label="Tipo doc." required><Select name="tipoDocumento" required value={formData.tipoDocumento} onChange={onChange}><option>DNI</option><option>LE</option><option>LC</option></Select></Field>
-            <Field label="Número de documento" required><Input name="dni" required inputMode="numeric" className="tnum" value={formData.dni} onChange={onChange} placeholder="00000000" /></Field>
-            <Field label="Sexo" required><Select name="sexo" required value={formData.sexo} onChange={onChange}><option value="">Seleccionar…</option>{SEXO.map(s => <option key={s}>{s}</option>)}</Select></Field>
+            <Field label="Número de documento" required><Input name="dni" required inputMode="numeric" className={`tnum ${af('dni')}`} value={formData.dni} onChange={onChange} placeholder="00000000" /></Field>
+            <Field label="Sexo" required><Select name="sexo" required value={formData.sexo} onChange={onChange} className={af('sexo')}><option value="">Seleccionar…</option>{SEXO.map(s => <option key={s}>{s}</option>)}</Select></Field>
             <Field label="Clase (año)" required><Input name="clase" required inputMode="numeric" maxLength={4} className="tnum" value={formData.clase} onChange={onChange} placeholder="1990" /></Field>
-            <Field label="Fecha de nacimiento" required hint="DD/MM/AAAA"><Input name="fechaNacimiento" required className="tnum" value={formData.fechaNacimiento} onChange={onChange} placeholder="01/01/1990" /></Field>
+            <Field label="Fecha de nacimiento" required hint="DD/MM/AAAA"><Input name="fechaNacimiento" required className={`tnum ${af('fechaNacimiento')}`} value={formData.fechaNacimiento} onChange={onChange} placeholder="01/01/1990" /></Field>
             <Field label="Lugar de nacimiento" required><Input name="lugarNacimiento" required value={formData.lugarNacimiento} onChange={onChange} placeholder="Buenos Aires" /></Field>
-            <Field label="Nacionalidad" required><Input name="nacionalidad" required value={formData.nacionalidad} onChange={onChange} /></Field>
+            <Field label="Nacionalidad" required><Input name="nacionalidad" required value={formData.nacionalidad} onChange={onChange} className={af('nacionalidad')} /></Field>
             <Field label="Estado civil" required><Select name="estadoCivil" required value={formData.estadoCivil} onChange={onChange}><option value="">Seleccionar…</option>{ESTCIVIL.map(s => <option key={s}>{s}</option>)}</Select></Field>
             <Field label="Profesión" required className="sm:col-span-2"><Select name="profesion" required value={formData.profesion} onChange={onChange}><option value="">Seleccionar…</option>{PROFESIONES.map(p => <option key={p}>{p}</option>)}</Select></Field>
           </div>
@@ -155,13 +172,48 @@ export function FichaForm({ formData, onChange, onSubmit, onCancel, editando, su
   );
 }
 
-function DniUploader({ dni }: { dni: FichaFormProps['dni'] }) {
+function DniUploader({ dni, onIniciarSesionDidit, iniciandoSesionDidit, diditLoading, diditError, diditMensajePendiente }: {
+  dni: FichaFormProps['dni'];
+  onIniciarSesionDidit?: () => void;
+  iniciandoSesionDidit?: boolean;
+  diditLoading?: boolean;
+  diditError?: string | null;
+  diditMensajePendiente?: string | null;
+}) {
   const archivoInputRef = useRef<HTMLInputElement>(null);
   return (
     <div>
+      {onIniciarSesionDidit && (
+        <button type="button" onClick={onIniciarSesionDidit} disabled={iniciandoSesionDidit || diditLoading}
+          className="mb-3 w-full py-3.5 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 active:bg-emerald-800 transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-60">
+          {iniciandoSesionDidit
+            ? <><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin shrink-0" /><span>Iniciando escaneo…</span></>
+            : <><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5 shrink-0" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" /></svg><span>Escanear DNI con cámara</span></>
+          }
+        </button>
+      )}
+      {diditLoading && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5">
+          <span className="w-4 h-4 rounded-full border-2 border-emerald-300 border-t-emerald-600 animate-spin shrink-0" />
+          <span className="text-sm text-emerald-800 font-medium">Procesando escaneo de DNI…</span>
+        </div>
+      )}
+      {diditError && (
+        <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm text-red-700">{diditError}</div>
+      )}
+      {diditMensajePendiente && (
+        <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800">{diditMensajePendiente}</div>
+      )}
+      {onIniciarSesionDidit && (
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex-1 h-px bg-slate-200" />
+          <span className="text-xs text-slate-400 font-medium shrink-0">o cargá manualmente</span>
+          <div className="flex-1 h-px bg-slate-200" />
+        </div>
+      )}
       {dni.onScanDniData && (
         <button type="button" onClick={dni.onScanDniData}
-          className="mb-4 w-full py-3 rounded-xl bg-brand-600 text-white font-bold text-sm hover:bg-brand-700 active:bg-brand-800 transition flex items-center justify-center gap-2 shadow-sm">
+          className={`mb-4 w-full py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 ${onIniciarSesionDidit ? 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 active:bg-slate-100' : 'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 shadow-sm'}`}>
           <BarcodeIcon className="w-5 h-5" /> Escanear DNI: frente y dorso
         </button>
       )}
