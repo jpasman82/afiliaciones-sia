@@ -48,8 +48,8 @@ export async function crearSesionDidit(options: CrearSesionOptions): Promise<Ses
       workflow_id: WORKFLOW_ID,
       vendor_data: options.vendorData,
       callback: options.callback,
+      callback_method: 'both',
     }),
-  });
 
   if (!res.ok) {
     const text = await res.text();
