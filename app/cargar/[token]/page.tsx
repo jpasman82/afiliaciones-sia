@@ -337,7 +337,7 @@ export default function CargaPublicaPage() {
         dni,
         archivoDniPath: ruta,
         afiliadorUid: link.afiliadorUid,
-        afiliadorEmail: link.afiliadorEmail,
+        afiliadorEmail: link.afiliadorEmail || '',
         afiliadorNombre: link.afiliadorNombre || '',
         origen: 'link_publico',
         linkToken: token,

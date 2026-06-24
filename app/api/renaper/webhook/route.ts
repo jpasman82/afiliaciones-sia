@@ -49,6 +49,19 @@ function separarCalleNumero(street: string | undefined): { calle: string; numero
   return { calle: street.trim(), numero: '' };
 }
 
+// Fallback cuando Didit no devuelve parsed_address: parsear el string libre `address`.
+// Formato típico del DNI argentino: "<calle> <numero> - <provincia> - <localidad> -<,> <pais>".
+// Si no matchea ese formato, devuelve los campos vacíos para no plantar datos basura.
+function parsearAddressLibre(address: string | undefined): { calle: string; numero: string; localidad: string } {
+  if (!address) return { calle: '', numero: '', localidad: '' };
+  const partes = address.split(' - ').map(p => p.trim()).filter(Boolean);
+  if (partes.length < 3) return { calle: '', numero: '', localidad: '' };
+  const direccion = partes[0];
+  const localidad = (partes[2] || '').replace(/[,\s]+$/g, '').trim();
+  const { calle, numero } = separarCalleNumero(direccion);
+  return { calle, numero, localidad };
+}
+
 export async function POST(req: NextRequest) {
   if (!adminDb) {
     console.error('[renaper/webhook] adminDb no disponible');
@@ -100,7 +113,19 @@ export async function POST(req: NextRequest) {
     const idv = (decision?.id_verifications?.[0] ?? {}) as Record<string, unknown>;
     const extraFields  = (idv.extra_fields   ?? {}) as Record<string, string>;
     const parsedAddress = (idv.parsed_address ?? {}) as Record<string, string>;
-    const { calle, numero } = separarCalleNumero(parsedAddress.street_1);
+    // Primero intentamos con parsed_address (que viene estructurado de Didit).
+    // Si está vacío, hacemos best-effort sobre el string libre `address`.
+    let calle = '';
+    let numero = '';
+    let localidad = parsedAddress.city ?? '';
+    if (parsedAddress.street_1) {
+      ({ calle, numero } = separarCalleNumero(parsedAddress.street_1));
+    } else {
+      const parsed = parsearAddressLibre(idv.address as string | undefined);
+      calle = parsed.calle;
+      numero = parsed.numero;
+      if (!localidad) localidad = parsed.localidad;
+    }
     datosExtraidos = {
       dni:             String(idv.document_number ?? ''),
       nombres:         String(idv.first_name      ?? ''),
@@ -112,7 +137,7 @@ export async function POST(req: NextRequest) {
       cuil:            extraFields.tax_number ?? '',
       calle,
       numero,
-      localidad:       parsedAddress.city ?? '',
+      localidad,
       frontImageUrl:   String(idv.front_image ?? ''),
       backImageUrl:    String(idv.back_image  ?? ''),
     };
