@@ -1587,10 +1587,10 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
           dni={{
             modo: modoArchivo,
             setModo: setModoArchivo,
-            frenteOk: !!(fotoFrenteB64 || diditDniImageUrl || diditFrenteStorageUrl),
-            dorsoOk: !!(fotoDorsoB64 || diditDniImageUrl || diditDorsoStorageUrl),
-            fotoFrente: fotoFrenteB64 || diditDniImageUrl || diditFrenteStorageUrl,
-            fotoDorso: fotoDorsoB64 || diditDorsoStorageUrl,
+            frenteOk: !!(fotoFrenteB64 || diditFrenteStorageUrl || diditDniImageUrl),
+            dorsoOk: !!(fotoDorsoB64 || diditDorsoStorageUrl || diditDniImageUrl),
+            fotoFrente: fotoFrenteB64 || diditFrenteStorageUrl || diditDniImageUrl,
+            fotoDorso: fotoDorsoB64 || diditDorsoStorageUrl || diditDniImageUrl,
             procesandoArchivo: procesandoArchivoDni,
             onScanFrente: () => {
               setEscaneoDniGuiado(false);
