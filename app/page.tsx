@@ -485,7 +485,7 @@ export default function Home() {
         ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim()
         : ((user as any)?.displayName || ''),
     }),
-    getPollHeaders: async () => {
+    getPollHeaders: async (): Promise<Record<string, string>> => {
       const idToken = await auth.currentUser?.getIdToken();
       return idToken ? { Authorization: `Bearer ${idToken}` } : {};
     },
