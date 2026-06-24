@@ -50,6 +50,7 @@ export async function crearSesionDidit(options: CrearSesionOptions): Promise<Ses
       callback: options.callback,
       callback_method: 'both',
     }),
+  });
 
   if (!res.ok) {
     const text = await res.text();
