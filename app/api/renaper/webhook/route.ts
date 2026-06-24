@@ -57,7 +57,8 @@ function parsearAddressLibre(address: string | undefined): { calle: string; nume
   const partes = address.split(' - ').map(p => p.trim()).filter(Boolean);
   if (partes.length < 3) return { calle: '', numero: '', localidad: '' };
   const direccion = partes[0];
-  const localidad = (partes[2] || '').replace(/[,\s]+$/g, '').trim();
+  // Cortar la parte 2 antes del primer "-" o "," (formato típico: "San Isidro -, Argentina").
+  const localidad = (partes[2] || '').split(/[-,]/)[0].trim();
   const { calle, numero } = separarCalleNumero(direccion);
   return { calle, numero, localidad };
 }

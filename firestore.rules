@@ -142,7 +142,10 @@ service cloud.firestore {
         !('archivoDni' in request.resource.data) &&
         request.resource.data.origen == 'link_publico' &&
         token is string &&
-        request.resource.data.archivoDniPath.matches('dnisPublicos/' + token + '/.*') &&
+        (
+          request.resource.data.archivoDniPath.matches('dnisPublicos/' + token + '/.*') ||
+          request.resource.data.archivoDniPath.matches('dnis/' + request.resource.data.dni + '-didit-.*')
+        ) &&
         estadoPendiente(request.resource.data) &&
         usuarioAfiliador.rol in ['admin', 'supervisor', 'afiliador'] &&
         request.resource.data.afiliadorEmail is string &&
