@@ -189,10 +189,13 @@ function DniUploader({ dni, onIniciarSesionDidit, iniciandoSesionDidit, diditLoa
     <div>
       {onIniciarSesionDidit && (
         <button type="button" onClick={onIniciarSesionDidit} disabled={iniciandoSesionDidit || diditLoading}
-          className="mb-3 w-full py-3.5 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 active:bg-emerald-800 transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-60">
+          className="mb-3 w-full py-3.5 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 active:bg-emerald-800 transition flex flex-col items-center justify-center gap-0.5 shadow-sm disabled:opacity-60">
           {iniciandoSesionDidit
-            ? <><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin shrink-0" /><span>Iniciando escaneo…</span></>
-            : <><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5 shrink-0" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" /></svg><span>Escanear DNI con cámara</span></>
+            ? <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin shrink-0" /><span>Iniciando escaneo…</span></div>
+            : <>
+                <div className="flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5 shrink-0" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" /></svg><span>Escanear DNI con cámara</span></div>
+                <span className="text-[11px] font-medium text-emerald-100">Carga online · automática</span>
+              </>
           }
         </button>
       )}
@@ -209,11 +212,14 @@ function DniUploader({ dni, onIniciarSesionDidit, iniciandoSesionDidit, diditLoa
         <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800">{diditMensajePendiente}</div>
       )}
       {onIniciarSesionDidit && (
-        <div className="flex items-center gap-3 mb-3">
-          <div className="flex-1 h-px bg-slate-200" />
-          <span className="text-xs text-slate-400 font-medium shrink-0">o cargá manualmente</span>
-          <div className="flex-1 h-px bg-slate-200" />
-        </div>
+        <>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-xs text-slate-400 font-medium shrink-0">o cargá manualmente</span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
+          <p className="text-[11px] text-slate-400 text-center mb-3">Carga offline · no consume datos</p>
+        </>
       )}
       {dni.onScanDniData && (
         <button type="button" onClick={dni.onScanDniData}
@@ -225,9 +231,10 @@ function DniUploader({ dni, onIniciarSesionDidit, iniciandoSesionDidit, diditLoa
         type="button"
         onClick={() => archivoInputRef.current?.click()}
         disabled={dni.procesandoArchivo}
-        className="mb-4 w-full py-3 rounded-xl bg-white text-slate-700 ring-1 ring-slate-200 font-bold text-sm hover:bg-slate-50 active:bg-slate-100 transition flex items-center justify-center gap-2 disabled:opacity-60"
+        className="mb-4 w-full py-3 rounded-xl bg-white text-slate-700 ring-1 ring-slate-200 font-bold text-sm hover:bg-slate-50 active:bg-slate-100 transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-60"
       >
-        <Icon name="upload" className="w-5 h-5" /> Subir archivo único
+        <div className="flex items-center gap-2"><Icon name="upload" className="w-5 h-5" /> Subir archivo único</div>
+        <span className="text-[11px] font-medium text-slate-500">PDF, JPG o PNG</span>
       </button>
       <input
         ref={archivoInputRef}
