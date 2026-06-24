@@ -1,0 +1,234 @@
+// ============================================================================
+//  hooks/useDiditSession.ts — Lógica compartida del flujo Didit (escaneo de DNI)
+//  Encapsula estados, polling de retorno y arranque de sesión.
+//  Usado por la página interna (app/page.tsx) y el link público (app/cargar/[token]/page.tsx).
+// ============================================================================
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
+import { LOCALIDADES } from '../app/lib/estados';
+
+export interface UseDiditSessionOptions {
+  /** Endpoint POST que crea la sesión en Didit. */
+  startSessionUrl: string;
+  /** Endpoint GET que devuelve estado y datos de una sesión Didit. Se le agrega `?session_id=X`. */
+  pollStatusUrl: string;
+  /** Clave única de localStorage para persistir el sessionId pendiente entre redirects. */
+  storageKey: string;
+  /** Headers para el POST inicial (típicamente Content-Type + Authorization). */
+  getStartHeaders: () => Promise<Record<string, string>>;
+  /** Body del POST inicial. */
+  getStartBody: () => Promise<Record<string, unknown>>;
+  /** Headers para el polling. Opcional: el endpoint público no requiere auth. */
+  getPollHeaders?: () => Promise<Record<string, string>>;
+  /** Setter del formulario al que se autocompletan los campos extraídos. */
+  setFormData: Dispatch<SetStateAction<any>>;
+  /** Callback opcional cuando se detecta retorno con session pendiente (antes del polling). */
+  onRetorno?: () => void;
+}
+
+export interface UseDiditSessionResult {
+  iniciandoSesionDidit: boolean;
+  diditProcesandoRetorno: boolean;
+  diditError: string | null;
+  diditMensajePendiente: string | null;
+  diditAutocompleted: boolean;
+  diditCamposAutocompletados: Set<string>;
+  diditFrenteStorageUrl: string | null;
+  diditDorsoStorageUrl: string | null;
+  diditFrenteStoragePath: string | null;
+  diditDniImageUrl: string | null;
+  diditDniImagePath: string | null;
+  iniciarSesion: () => Promise<void>;
+  /** Limpia todos los estados Didit y borra el sessionId pendiente del localStorage. */
+  reset: () => void;
+}
+
+export function useDiditSession(opciones: UseDiditSessionOptions): UseDiditSessionResult {
+  const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
+  const [diditProcesandoRetorno, setDiditProcesandoRetorno] = useState(false);
+  const [diditError, setDiditError] = useState<string | null>(null);
+  const [diditMensajePendiente] = useState<string | null>(null);
+  const [diditAutocompleted, setDiditAutocompleted] = useState(false);
+  const [diditCamposAutocompletados, setDiditCamposAutocompletados] = useState<Set<string>>(new Set());
+  const [diditFrenteStorageUrl, setDiditFrenteStorageUrl] = useState<string | null>(null);
+  const [diditDorsoStorageUrl, setDiditDorsoStorageUrl] = useState<string | null>(null);
+  const [diditFrenteStoragePath, setDiditFrenteStoragePath] = useState<string | null>(null);
+  const [diditDniImageUrl, setDiditDniImageUrl] = useState<string | null>(null);
+  const [diditDniImagePath, setDiditDniImagePath] = useState<string | null>(null);
+
+  // Ref estable para que el useEffect del polling pueda leer la última versión
+  // de las opciones sin invalidar el efecto en cada render.
+  const opcionesRef = useRef(opciones);
+  useEffect(() => {
+    opcionesRef.current = opciones;
+  });
+
+  // Polling de retorno desde Didit. Corre una sola vez al montar el componente.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    let sessionId: string | null = params.get('didit_session');
+
+    if (!sessionId) {
+      sessionId = localStorage.getItem(opcionesRef.current.storageKey);
+    }
+
+    if (!sessionId) return;
+
+    localStorage.removeItem(opcionesRef.current.storageKey);
+
+    // Quitar didit_session del query string preservando el resto.
+    const url = new URL(window.location.href);
+    url.searchParams.delete('didit_session');
+    const search = url.searchParams.toString();
+    const nuevoPath = url.pathname + (search ? `?${search}` : '') + url.hash;
+    history.replaceState(null, '', nuevoPath);
+
+    opcionesRef.current.onRetorno?.();
+
+    setDiditProcesandoRetorno(true);
+    setDiditError(null);
+
+    let intentos = 0;
+    const maxIntentos = 60;
+    let cancelado = false;
+
+    const poll = async () => {
+      while (intentos < maxIntentos && !cancelado) {
+        intentos++;
+
+        try {
+          const headers = opcionesRef.current.getPollHeaders
+            ? await opcionesRef.current.getPollHeaders()
+            : {};
+          const res = await fetch(`${opcionesRef.current.pollStatusUrl}?session_id=${sessionId}`, {
+            headers,
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'completado' && data.datos) {
+              const raw: Record<string, unknown> = data.datos;
+              const campos: Record<string, string> = {};
+              const completados = new Set<string>();
+              const tryAdd = (key: string, val: unknown) => {
+                if (!val) return;
+                const str = key === 'dni' ? String(val).replace(/\D/g, '') : String(val);
+                if (str) {
+                  campos[key] = str;
+                  completados.add(key);
+                }
+              };
+              tryAdd('dni', raw.dni);
+              tryAdd('nombres', raw.nombres);
+              tryAdd('apellidos', raw.apellidos);
+              tryAdd('sexo', raw.sexo);
+              tryAdd('fechaNacimiento', raw.fechaNacimiento);
+              if (campos.fechaNacimiento) {
+                const partes = campos.fechaNacimiento.split('/');
+                if (partes.length === 3 && partes[2]) {
+                  campos.clase = partes[2];
+                  completados.add('clase');
+                }
+              }
+              tryAdd('nacionalidad', raw.nacionalidad);
+              tryAdd('lugarNacimiento', raw.lugarNacimiento);
+              tryAdd('calle', raw.calle);
+              tryAdd('numero', raw.numero);
+              if (raw.localidad && LOCALIDADES.includes(String(raw.localidad))) {
+                tryAdd('localidad', raw.localidad);
+              }
+
+              opcionesRef.current.setFormData((prev: any) => ({ ...prev, ...campos }));
+              setDiditCamposAutocompletados(completados);
+              setDiditAutocompleted(completados.size > 0);
+
+              if (raw.frontImageStorageUrl)  setDiditFrenteStorageUrl(String(raw.frontImageStorageUrl));
+              if (raw.backImageStorageUrl)   setDiditDorsoStorageUrl(String(raw.backImageStorageUrl));
+              if (raw.frontImageStoragePath) setDiditFrenteStoragePath(String(raw.frontImageStoragePath));
+              if (raw.dniImageStorageUrl)    setDiditDniImageUrl(String(raw.dniImageStorageUrl));
+              if (raw.dniImageStoragePath)   setDiditDniImagePath(String(raw.dniImageStoragePath));
+
+              setDiditProcesandoRetorno(false);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('Error polling Didit:', e);
+        }
+
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+
+      if (!cancelado) {
+        setDiditProcesandoRetorno(false);
+        setDiditError('El escaneo está tardando. Podés completar los datos manualmente o intentar de nuevo.');
+      }
+    };
+
+    poll();
+    return () => {
+      cancelado = true;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reset = useCallback(() => {
+    setIniciandoSesionDidit(false);
+    setDiditProcesandoRetorno(false);
+    setDiditError(null);
+    setDiditAutocompleted(false);
+    setDiditCamposAutocompletados(new Set());
+    setDiditFrenteStorageUrl(null);
+    setDiditDorsoStorageUrl(null);
+    setDiditFrenteStoragePath(null);
+    setDiditDniImageUrl(null);
+    setDiditDniImagePath(null);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(opcionesRef.current.storageKey);
+    }
+  }, []);
+
+  const iniciarSesion = useCallback(async () => {
+    setIniciandoSesionDidit(true);
+    setDiditError(null);
+    try {
+      const headers = await opcionesRef.current.getStartHeaders();
+      const body = await opcionesRef.current.getStartBody();
+      const res = await fetch(opcionesRef.current.startSessionUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error || 'Error al iniciar sesión con Didit');
+      }
+      const { sessionId, url } = await res.json();
+      localStorage.setItem(opcionesRef.current.storageKey, sessionId);
+      window.location.href = url;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'No se pudo iniciar el escaneo. Intentá de nuevo.';
+      setDiditError(msg);
+      setIniciandoSesionDidit(false);
+    }
+  }, []);
+
+  return {
+    iniciandoSesionDidit,
+    diditProcesandoRetorno,
+    diditError,
+    diditMensajePendiente,
+    diditAutocompleted,
+    diditCamposAutocompletados,
+    diditFrenteStorageUrl,
+    diditDorsoStorageUrl,
+    diditFrenteStoragePath,
+    diditDniImageUrl,
+    diditDniImagePath,
+    iniciarSesion,
+    reset,
+  };
+}

@@ -1,6 +1,7 @@
 ﻿'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useDiditSession } from '../hooks/useDiditSession';
 import { auth, db, storage } from '../firebaseConfig';
 import { collection, serverTimestamp, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, orderBy, arrayUnion, writeBatch, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getBlob, deleteObject } from 'firebase/storage';
@@ -457,17 +458,40 @@ export default function Home() {
   const [accionSuspension, setAccionSuspension] = useState<'suspendido' | 'baja' | null>(null);
   const [subiendoControl, setSubiendoControl] = useState(false);
 
-const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
-  const [diditProcesandoRetorno, setDiditProcesandoRetorno] = useState(false);
-  const [diditError, setDiditError] = useState<string | null>(null);
-  const [diditMensajePendiente, setDiditMensajePendiente] = useState<string | null>(null);
-  const [diditAutocompleted, setDiditAutocompleted] = useState(false);
-  const [diditCamposAutocompletados, setDiditCamposAutocompletados] = useState<Set<string>>(new Set());
-  const [diditFrenteStorageUrl, setDiditFrenteStorageUrl] = useState<string | null>(null);
-  const [diditDorsoStorageUrl, setDiditDorsoStorageUrl] = useState<string | null>(null);
-  const [diditFrenteStoragePath, setDiditFrenteStoragePath] = useState<string | null>(null);
-  const [diditDniImageUrl, setDiditDniImageUrl] = useState<string | null>(null);
-  const [diditDniImagePath, setDiditDniImagePath] = useState<string | null>(null);
+  const {
+    iniciandoSesionDidit,
+    diditProcesandoRetorno,
+    diditError,
+    diditMensajePendiente,
+    diditAutocompleted,
+    diditCamposAutocompletados,
+    diditFrenteStorageUrl,
+    diditDorsoStorageUrl,
+    diditDniImageUrl,
+    diditDniImagePath,
+    iniciarSesion: iniciarSesionDidit,
+    reset: resetDidit,
+  } = useDiditSession({
+    startSessionUrl: '/api/renaper/iniciar-sesion',
+    pollStatusUrl: '/api/renaper/estado',
+    storageKey: 'didit_session_pendiente:interna',
+    getStartHeaders: async () => ({
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await (user as any)?.getIdToken()}`,
+    }),
+    getStartBody: async () => ({
+      afiliadorUid: (user as any)?.uid,
+      afiliadorNombre: userData
+        ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim()
+        : ((user as any)?.displayName || ''),
+    }),
+    getPollHeaders: async () => {
+      const idToken = await auth.currentUser?.getIdToken();
+      return idToken ? { Authorization: `Bearer ${idToken}` } : {};
+    },
+    setFormData,
+    onRetorno: () => setTab('nueva'),
+  });
 
   useEffect(() => {
     if (typeof window !== "undefined" && !window.history.state) {
@@ -486,104 +510,6 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    let sessionId = params.get('didit_session');
-
-    if (!sessionId) {
-      sessionId = localStorage.getItem('didit_session_pendiente');
-    }
-
-    if (!sessionId) return;
-
-    localStorage.removeItem('didit_session_pendiente');
-    history.replaceState(null, '', window.location.pathname);
-
-    setTab('nueva');
-    setDiditProcesandoRetorno(true);
-    setDiditError('');
-
-    let intentos = 0;
-    const maxIntentos = 60;
-    let cancelado = false;
-
-    const poll = async () => {
-      while (intentos < maxIntentos && !cancelado) {
-        intentos++;
-
-        const currentUser = auth.currentUser;
-        if (!currentUser) {
-          await new Promise(r => setTimeout(r, 2000));
-          continue;
-        }
-
-        try {
-          const token = await currentUser.getIdToken();
-          const res = await fetch(`/api/renaper/estado?session_id=${sessionId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            if (data.status === 'completado' && data.datos) {
-              const raw: Record<string, unknown> = data.datos;
-              const campos: Record<string, string> = {};
-              const completados = new Set<string>();
-              const tryAdd = (key: string, val: unknown) => {
-                if (!val) return;
-                const str = key === 'dni' ? String(val).replace(/\D/g, '') : String(val);
-                if (str) { campos[key] = str; completados.add(key); }
-              };
-              tryAdd('dni', raw.dni);
-              tryAdd('nombres', raw.nombres);
-              tryAdd('apellidos', raw.apellidos);
-              tryAdd('sexo', raw.sexo);
-              tryAdd('fechaNacimiento', raw.fechaNacimiento);
-              if (campos.fechaNacimiento) {
-                const partes = (campos.fechaNacimiento as string).split('/');
-                if (partes.length === 3 && partes[2]) {
-                  campos.clase = partes[2];
-                  completados.add('clase');
-                }
-              }
-              tryAdd('nacionalidad', raw.nacionalidad);
-              tryAdd('lugarNacimiento', raw.lugarNacimiento);
-              tryAdd('calle', raw.calle);
-              tryAdd('numero', raw.numero);
-              const LOCALIDADES_VALIDAS = ['Acassuso', 'Beccar', 'Boulogne', 'Martínez', 'San Isidro', 'Villa Adelina'];
-              if (raw.localidad && LOCALIDADES_VALIDAS.includes(String(raw.localidad))) {
-                tryAdd('localidad', raw.localidad);
-              }
-              setFormData(prev => ({ ...prev, ...campos }));
-              setDiditCamposAutocompletados(completados);
-              setDiditAutocompleted(completados.size > 0);
-              if (raw.frontImageStorageUrl)  setDiditFrenteStorageUrl(String(raw.frontImageStorageUrl));
-              if (raw.backImageStorageUrl)   setDiditDorsoStorageUrl(String(raw.backImageStorageUrl));
-              if (raw.frontImageStoragePath) setDiditFrenteStoragePath(String(raw.frontImageStoragePath));
-              if (raw.dniImageStorageUrl)    setDiditDniImageUrl(String(raw.dniImageStorageUrl));
-              if (raw.dniImageStoragePath)   setDiditDniImagePath(String(raw.dniImageStoragePath));
-              localStorage.removeItem('didit_session_pendiente');
-              setDiditProcesandoRetorno(false);
-              return;
-            }
-          }
-        } catch (e) {
-          console.error('Error polling Didit:', e);
-        }
-
-        await new Promise(r => setTimeout(r, 3000));
-      }
-
-      if (!cancelado) {
-        localStorage.removeItem('didit_session_pendiente');
-        setDiditProcesandoRetorno(false);
-        setDiditError('El escaneo está tardando. Podés completar los datos manualmente o intentar de nuevo.');
-      }
-    };
-
-    poll();
-    return () => { cancelado = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cambiarTab = (nuevoTab: 'nueva' | 'registros' | 'usuarios' | 'detalle' | 'editar' | 'control') => {
     setTab(nuevoTab);
@@ -710,33 +636,6 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
       />
     );
   }
-  const iniciarSesionDidit = async () => {
-    if (!user) return;
-    setIniciandoSesionDidit(true);
-    setDiditError(null);
-    setDiditMensajePendiente(null);
-    try {
-      const idToken = await (user as any).getIdToken();
-      const nombreAfiliador = userData
-        ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim()
-        : ((user as any).displayName || '');
-      const res = await fetch('/api/renaper/iniciar-sesion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ afiliadorUid: (user as any).uid, afiliadorNombre: nombreAfiliador }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).error || 'Error al iniciar sesión con Didit');
-      }
-      const { sessionId, url } = await res.json();
-      localStorage.setItem('didit_session_pendiente', sessionId);
-      window.location.href = url;
-    } catch (err: any) {
-      setDiditError(err.message || 'No se pudo iniciar el escaneo. Intentá de nuevo.');
-      setIniciandoSesionDidit(false);
-    }
-  };
 
   const actualizarRol = async (uid: string, nuevoRol: string) => {
     try {
@@ -1223,10 +1122,7 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
       setContinuacionDniPendiente(null);
       setDniDatosLeidos(false);
       setPublicLink(null);
-      setDiditAutocompleted(false);
-      setDiditCamposAutocompletados(new Set());
-      setDiditFrenteStorageUrl(null); setDiditDorsoStorageUrl(null); setDiditFrenteStoragePath(null);
-      setDiditDniImageUrl(null); setDiditDniImagePath(null);
+      resetDidit();
       cambiarTab('registros');
 
     } catch (error: any) {
@@ -1278,13 +1174,7 @@ const [iniciandoSesionDidit, setIniciandoSesionDidit] = useState(false);
     setContinuacionDniPendiente(null);
     setDniDatosLeidos(false);
     setPublicLink(null);
-    setDiditAutocompleted(false);
-    setDiditCamposAutocompletados(new Set());
-    setDiditError(null);
-    setDiditMensajePendiente(null);
-    setDiditFrenteStorageUrl(null); setDiditDorsoStorageUrl(null); setDiditFrenteStoragePath(null);
-    setDiditDniImageUrl(null); setDiditDniImagePath(null);
-    localStorage.removeItem('didit_session_pendiente');
+    resetDidit();
     cambiarTab('nueva');
   };
 
