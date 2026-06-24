@@ -9,6 +9,7 @@ import { FichaForm } from '../../components/ficha/FichaForm';
 import { EscanerCodigoBarras } from '../../components/ficha/EscanerCodigoBarras';
 import { decodeDniBarcode } from '../../lib/decodeDniBarcode';
 import { parsedDniToFormFields } from '../../lib/parseDniPdf417';
+import { useDiditSession } from '../../../hooks/useDiditSession';
 
 const DNI_PUBLIC_MAX_WIDTH = 1800;
 const DNI_PUBLIC_JPEG_QUALITY = 0.87;
@@ -69,6 +70,27 @@ export default function CargaPublicaPage() {
   const dniDatosLeidosRef = useRef(false);
   const [recortePendiente, setRecortePendiente] = useState<RecortePublico | null>(null);
   const [escaneandoCodigo, setEscaneandoCodigo] = useState(false);
+
+  const {
+    iniciandoSesionDidit,
+    diditProcesandoRetorno,
+    diditError,
+    diditMensajePendiente,
+    diditAutocompleted,
+    diditCamposAutocompletados,
+    diditFrenteStorageUrl,
+    diditDorsoStorageUrl,
+    diditDniImageUrl,
+    diditDniImagePath,
+    iniciarSesion: iniciarSesionDidit,
+  } = useDiditSession({
+    startSessionUrl: `/api/link-publico/${token ?? ''}/iniciar-sesion-didit`,
+    pollStatusUrl: `/api/link-publico/${token ?? ''}/estado-didit`,
+    storageKey: `didit_session_pendiente:publico:${token ?? ''}`,
+    getStartHeaders: async () => ({ 'Content-Type': 'application/json' }),
+    getStartBody: async () => ({}),
+    setFormData,
+  });
 
   useEffect(() => {
     const validar = async () => {
@@ -288,17 +310,23 @@ export default function CargaPublicaPage() {
       alert('Ingresá un DNI válido.');
       return;
     }
-    if (!fotoFrenteB64 || !fotoDorsoB64) {
+    if (!diditDniImagePath && (!fotoFrenteB64 || !fotoDorsoB64)) {
       alert('Cargá frente y dorso del DNI antes de enviar.');
       return;
     }
     setSubiendo(true);
     let paso = 'preparar imagen';
     try {
-      const blob = await procesarDNIUnicoImagen();
-      const ruta = `dnisPublicos/${token}/${dni}-${Date.now()}.jpg`;
-      paso = 'subir DNI';
-      await uploadBytes(ref(storage, ruta), blob, { contentType: 'image/jpeg' });
+      let ruta: string;
+      if (diditDniImagePath) {
+        // Imagen combinada frente+dorso ya subida por el webhook de Didit. No re-subir.
+        ruta = diditDniImagePath;
+      } else {
+        const blob = await procesarDNIUnicoImagen();
+        ruta = `dnisPublicos/${token}/${dni}-${Date.now()}.jpg`;
+        paso = 'subir DNI';
+        await uploadBytes(ref(storage, ruta), blob, { contentType: 'image/jpeg' });
+      }
 
       paso = 'guardar ficha';
       const fichaRef = doc(collection(db, 'afiliaciones'));
@@ -420,10 +448,10 @@ export default function CargaPublicaPage() {
         dni={{
           modo: 'escaner',
           setModo: () => {},
-          frenteOk: !!fotoFrenteB64,
-          dorsoOk: !!fotoDorsoB64,
-          fotoFrente: fotoFrenteB64,
-          fotoDorso: fotoDorsoB64,
+          frenteOk: !!(fotoFrenteB64 || diditFrenteStorageUrl || diditDniImageUrl),
+          dorsoOk: !!(fotoDorsoB64 || diditDorsoStorageUrl || diditDniImageUrl),
+          fotoFrente: fotoFrenteB64 || diditFrenteStorageUrl || diditDniImageUrl,
+          fotoDorso: fotoDorsoB64 || diditDorsoStorageUrl || diditDniImageUrl,
           procesandoArchivo,
           onScanFrente: () => frenteInputRef.current?.click(),
           onScanDorso: () => dorsoInputRef.current?.click(),
@@ -431,6 +459,13 @@ export default function CargaPublicaPage() {
           onScanBarcode: () => setEscaneandoCodigo(true),
         }}
         decodeStatus={decodeStatus}
+        diditLoading={diditProcesandoRetorno}
+        diditError={diditError}
+        diditMensajePendiente={diditMensajePendiente}
+        diditAutocompleted={diditAutocompleted}
+        diditCamposAutocompletados={diditCamposAutocompletados}
+        onIniciarSesionDidit={iniciarSesionDidit}
+        iniciandoSesionDidit={iniciandoSesionDidit}
       />
     </PublicShell>
   );
