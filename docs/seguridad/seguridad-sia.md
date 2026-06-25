@@ -34,7 +34,7 @@ await file.makePublic();
 
 ## 🟠 ALTOS
 
-### HIGH-1 — Logs con PII en endpoints de servidor
+### HIGH-1 — Logs con PII en endpoints de servidor ✅ Resuelto en PR fix/high-1-2-3-server-hardening el 25/06/2026
 
 **Archivos:**
 - `app/api/renaper/iniciar-sesion/route.ts` líneas 17–36, 52, 72, 88.
@@ -42,11 +42,11 @@ await file.makePublic();
 
 **Problema:** `console.log` con `uid`, `email`, `role`, `Firebase project`. Va a logs de Vercel; cualquiera con acceso al proyecto los ve.
 
-**Fix:** sacar todos los `console.log` de diagnóstico. Dejar solo `console.error` con mensaje genérico (sin PII) en `catch`.
+**Fix aplicado:** se eliminaron todos los `console.log` de diagnóstico. Solo queda `console.error` con mensaje genérico (sin PII) en `catch`.
 
 ---
 
-### HIGH-2 — `afiliadorUid` viene del body sin verificarse contra el token
+### HIGH-2 — `afiliadorUid` viene del body sin verificarse contra el token ✅ Resuelto en PR fix/high-1-2-3-server-hardening el 25/06/2026
 
 **Archivo:** `app/api/renaper/iniciar-sesion/route.ts` líneas 41–54.
 
@@ -59,17 +59,17 @@ await file.makePublic();
 
 Un afiliador autenticado puede iniciar Didit "a nombre de" otro afiliador. La sesión y `vendorData` quedan mal atribuidas. Las reglas de Firestore protegen la creación de la ficha, pero si en el futuro lógica server-side usa `vendorData.afiliadorUid` (contadores de productividad, asignación automática, etc.), se puede spoofear.
 
-**Fix:** ignorar el body. Tomar `afiliadorUid` siempre de `auth.user.uid` y `afiliadorNombre` desde `adminDb.collection('usuarios').doc(uid).get()`.
+**Fix aplicado:** `afiliadorUid` se toma de `auth.user.uid` (token). `afiliadorNombre` se lee de `adminDb.collection('usuarios').doc(uid).get()`. El body ya no es necesario para estos campos (el cliente sigue enviándolos por ahora, pero el servidor los ignora).
 
 ---
 
-### HIGH-3 — `/api/renaper/estado` no verifica que la sesión sea del usuario
+### HIGH-3 — `/api/renaper/estado` no verifica que la sesión sea del usuario ✅ Resuelto en PR fix/high-1-2-3-server-hardening el 25/06/2026
 
 **Archivo:** `app/api/renaper/estado/route.ts`.
 
 **Problema:** Solo chequea `rolActivo` y que exista la sesión. Cualquier afiliador que conozca el `localId` de otro lee los datos extraídos del DNI. `localId` es UUID v4, no se adivina, **pero queda en `localStorage`, URL del callback, history del browser y posibles logs**.
 
-**Fix:** filtrar también por `vendorData.afiliadorUid == auth.user.uid`. El endpoint `/api/link-publico/[token]/estado-didit` ya hace algo análogo con `linkToken`; replicar el patrón.
+**Fix aplicado:** se agregó chequeo `vendorData.afiliadorUid !== auth.user.uid` → 404 (mismo mensaje que "no existe", indistinguible para el atacante).
 
 ---
 

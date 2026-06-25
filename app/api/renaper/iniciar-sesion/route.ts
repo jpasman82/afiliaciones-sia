@@ -2,56 +2,27 @@ import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
 import { requireRole } from '../../_auth';
 import { crearSesionDidit } from '@/app/lib/diditClient';
+import { adminDb } from '@/app/lib/firebaseAdmin';
 
 const ROLES_PERMITIDOS = ['admin', 'supervisor', 'afiliador'];
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? '';
 
 export async function POST(request: Request) {
   const auth = await requireRole(request, ROLES_PERMITIDOS);
-  if (!auth.ok) {
-    // Diagnóstico temporal: intentar ayudar a identificar por qué falla la autorización
-    try {
-      // NextResponse may carry a status; mostramos una pista del fallo
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const status = (auth.response as any)?.status;
-      if (status === 401) console.log('Auth failed: 401 Unauthorized (token inválido o faltante)');
-      if (status === 403) {
-        console.log('Auth failed: 403 Forbidden (posible Firestore o rol)');
-        // Mensajes solicitados para diagnóstico (pueden repetirse según la causa)
-        console.log('Usuario no encontrado en Firestore');
-        console.log('Rol no autorizado:', undefined);
-      }
-    } catch (e) {
-      console.log('Error al inspeccionar auth.response', e);
-    }
-    return auth.response;
+  if (!auth.ok) return auth.response;
+
+  const afiliadorUid = auth.user.uid;
+
+  if (!adminDb) {
+    return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
   }
 
-  // Token validado — mostrar uid para diagnóstico
-  console.log('Token validado, uid:', auth.user.uid);
-  // UID extraído del token (diagnóstico solicitado)
-  const uid = auth.user.uid;
-  console.log('UID del token:', uid);
-  // Mostrar project id de Firebase Admin (diagnóstico solicitado)
-  console.log('Firebase project:', process.env.FIREBASE_ADMIN_PROJECT_ID);
-
-  let afiliadorUid: string;
-  let afiliadorNombre: string;
-  try {
-    const body: unknown = await request.json();
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      typeof (body as Record<string, unknown>).afiliadorUid !== 'string' ||
-      typeof (body as Record<string, unknown>).afiliadorNombre !== 'string'
-    ) {
-      return NextResponse.json({ error: 'Body inválido' }, { status: 400 });
-    }
-    ({ afiliadorUid, afiliadorNombre } = body as { afiliadorUid: string; afiliadorNombre: string });
-  } catch {
-    console.log('Error al parsear body de la petición');
-    return NextResponse.json({ error: 'Body inválido' }, { status: 400 });
+  const usuarioSnap = await adminDb.collection('usuarios').doc(afiliadorUid).get();
+  if (!usuarioSnap.exists) {
+    return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
   }
+  const usuarioData = usuarioSnap.data()!;
+  const afiliadorNombre = `${usuarioData.nombre ?? ''} ${usuarioData.apellido ?? ''}`.trim() || 'Sin nombre';
 
   try {
     // localId es el identificador que viaja en la URL de callback y en vendorData.
@@ -67,20 +38,6 @@ export async function POST(request: Request) {
     });
 
     const callback = `${APP_URL}/?tab=nueva&didit_session=${localId}`;
-
-    // Mostrar rol del usuario encontrado para diagnóstico
-    console.log('Usuario encontrado, rol:', auth.user.role);
-
-    // Comprobar adminDb si existe (diagnóstico seguro sin romper lógica)
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (typeof (global as any).adminDb !== 'undefined' && (global as any).adminDb === null) {
-        console.log('adminDb es null');
-      }
-    } catch (e) {
-      // no bloquear el flujo por el chequeo diagnóstico
-    }
-
     const sesion = await crearSesionDidit({ vendorData, callback });
 
     return NextResponse.json({ sessionId: localId, url: sesion.url });

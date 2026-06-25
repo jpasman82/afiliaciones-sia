@@ -71,7 +71,6 @@ export async function requireRole(request: Request, roles: string[]): Promise<Au
     return { ok: false, response: forbidden('Usuario no encontrado') };
   }
   const role = userSnap.data()?.rol;
-  console.log('[_auth] uid:', auth.user.uid, 'rol encontrado:', role);
   if (!roles.includes(role)) {
     return { ok: false, response: forbidden() };
   }

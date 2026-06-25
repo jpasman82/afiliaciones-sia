@@ -22,6 +22,9 @@ export async function GET(request: NextRequest) {
 
   // Buscar por localId (UUID generado en iniciar-sesion, no el session_id de Didit).
   const q = await adminDb.collection('sesionesDidit').where('localId', '==', sessionId).limit(1).get();
+  if (!q.empty && q.docs[0].data()?.vendorData?.afiliadorUid !== auth.user.uid) {
+    return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 });
+  }
   if (q.empty || q.docs[0].data()?.procesadoEn == null) {
     return NextResponse.json({ status: 'pendiente', datos: null });
   }
