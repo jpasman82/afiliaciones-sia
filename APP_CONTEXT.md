@@ -1,53 +1,65 @@
-# Contexto de la aplicacion - Afiliaciones SIA
+# Contexto de la aplicación — Afiliaciones SIA
 
-Este documento resume el contexto funcional y tecnico de la app para que Claude, Codex u otro agente pueda trabajar en el proyecto sin tener que reconstruir el mapa completo desde cero.
+Referencia técnica vigente del proyecto. Convive con `CLAUDE.md` (convenciones para agentes) y los ADRs en `docs/decisiones/` (decisiones arquitectónicas).
 
-## Resumen
+## Resumen funcional
 
-Afiliaciones SIA es una aplicacion web interna para cargar, administrar y controlar fichas de afiliacion. La app permite:
+Aplicación web para gestionar el proceso de afiliación a un partido político provincial argentino, desde la carga inicial hasta la aprobación por la Junta Electoral.
 
-- Autenticacion con Google.
-- Alta de usuarios y aprobacion de accesos por rol.
-- Carga de fichas de afiliados con datos personales, domicilio y DNI.
-- Captura de DNI desde camara o carga de archivo local.
-- Listado, busqueda, detalle y edicion de fichas.
-- Control administrativo del estado de cada afiliacion ante la JE.
-- Carga de ficha fisica firmada.
-- Exportacion de registros y descarga masiva de archivos en ZIP.
+Originalmente construida para San Isidro Avanza (SIA, partido vecinal en formación, distrito San Isidro, Provincia de Buenos Aires). Diseñada para desplegarse como instancia independiente por cliente (ver `ADR-001-single-tenant.md`).
 
-La aplicacion esta orientada principalmente a uso mobile en campo, pero tambien tiene vistas desktop para administracion.
+### Funcionalidades principales
+
+- Autenticación con Google OAuth.
+- Alta y aprobación de usuarios por rol.
+- Carga de fichas de afiliados con datos personales, domicilio y documentación.
+- Captura de DNI por cuatro vías: cámara (frente + dorso), archivo único (PDF o imagen), lectura del código PDF417 del DNI, y verificación online con Didit (extrae datos del DNI automáticamente).
+- Generación de **links públicos efímeros** para que el afiliado cargue su propia ficha sin tener cuenta en la app.
+- Listado, búsqueda, filtrado, detalle y edición de fichas.
+- Módulo de control administrativo del estado de cada afiliación ante la JE provincial.
+- Carga de ficha física firmada (escaneo o foto).
+- Exportación a CSV y descarga masiva de DNIs o fichas en ZIP.
+- Integración con bot de WhatsApp (proyecto externo) que crea fichas de tipo `contacto_bot`.
+
+La app está pensada principalmente para mobile en campo, con vistas desktop para administración.
 
 ## Stack
 
-- Next.js `16.2.4` con App Router.
-- React `19.2.4`.
-- TypeScript en archivos de `app/`.
-- Firebase:
-  - Authentication con Google OAuth.
-  - Firestore como base de datos.
-  - Firebase Storage para DNIs y fichas.
-- Tailwind CSS `4`.
-- Nodemailer para emails via Gmail SMTP.
-- JSZip para descargas masivas.
+- **Next.js 16.2.4** con App Router. Breaking changes respecto de versiones anteriores: **leer `node_modules/next/dist/docs/` antes de modificar código de Next**.
+- **React 19.2.4**.
+- **TypeScript** en `app/` (excepto `hooks/useAuth.js`, legado en JS).
+- **Tailwind CSS 4**.
+- **Firebase:**
+  - Authentication (Google OAuth).
+  - Firestore (base de datos).
+  - Storage (DNIs y fichas físicas).
+  - **App Check** opcional vía reCAPTCHA v3.
+- **`firebase-admin`** del lado servidor (solo para escrituras críticas tras verificación de token).
+- **Didit** para verificación de identidad y extracción de datos del DNI (free tier, 500 verificaciones/mes).
+- **Nodemailer + Hostinger SMTP** (`smtp.hostinger.com:465`, dominio `sanisidroavanza.com.ar`) para notificaciones por email.
+- **`sharp`** para combinación de imágenes en el webhook de Didit.
+- **JSZip** para descargas masivas.
+- **`jose`** y **`jwks-rsa`** para verificación de tokens en webhooks.
 
-Importante: este proyecto usa Next.js 16. Antes de modificar codigo de Next, leer la documentacion local indicada en `AGENTS.md`: `node_modules/next/dist/docs/`.
+Deploy en Vercel. Reglas de Firestore y Storage se despliegan manualmente con Firebase CLI o Firebase Console.
 
 ## Comandos
 
 ```bash
-npm run dev      # servidor de desarrollo
-npm run build    # build de produccion
+npm run dev      # desarrollo
+npm run build    # build de producción
 npm run lint     # ESLint
-npm start        # servidor de produccion, luego del build
+npm start        # producción local tras build
 ```
 
-No hay suite de tests configurada.
+No hay tests automatizados. Verificación: `npm run build` + smoke test en Vercel preview.
 
 ## Variables de entorno
 
-El archivo `.env.local` debe definir:
+`.env.local`:
 
 ```bash
+# Firebase cliente
 NEXT_PUBLIC_FIREBASE_API_KEY=
 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=
@@ -55,481 +67,478 @@ NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 NEXT_PUBLIC_FIREBASE_APP_ID=
 
+# Firebase Admin (servidor)
+FIREBASE_ADMIN_PROJECT_ID=
+FIREBASE_ADMIN_CLIENT_EMAIL=
+FIREBASE_ADMIN_PRIVATE_KEY=
+
+# App Check (opcional, recomendado en producción)
+NEXT_PUBLIC_APPCHECK_SITE_KEY=
+
+# Email (Hostinger SMTP)
 EMAIL_USER=
 EMAIL_PASS=
 
-API_SECRET_TOKEN=
-NEXT_PUBLIC_API_SECRET_TOKEN=
+# Didit
+DIDIT_API_KEY=
+DIDIT_WORKFLOW_ID=
+DIDIT_WEBHOOK_SECRET=
+
+# WhatsApp Cloud API (si aplica)
+WHATSAPP_VERIFY_TOKEN=
+WHATSAPP_APP_SECRET=
 ```
 
 Notas:
 
-- `EMAIL_PASS` debe ser una App Password de Gmail, no la password normal de la cuenta.
-- `API_SECRET_TOKEN` protege `/api/notificar`.
-- `/api/notificar-nuevo-usuario` usa el ID token de Firebase del usuario autenticado.
+- `EMAIL_PASS` es la contraseña de Hostinger del buzón, no del panel.
+- `FIREBASE_ADMIN_PRIVATE_KEY` debe ir con los `\n` literales (Vercel los convierte).
+- `DIDIT_WEBHOOK_SECRET` se usa para verificar la firma HMAC del webhook.
+- **NO debe existir `NEXT_PUBLIC_API_SECRET_TOKEN`** (variable legada de un endpoint dead code; ver lista de seguridad MED-1).
 
-## Estructura relevante
+## Estructura del proyecto
 
-- `app/page.tsx`: contiene la logica cliente principal, estado, listeners de Firestore y handlers. Es un componente `'use client'`.
-- `app/components/`: componentes presentacionales del rediseño.
-  - `shell/`: `AppShell`, `Sidebar`, `TopBar`, `MobileNav` y navegacion.
-  - `records/`: listado de fichas.
-  - `ficha/`: formulario y detalle de ficha.
-  - `control/`: modulo administrativo de control.
-  - `users/`: gestion de usuarios.
-  - `auth/`: login y pantallas de perfil pendiente.
-  - `ui/`: primitivas visuales compartidas.
-- `app/lib/`: tipos y constantes de dominio (`types.ts`, `estados.ts`).
-- `hooks/useAuth.js`: hook de autenticacion, rol y perfil del usuario.
-- `firebaseConfig.js`: inicializacion de Firebase Auth, Firestore y Storage.
-- `app/api/notificar/route.ts`: endpoint protegido por secret para enviar email.
-- `app/api/notificar-nuevo-usuario/route.ts`: endpoint que valida ID token Firebase y notifica nuevo usuario.
-- `firestore.rules`: reglas de seguridad de Firestore.
-- `storage.rules`: reglas de seguridad de Storage.
-- `app/layout.tsx`: metadata, viewport y fuente.
-- `app/globals.css`: Tailwind y estilos globales minimos.
-- `public/logo.png`: logo de la app.
-- `public/video.mp4`: intro/splash inicial.
-- `public/manifest.json`: manifest PWA.
+```
+app/
+  page.tsx                          ← componente principal (1500+ líneas, ver "Refactor pendiente")
+  layout.tsx                        ← metadata, viewport, fuente
+  globals.css                       ← Tailwind + estilos globales mínimos
+  cargar/[token]/page.tsx           ← página pública para el flujo de link
+  api/
+    _auth.ts                        ← helper de verificación de ID token via Identity Toolkit
+    notificar/route.ts              ← (dead code, candidato a borrar)
+    notificar-nuevo-usuario/route.ts
+    notificar-usuario-aprobado/route.ts
+    links-publicos/activo/route.ts  ← devuelve el link activo del afiliador
+    link-publico/[token]/
+      route.ts                      ← GET datos del link (afiliador, vencimiento)
+      iniciar-sesion-didit/route.ts ← inicia sesión Didit asociada al link
+      estado-didit/route.ts         ← polling del estado de la sesión
+    renaper/                        ← nombre legacy; en realidad es Didit interno
+      iniciar-sesion/route.ts
+      estado/route.ts
+      webhook/route.ts              ← webhook firmado de Didit (HMAC)
+    whatsapp/webhook/route.ts       ← webhook de WhatsApp Cloud API
+  components/
+    shell/                          ← AppShell, Sidebar, TopBar, MobileNav
+    auth/                           ← login y pantallas de perfil pendiente
+    records/                        ← listado de fichas (RecordsView)
+    ficha/                          ← formulario, detalle, escáner de código de barras
+    control/                        ← módulo administrativo (ControlView)
+    users/                          ← gestión de usuarios (UsuariosView)
+    ui/                             ← primitivas (Button, Input, Icon, Card, etc.)
+  lib/
+    types.ts                        ← tipos compartidos
+    estados.ts                      ← LOCALIDADES y mapeo de estados de control
+    diditClient.ts                  ← cliente HTTP de Didit
+    diditWebhook.ts                 ← verificación de firma HMAC del webhook
+    firebaseAdmin.ts                ← inicialización de firebase-admin (lazy)
+    decodeDniBarcode.ts             ← decodificación del PDF417 vía ZXing
+    parseDniPdf417.ts               ← parseo del payload del PDF417
+hooks/
+  useAuth.js                        ← autenticación, rol, perfil (JS legado)
+  useDiditSession.ts                ← gestión del ciclo Didit (start, poll, autocomplete)
+firebaseConfig.js                   ← inicialización Firebase cliente + App Check
+firestore.rules                     ← reglas de Firestore (NO se deploya con Vercel)
+storage.rules                       ← reglas de Storage (idem)
+firebase.json                       ← config de Firebase CLI
+public/
+  logo.png
+  video.mp4                         ← intro/splash inicial
+  manifest.json                     ← PWA
+```
 
-## Arquitectura
+## Arquitectura general
 
-La app es una single-page app renderizada del lado cliente. No hay SSR relevante para datos de negocio.
+Single-page React app con tres capas:
 
-`app/page.tsx` mantiene el estado principal con `useState`, escucha Firestore en tiempo real con `onSnapshot` y delega el render en componentes presentacionales. La UI actual esta envuelta en `AppShell`.
+1. **Cliente Firebase directo:** la mayor parte de las lecturas y escrituras se hacen desde el cliente vía SDK de Firebase con `onSnapshot` para tiempo real. Las reglas de Firestore son la principal defensa.
 
-Las vistas nuevas no llaman a Firebase directamente: reciben datos y callbacks desde `page.tsx`. La excepcion es que algunos componentes manejan estado local de filtros o formularios visuales.
+2. **Endpoints serverless de Next** (`app/api/*`) para:
+   - Verificación de ID tokens de Firebase (vía Identity Toolkit, ver `_auth.ts`).
+   - Notificaciones por email.
+   - Integración con Didit (inicio de sesión, polling de estado, webhook firmado).
+   - Webhook de WhatsApp.
 
-La navegacion interna se maneja por tabs:
+3. **Firebase Storage** para archivos pesados (DNIs y fichas físicas).
 
-- `registros`: listado operativo de fichas.
-- `nueva`: formulario de nueva ficha.
-- `editar`: formulario para editar una ficha existente.
-- `detalle`: vista detallada de una ficha.
-- `usuarios`: gestion de usuarios y roles.
-- `control`: modulo admin para seguimiento ante la JE.
+`app/page.tsx` es un `'use client'` que concentra estado y handlers de los flujos privados (afiliador autenticado, admin, supervisor). `app/cargar/[token]/page.tsx` es el flujo público (no autenticado).
 
-El estado de tabs se sincroniza con `history.pushState` y `popstate` para que el boton atras del navegador funcione.
+Navegación entre tabs vía `useState` + `history.pushState` / `popState` para que el botón "atrás" del navegador funcione.
 
-## Autenticacion y perfil
+## Autenticación y perfil
 
-El hook `useAuth`:
+`hooks/useAuth.js`:
 
-- Usa `onAuthStateChanged` de Firebase Auth.
-- Solo permite login con Google mediante `signInWithPopup`.
-- Escucha el documento del usuario en `usuarios/{uid}`.
-- Si el usuario no tiene documento, crea uno con:
-  - `email`
-  - `nombre: ''`
-  - `apellido: ''`
-  - `rol: 'pendiente'`
-  - `perfilCompleto: false`
-  - `fechaRegistro`
+1. `onAuthStateChanged` mantiene la sesión.
+2. Login con `signInWithPopup` (Google únicamente).
+3. Escucha `usuarios/{uid}` en tiempo real.
+4. Si el doc no existe en el primer login, lo crea con `rol: 'pendiente'`, `perfilCompleto: false`.
 
 Flujo de primer ingreso:
 
-1. El usuario entra con Google.
-2. Se crea su doc en `usuarios`.
-3. Si esta pendiente y no completo perfil, se muestra formulario de nombre y apellido.
-4. Al completar perfil se actualiza `perfilCompleto: true`.
-5. Se llama a `/api/notificar-nuevo-usuario` con ID token Firebase.
-6. Admin o supervisor deben aprobarlo desde la vista `Usuarios`.
+1. Login con Google → se crea doc en `usuarios`.
+2. Si `perfilCompleto: false`, UI pide nombre y apellido.
+3. Al completar, se actualiza el doc y se llama a `/api/notificar-nuevo-usuario` con el ID token de Firebase.
+4. Admin o supervisor aprueban desde la vista "Usuarios".
+
+### Endpoints autenticados: `app/api/_auth.ts`
+
+Helper compartido para verificar ID tokens del lado servidor. **No usa `firebase-admin.auth().verifyIdToken()`** debido a problemas en el entorno serverless de Vercel. En su lugar, hace un POST a Google Identity Toolkit (`accounts:lookup`) que valida la firma del token y devuelve los datos del usuario. Funcionalmente equivalente, sin la dependencia compleja.
+
+Devuelve `{ user, role }`. Si el token es inválido, expirado o el usuario no existe, devuelve error y la ruta termina con 401.
+
+`firebase-admin` sí se usa para escrituras críticas server-side (ver `app/lib/firebaseAdmin.ts`). La inicialización es lazy y singleton.
 
 ## Roles
 
-Roles actuales:
+Cuatro roles, almacenados en `usuarios/{uid}.rol`:
 
-- `pendiente`: usuario registrado, sin acceso operativo.
-- `afiliador`: puede cargar fichas y ver sus propios registros.
-- `supervisor`: puede ver todas las fichas, administrar usuarios limitadamente y editar registros.
-- `admin`: acceso completo, incluido modulo de control.
+- **`pendiente`**: registrado, sin acceso operativo. UI muestra pantalla de "acceso pendiente".
+- **`afiliador`**: carga fichas propias. Solo ve sus propias fichas en el listado.
+- **`supervisor`**: ve todas las fichas, puede editarlas, gestiona usuarios con limitaciones (solo asigna/revoca `afiliador`, no toca `admin` o `supervisor`).
+- **`admin`**: acceso completo. Único con acceso al módulo Control.
 
-Permisos funcionales:
+Permisos resumidos:
 
-- Afiliador:
-  - Crea fichas propias.
-  - Ve solo fichas donde `afiliadorUid` sea su UID.
-  - Puede editar fichas propias mientras el flujo de control lo permita.
-- Supervisor:
-  - Ve todas las fichas.
-  - Ve y gestiona usuarios.
-  - Puede aprobar usuarios como `afiliador`.
-  - No puede asignar `admin` ni `supervisor`.
-- Admin:
-  - Ve todas las fichas.
-  - Gestiona todos los roles.
-  - Accede al modulo `Control`.
-  - Puede editar fichas aun en estados avanzados.
+| Acción | Afiliador | Supervisor | Admin |
+|---|---|---|---|
+| Crear ficha propia | ✓ | ✓ | ✓ |
+| Ver fichas propias | ✓ | ✓ | ✓ |
+| Ver todas las fichas | ✗ | ✓ | ✓ |
+| Editar ficha propia (estados tempranos) | ✓ | ✓ | ✓ |
+| Editar ficha en estados avanzados | ✗ | ✗ | ✓ |
+| Generar link público | ✓ | ✓ | ✓ |
+| Gestionar usuarios | ✗ | parcial | ✓ |
+| Asignar rol `admin` o `supervisor` | ✗ | ✗ | ✓ |
+| Borrar fichas | ✗ | ✓ | ✓ |
+| Módulo Control | ✗ | ✗ | ✓ |
 
-## Firestore
+## Modelo de datos (Firestore)
 
-### Coleccion `usuarios`
+### `usuarios/{uid}`
 
-Documento: `usuarios/{uid}`.
+```
+email: string
+nombre: string
+apellido: string
+rol: 'pendiente' | 'afiliador' | 'supervisor' | 'admin'
+perfilCompleto: boolean
+fechaRegistro: timestamp
+```
 
-Campos usados:
+### `afiliaciones/{autoId}`
 
-- `email`: email de Google.
-- `nombre`: nombre ingresado o editado.
-- `apellido`: apellido ingresado o editado.
-- `rol`: `pendiente`, `afiliador`, `supervisor` o `admin`.
-- `perfilCompleto`: booleano.
-- `fechaRegistro`: fecha de registro.
+Datos personales:
+```
+tipoDocumento: 'DNI' | 'LE' | 'LC'
+dni: string
+apellidos: string
+nombres: string
+sexo: 'Masculino' | 'Femenino'
+clase: string                       ← año de nacimiento (4 dígitos)
+fechaNacimiento: string             ← formato 'DD/MM/AAAA'
+lugarNacimiento: string
+nacionalidad: string
+profesion: string
+estadoCivil: string
+celular: string
+mail: string
+```
 
-### Coleccion `afiliaciones`
+Domicilio:
+```
+distrito: string                    ← 'Buenos Aires' fijo (hoy)
+localidad: string                   ← Acassuso | Beccar | Boulogne | Martínez | San Isidro | Villa Adelina
+calle: string
+numero: string
+piso: string
+dpto: string
+observaciones: string
+```
 
-Documento autogenerado por `addDoc`.
+Archivos:
+```
+archivoDni: string                  ← URL de Storage (o URL pública si vino de Didit — ver MED-1 en seguridad)
+archivoDniPath: string              ← path de Storage (preferir este sobre archivoDni)
+archivoFicha: string                ← URL de la ficha física firmada
+archivoFichaPath: string
+```
 
-Campos principales de persona:
+Autoría y origen:
+```
+afiliadorNombre: string
+afiliadorEmail: string
+afiliadorUid: string
+fecha: timestamp                    ← creación
+ultimaModificacion: timestamp       ← (campo con encoding heredado, ver "Gotchas")
+origen: 'manual' | 'link_publico' | 'contacto_bot'
+linkToken: string                   ← presente si origen == 'link_publico'
+```
 
-- `tipoDocumento`: `DNI`, `LE` o `LC`.
-- `dni`.
-- `apellidos`.
-- `nombres`.
-- `sexo`: `Masculino` o `Femenino`.
-- `clase`: anio.
-- `fechaNacimiento`: string en formato `DD/MM/AAAA`.
-- `lugarNacimiento`.
-- `nacionalidad`.
-- `profesion`.
-- `estadoCivil`.
-- `celular`.
-- `mail`.
+Estado de control:
+```
+estadoControl: 'pendiente' | 'firmado' | 'escaneado' | 'cargado_je' |
+               'aprobado' | 'error' | 'suspendido' | 'baja'
+fechaFirma, firmadoPor, firmadoPorUid
+fechaEscaneado, escaneadoPor, escaneadoPorUid
+fechaCargadoJE, cargadoJEPor, cargadoJEPorUid
+fechaAprobacion
+fechaError, errorJE, resueltoJEPor, resueltoJEPorUid
+editadoPorAdmin, fechaEdicionAdmin, estadoAnterior
+fechaSuspension, suspendidoPor, suspendidoPorUid, suspendidoComentario
+fechaReactivacion, reactivadoPor, reactivadoPorUid
+```
 
-Campos de domicilio:
+### `dniIndex/{dni}`
 
-- `distrito`: actualmente fijo en `Buenos Aires`.
-- `localidad`: `Acassuso`, `Beccar`, `Boulogne`, `Martinez`, `San Isidro`, `Villa Adelina`.
-- `calle`.
-- `numero`.
-- `piso`.
-- `dpto`.
+Índice de unicidad de DNI. Doc con ID = el número de DNI. Contiene `{ fichaId, creadoEn }`. Las reglas de Firestore exigen que se cree atómicamente junto con la ficha. **`eliminarFicha` debe borrar también el doc de `dniIndex`**, si no, re-cargar ese DNI queda bloqueado.
 
-Campos de archivos:
+### `linksCargaPublica/{token}`
 
-- `archivoDni`: URL de Firebase Storage.
-- `archivoFicha`: URL de Firebase Storage.
+Token efímero para el flujo público de carga.
 
-Campos de autoria:
+```
+afiliadorUid: string
+afiliadorNombre: string
+afiliadorEmail: string
+creadoEn: timestamp
+venceEn: timestamp                  ← creadoEn + 24h
+usado: boolean
+```
 
-- `afiliadorNombre`.
-- `afiliadorEmail`.
-- `afiliadorUid`.
-- `fecha`: timestamp de creacion.
-- `ultimaModificacion`: timestamp de edicion. En codigo se escribe como clave unicode computada para evitar problemas de encoding.
+El `token` es de 32 caracteres hex (`crypto.randomUUID()` sin guiones, 128 bits).
 
-Campos de control:
+### `sesionesDidit/{localId}`
 
-- `estadoControl`: estado actual del circuito.
-- `fechaUltimoControl`.
-- `ultimoControlPor`.
-- `ultimoControlPorUid`.
-- `historialControl`: array de auditoria de acciones de control. Cada item guarda:
-  - `accion`: estado aplicado o `reactivacion`.
-  - `estadoAnterior`.
-  - `estadoNuevo`.
-  - `fecha`: ISO string.
-  - `por`: operador visible.
-  - `uid`: UID del operador.
-  - `comentario`: error, motivo de baja/suspension o comentario de reactivacion.
-- `fechaFirma`.
-- `firmadoPor`.
-- `firmadoPorUid`.
-- `fechaEscaneado`.
-- `escaneadoPor`.
-- `escaneadoPorUid`.
-- `fechaCargaJE`.
-- `cargadoJEPor`.
-- `cargadoJEPorUid`.
-- `fechaAprobacion`.
-- `aprobadoPor`.
-- `aprobadoPorUid`.
-- `fechaErrorJE`.
-- `errorPor`.
-- `errorPorUid`.
-- `errorJE`.
-- `editadoPorAdmin`.
-- `fechaEdicionAdmin`.
-- `estadoAnterior`.
-- `fechaSuspension`.
-- `suspendidoPor`.
-- `suspendidoPorUid`.
-- `suspendidoComentario`.
-- `fechaBaja`.
-- `bajaPor`.
-- `bajaPorUid`.
-- `fechaReactivacion`.
-- `reactivadoPor`.
-- `reactivadoPorUid`.
-- `reactivacionComentario`.
+Sesiones de verificación con Didit.
+
+```
+sessionId: string                   ← localId que generamos nosotros (UUID v4)
+diditSessionId: string              ← id de Didit
+status: string                      ← 'In Progress' | 'Approved' | 'Declined' | ...
+vendorData: { afiliadorUid, afiliadorNombre, linkToken?, ... }
+datosExtraidos: {                   ← cuando status == 'Approved'
+  dni, apellidos, nombres, sexo, fechaNacimiento, nacionalidad, lugarNacimiento,
+  domicilio: { calle, numero, piso, dpto, localidad },
+  dniImageStorageUrl, frontImageStorageUrl, backImageStorageUrl
+}
+procesada: boolean                  ← solo true en estados finales
+creadoEn, ultimaActualizacion
+```
 
 ## Estados de control
 
-`estadoControl` puede ser:
+`estadoControl` y su transición típica:
 
-- `pendiente`: ficha digital cargada, pendiente de ficha fisica.
-- `firmado`: estado definido en UI, pero el flujo actual normalmente pasa de `pendiente` a `escaneado`.
-- `escaneado`: ficha fisica subida a Storage.
-- `cargado_je`: ficha cargada en la web de la JE.
-- `aprobado`: afiliacion aprobada por JE.
-- `error`: JE devolvio un error; se guarda descripcion en `errorJE`.
-- `suspendido`: afiliado suspendido temporalmente.
-- `baja`: afiliado dado de baja.
+```
+pendiente   ← ficha digital cargada, falta ficha física
+   ↓
+escaneado   ← admin subió foto/escaneo de la ficha firmada
+   ↓
+cargado_je  ← admin la cargó en la web de la JE provincial
+   ↓
+aprobado    ← JE devolvió aprobación
+   ↓ (alternativa)
+error       ← JE devolvió un error, se guarda detalle en errorJE
+```
 
-Flujo principal:
+Estados terminales adicionales: `suspendido` y `baja`, accesibles desde estados avanzados. `reactivacion` vuelve a un estado anterior.
 
-1. Nueva ficha se crea con `estadoControl: 'pendiente'`.
-2. Admin sube ficha fisica desde camara o archivo.
-3. Se guarda en Storage `fichas/` y pasa a `escaneado`.
-4. Admin marca como cargada en JE y pasa a `cargado_je`.
-5. Admin marca como `aprobado` o registra `error`.
-6. Desde ciertos estados se puede suspender, dar de baja o reactivar.
-
-Toda transicion realizada desde Control pasa por `actualizarControl` y queda registrada en `historialControl` con operador, UID, fecha/hora y comentario si aplica. Para fichas viejas sin `historialControl`, la UI muestra un historial de respaldo armado desde campos sueltos.
+(El estado `firmado` está definido pero el flujo actual normalmente salta de `pendiente` a `escaneado`.)
 
 ## Storage
 
-Rutas usadas:
+Reglas en `storage.rules`. Paths usados:
 
-- `dnis/{dni}-{timestamp}.jpg` para DNI capturado con camara.
-- `dnis/{dni}-{timestamp}` para archivo local de DNI, imagen o PDF.
-- `fichas/{id}-{timestamp}.jpg` para ficha fisica escaneada o subida.
-
-Reglas:
-
-- Usuarios autenticados pueden leer y escribir en `dnis/` y `fichas/`.
-- Delete esta bloqueado.
+- `dnis/{ownerUid}/{fileName}` — DNIs cargados internamente. Solo dueño + admin/supervisor leen.
+- `dnis/{fileName}` (legacy) — DNIs cargados antes de la separación por owner. Solo admin/supervisor leen.
+- `dnis/{dni}-didit-*.jpg` — DNIs procesados por el webhook de Didit. **Hoy se marcan como públicos (`makePublic`), lo cual es un problema de seguridad activo** (ver CRIT-1 en `docs/seguridad/`).
+- `dnisPublicos/{token}/{fileName}` — DNIs subidos vía link público (sin autenticación). Validación: link `usado == false`, `venceEn > now`, tamaño < 5MB, contentType JPEG.
+- `fichas/{docId}/{fileName}` — fichas físicas firmadas. Solo admin escribe, admin/supervisor leen.
 
 ## Captura de documentos
 
-Componente: `EscanerDocumento`.
+### Cámara nativa (modo escaneo)
 
-Usa `navigator.mediaDevices.getUserMedia` con `facingMode: 'environment'`.
+Componente `EscanerDocumento` dentro de `app/page.tsx` (líneas 1–397, candidato a extraer).
 
-Para DNI:
+- Usa `<input type="file" capture="environment" accept="image/*">` para abrir la cámara nativa del dispositivo.
+- **NO usa `getUserMedia` + video** (se intentó, fallaba en resoluciones bajas).
+- Captura frente y dorso por separado.
+- Permite recortar usando un marco visual ajustable.
+- Combina frente + dorso verticalmente en un JPEG único.
+- **Downscale obligatorio a ~2200px max antes de procesar.** Las cámaras de celulares modernos entregan resoluciones que crashean al pasarlas por múltiples canvas.
 
-- Captura frente y dorso.
-- Recorta usando un marco visual.
-- Combina ambas imagenes verticalmente en un unico JPEG.
-- Sube el resultado a Storage.
+### Lectura del código PDF417
 
-Para ficha fisica:
+`app/lib/decodeDniBarcode.ts` y `app/lib/parseDniPdf417.ts`. Decodifica el código de barras del dorso del DNI argentino con ZXing y parsea el payload para extraer apellido, nombre, DNI, sexo, fecha de nacimiento, CUIL.
 
-- Captura una imagen con mas contraste y escala de grises.
-- Sube el archivo a Storage.
+Si la lectura automática falla, hay un escáner manual (componente `EscanerCodigoBarras`) donde el usuario marca el área del código.
 
-Tambien se permite carga de archivo local:
+### Verificación con Didit
 
-- DNI: `image/*` o `application/pdf`.
-- Ficha: actualmente `image/*`.
+Ver sección "Integración Didit" más abajo.
 
-## Vistas principales
+### Archivo único (PDF o imagen)
 
-### Login
+- DNI: acepta `application/pdf`, `image/jpeg`, `image/png`.
+- Para PDF: renderiza páginas con PDF.js. Si tiene 1 página, la muestra dos veces para que el usuario recorte frente y dorso. Si tiene 2+, usa las primeras dos.
+- Para imagen: idem que 1 página de PDF.
 
-Muestra logo y boton `Ingresar con Gmail`.
+## Integración Didit
 
-Antes del login hay una intro de video (`/video.mp4`) durante hasta 6 segundos o hasta que termine/falle el video. En desktop se muestra con `object-contain` y limites de ancho/alto para no recortar el contenido.
+Didit es un proveedor de verificación de identidad. Se usa en dos lugares:
 
-### Perfil pendiente
+1. **Flujo interno** (afiliador autenticado): el afiliador toca "Escanear automáticamente" en el formulario, se abre la ventana hosted de Didit, el afiliando escanea su DNI, Didit envía un webhook con los datos extraídos, la app autocompleta el formulario.
 
-Si el usuario tiene rol `pendiente` y `perfilCompleto` falso, se le pide nombre y apellido.
+2. **Flujo público** (link de carga): idem, pero iniciado desde `/cargar/[token]` sin autenticación. La sesión queda asociada al `linkToken` en `vendorData`.
 
-Si ya completo perfil, se muestra pantalla de acceso pendiente.
+### Componentes técnicos
 
-### Nueva ficha / Editar ficha
+- **`hooks/useDiditSession.ts`** — gestiona el ciclo de vida de la sesión:
+  - Inicia la sesión via API (`/api/renaper/iniciar-sesion` o `/api/link-publico/[token]/iniciar-sesion-didit`).
+  - Abre la ventana hosted de Didit.
+  - Hace polling de estado vía `/api/renaper/estado` (o equivalente público).
+  - Persiste el `sessionId` en `localStorage` con clave `didit_session_pendiente:{contexto}` por si el redirect-back falla.
+  - Cuando llega `Approved`, llama a un callback que autocompleta el formData.
 
-Formulario con datos personales, domicilio y documentacion.
+- **`app/api/renaper/iniciar-sesion/route.ts`** — crea una sesión Didit y persiste un doc en `sesionesDidit`. El nombre `renaper` es legado (la integración real es Didit; cuando se apruebe la afiliación electrónica se reemplazará el workflow de Didit por uno conectado a RENAPER).
 
-Validaciones actuales:
+- **`app/api/renaper/webhook/route.ts`** — recibe webhooks de Didit firmados con HMAC. Verifica firma + timestamp. Si la sesión está aprobada, descarga las imágenes de DNI (`front_image`, `back_image`), las combina con `sharp`, las sube a Storage en `dnis/{dni}-didit-*.jpg`, y persiste los datos extraídos en `sesionesDidit/{localId}`.
 
-- Muchos campos son `required` a nivel HTML.
-- `fechaNacimiento` se formatea como `DD/MM/AAAA`.
-- `clase` acepta hasta 4 digitos.
-- `dni` y `numero` usan inputs numericos.
+- **`app/lib/diditWebhook.ts`** — verificación de firma HMAC del webhook con `crypto.timingSafeEqual`.
 
-Al crear:
+- **`app/lib/diditClient.ts`** — cliente HTTP para llamar la API de Didit (crear sesión, obtener estado).
 
-- Sube DNI si corresponde.
-- Crea documento en `afiliaciones`.
-- Adjunta datos de afiliador desde `userData` y Firebase Auth.
+### Gotchas conocidos de Didit
 
-Al editar:
+- **Idempotencia:** marcar la sesión como `procesada: true` solo en estados finales (`Approved`, `Declined`). Si se marca antes, webhooks posteriores se descartan y se pierde data.
+- **`parsed_address` viene vacío** en DNIs argentinos. Hay que parsear el campo `address` libre (formato `calle número - localidad`). Helper: `parsearAddressLibre()` que splittea por ` - `.
+- **Redirect-back inestable.** Después de completar el flow, Didit a veces no redirige a la app. Workaround: localStorage + polling. Bug reportado, sin ETA.
 
-- Actualiza documento.
-- Si admin edita un registro en estado avanzado, guarda auditoria de edicion admin.
+## Link público de carga
 
-### Registros
+Flujo paralelo al privado para que el afiliando cargue su propia ficha sin tener cuenta.
 
-Listado operativo con:
+1. El afiliador (autenticado) genera un link desde el formulario de nueva ficha. Se crea un doc en `linksCargaPublica/{token}` con `crypto.randomUUID()` (128 bits).
+2. El link es `https://app.../cargar/{token}`. Comparte por WhatsApp o copia.
+3. El afiliando abre el link → `app/cargar/[token]/page.tsx`.
+4. Carga DNI (via Didit, cámara, archivo o código de barras) y completa el formulario.
+5. Al enviar, crea la ficha con `origen: 'link_publico'`, `afiliadorUid` del link, y marca `linksCargaPublica/{token}.usado = true` atómicamente.
 
-- Busqueda por DNI, nombres o apellidos.
-- Filtro por afiliador para admin/supervisor.
-- Indicadores de presencia de DNI y ficha.
-- Indicador visual segun `estadoControl`.
+Validaciones críticas en `firestore.rules`:
 
-Admin/supervisor ven todo. Afiliador ve solo lo propio.
+- El link debe existir y no estar usado al momento de crear.
+- El link debe quedar `usado: true` después de la creación (`getAfter`).
+- El path del archivo de DNI debe matchear el patrón esperado (`dnisPublicos/{token}/...` o `dnis/{dni}-didit-...`).
+- El `dniIndex` se crea atómicamente con la ficha.
 
-### Detalle
+Vencimiento: 24 horas. Un solo uso.
 
-Muestra ficha completa y links a archivos.
+## Bot de WhatsApp
 
-Permite editar si:
+Proyecto separado (no en este repo) que comparte la misma instancia de Firebase. Es un bot que recibe mensajes de personas interesadas en afiliarse vía WhatsApp Cloud API. Cuando se completa el flow conversacional, crea un doc en `afiliaciones` con `origen: 'contacto_bot'`.
 
-- La ficha no esta en estados avanzados, o
-- El usuario es admin.
+En este repo solo vive `app/api/whatsapp/webhook/route.ts`, que:
 
-### Usuarios
+- Responde al GET de verificación (`hub.mode=subscribe`, `hub.verify_token`).
+- Recibe el POST con mensajes entrantes, verifica firma HMAC con `WHATSAPP_APP_SECRET`.
+- Persiste los mensajes en Firestore para que el bot externo los procese.
 
-Disponible para admin y supervisor.
-
-Permite:
-
-- Ver usuarios.
-- Editar nombre y apellido.
-- Cambiar rol.
-
-Restricciones de UI:
-
-- El supervisor no puede editar usuarios admin/supervisor.
-- El supervisor solo puede asignar/revocar acceso como `afiliador` o `pendiente`.
-- Admin puede asignar `admin`, `supervisor`, `afiliador` o `pendiente`.
-
-### Control
-
-Disponible solo para admin en UI.
-
-Incluye:
-
-- Contadores por estado.
-- Filtro por estado.
-- Filtro por afiliador.
-- Busqueda por DNI, nombre o apellido.
-- Detalle administrativo.
-- Boton para abrir la ficha completa del afiliado desde el detalle de Control.
-- Historial de acciones con fecha/hora, operador y comentario cuando corresponde.
-- Carga de ficha fisica.
-- Marcado como cargado en JE.
-- Aprobacion o error JE.
-- Suspension, baja y reactivacion.
-- Al suspender o dar de baja se puede cargar motivo opcional.
-- Al reactivar una ficha suspendida o dada de baja se puede cargar comentario opcional.
-
-Notas de auditoria:
-
-- Baja y suspension quedan guardadas en campos especificos y en `historialControl`.
-- Reactivacion queda guardada en `fechaReactivacion`, `reactivadoPor`, `reactivadoPorUid`, `reactivacionComentario` y en `historialControl`.
-- El historial se ordena de mas reciente a mas antiguo.
-
-## Exportaciones y descargas
-
-`exportarCSV` arma un CSV de los registros visibles/filtrados con BOM UTF-8.
-
-`descargarZip` descarga archivos vinculados a los registros visibles:
-
-- Tipo `dni`: usa `archivoDni`.
-- Tipo `ficha`: usa `archivoFicha`.
-- Descarga en lotes de 10 para limitar concurrencia.
-- Genera nombres con apellido, nombre, DNI y sufijo.
-
-Nota: las funciones existen, pero revisar si tienen botones visibles en la UI actual antes de asumir que estan expuestas.
+(En proceso de surfaceo en la UI principal: los `contacto_bot` deberían aparecer en el listado de fichas con un filtro propio.)
 
 ## APIs
 
-### `POST /api/notificar`
-
-Protegido por header:
-
-```http
-Authorization: Bearer ${API_SECRET_TOKEN}
-```
-
-Body esperado:
-
-```json
-{
-  "email": "usuario@example.com",
-  "nombre": "Nombre Apellido"
-}
-```
-
-Envia email a `EMAIL_USER` con asunto de nuevo usuario.
-
-### `POST /api/notificar-nuevo-usuario`
-
-Protegido por Firebase ID token:
-
-```http
-Authorization: Bearer <firebase-id-token>
-```
-
-Valida el token contra Google Identity Toolkit usando `NEXT_PUBLIC_FIREBASE_API_KEY`.
-
-Body esperado:
-
-```json
-{
-  "email": "usuario@example.com",
-  "nombre": "Nombre Apellido"
-}
-```
-
-Si falla el envio de email, no bloquea el registro.
+| Endpoint | Auth | Propósito |
+|---|---|---|
+| `POST /api/notificar-nuevo-usuario` | Firebase ID token | Notifica al admin que se registró un usuario nuevo |
+| `POST /api/notificar-usuario-aprobado` | Firebase ID token (admin/supervisor) | Notifica al usuario que fue aprobado |
+| `GET /api/links-publicos/activo` | Firebase ID token | Devuelve el link público activo del afiliador (si existe) |
+| `GET /api/link-publico/[token]` | Ninguna | Devuelve info del link (afiliador, vencimiento) |
+| `POST /api/link-publico/[token]/iniciar-sesion-didit` | Ninguna (valida token) | Inicia sesión Didit asociada al link |
+| `GET /api/link-publico/[token]/estado-didit?session_id=…` | Ninguna (valida token + session) | Polling de estado |
+| `POST /api/renaper/iniciar-sesion` | Firebase ID token | Inicia sesión Didit (flujo interno) |
+| `GET /api/renaper/estado?session_id=…` | Firebase ID token | Polling de estado (flujo interno) |
+| `POST /api/renaper/webhook` | HMAC firmado por Didit | Webhook de finalización de sesión |
+| `GET/POST /api/whatsapp/webhook` | Verify token + HMAC | Webhook de WhatsApp Cloud API |
+| `POST /api/notificar` | Bearer `API_SECRET_TOKEN` | **Dead code, candidato a borrar** (ver MED-1) |
 
 ## Reglas de seguridad
 
-Firestore:
+### Firestore (`firestore.rules`)
 
-- `usuarios`:
-  - El propio usuario puede leer su doc.
-  - Admin/supervisor pueden leer usuarios.
-  - Cada usuario puede crear su propio doc.
-  - Admin puede actualizar cualquier campo.
-  - Supervisor puede editar y aprobar como afiliador, pero no asignar admin/supervisor.
-  - El propio usuario puede actualizar su perfil sin cambiar rol.
-  - Solo admin puede borrar usuarios.
-- `afiliaciones`:
-  - Afiliador lee sus fichas; admin/supervisor leen todo.
-  - Usuarios activos (`admin`, `supervisor`, `afiliador`) pueden crear fichas con su propio UID.
-  - Dueño, admin o supervisor pueden editar.
-  - Admin/supervisor pueden borrar.
+- **`usuarios`:** el propio usuario lee/actualiza su perfil (sin tocar rol). Admin/supervisor leen todos. Admin actualiza cualquier campo. Supervisor solo asigna `afiliador` o `pendiente`. Solo admin borra.
 
-Storage:
+- **`afiliaciones`:**
+  - Lectura: dueño + admin/supervisor.
+  - Creación autenticada: `creacionFichaValida()` — requiere `afiliadorUid == auth.uid`, rol activo, campos válidos, `dniIndex` creado atómicamente.
+  - Creación pública (sin auth): `creacionFichaPublicaValida()` — requiere `origen == 'link_publico'`, link válido y consumido atómicamente, path de DNI matchea patrones esperados.
+  - Edición: dueño en estados tempranos, admin siempre, supervisor para fichas pendientes.
+  - Borrado: admin y supervisor.
 
-- Usuarios autenticados pueden leer/escribir en `dnis/` y `fichas/`.
-- Nadie puede borrar desde reglas.
+- **`linksCargaPublica`:** creación solo autenticada. Lectura pública si `usado == false && venceEn > now`. Actualización (marcar usado) en la misma transacción que crear la ficha.
 
-## Consideraciones para futuros cambios
+- **`sesionesDidit`:** creación y actualización solo desde Admin SDK (server-side).
 
-- `app/page.tsx` sigue concentrando la logica de datos y handlers, pero la UI principal ya esta separada en componentes presentacionales. Para cambios visuales, preferir tocar `app/components/*`; para cambios de datos o Firebase, revisar `page.tsx`.
-- Hay texto con caracteres mal codificados en algunos archivos (`GestiÃ³n`, `NÃºmero`, etc.). Si se toca texto visible, corregir encoding de forma consistente.
-- `useAuth.js` esta en JavaScript, no TypeScript.
-- El modelo de datos no esta tipado formalmente; si se agregan campos, documentarlos y revisar reglas.
-- Las reglas de Firestore son parte critica del sistema. Cambiar UI sin ajustar reglas puede dar errores de permisos.
-- La UI usa estilos Tailwind inline. Seguir ese patron salvo que se haga una refactorizacion mayor.
-- Al modificar rutas API con Next 16, leer docs locales de Next antes.
-- Al trabajar con camara, probar en dispositivo real o navegador con permisos, porque desktop puede no reflejar el uso en campo.
-- No hay tests automatizados; al cerrar cambios conviene correr `npm run lint` y `npx.cmd tsc --noEmit`. `npm run build` puede fallar localmente si faltan las variables `NEXT_PUBLIC_FIREBASE_*` porque Next intenta prerenderizar `/` e inicializa Firebase.
+- **`dniIndex`:** creación atómica junto con la ficha. Borrado al eliminar la ficha.
 
-## Comportamiento esperado por rol
+### Storage (`storage.rules`)
 
-Para validar cambios manualmente:
+Detalle en sección "Storage" arriba.
 
-1. Usuario nuevo:
+### Despliegue de reglas
+
+**No se deploya con Vercel.** Hay que correr manualmente:
+
+```bash
+firebase deploy --only firestore:rules
+firebase deploy --only storage
+```
+
+O usar Firebase Console (Reglas → publicar).
+
+**Este es el paso más fácil de olvidar al hacer fixes de seguridad.** Considerar GitHub Actions para automatizar.
+
+## Comportamiento esperado por rol (validación manual)
+
+1. **Usuario nuevo:**
    - Login con Google.
    - Completa nombre y apellido.
-   - Queda en pantalla de acceso pendiente.
-2. Admin/supervisor:
-   - Entra a `Usuarios`.
-   - Cambia rol de pendiente a afiliador.
-3. Afiliador:
+   - Queda en pantalla "Acceso pendiente".
+
+2. **Admin o supervisor:**
+   - En "Usuarios", aprueba al usuario nuevo asignando `afiliador`.
+
+3. **Afiliador:**
    - Carga nueva ficha.
-   - Sube DNI con camara o archivo.
-   - Ve la ficha en `Registros`.
-4. Admin:
-   - Ve la ficha en `Control`.
-   - Sube ficha firmada.
-   - Marca cargada en JE.
-   - Aprueba o registra error.
-5. Admin:
-   - Puede suspender, dar de baja o reactivar segun el estado.
+   - Sube DNI por cualquiera de los 4 métodos.
+   - O genera link público y lo comparte por WhatsApp.
+   - Ve sus fichas en "Registros".
+
+4. **Admin:**
+   - En "Control", ve la ficha en `pendiente`.
+   - Sube ficha física firmada → `escaneado`.
+   - Marca "Cargada en JE" → `cargado_je`.
+   - Marca `aprobado` o registra `error`.
+   - Si necesario, suspende, da de baja o reactiva.
+
+## Gotchas adicionales
+
+- **Encoding heredado:** algunos campos tienen caracteres mal codificados en su nombre (ej. `ultimaModificaciÃ³n`). Si se toca código que los lee, conservar el encoding mojado para no romper datos existentes. Idealmente, migrar con script + actualizar todas las lecturas en el mismo PR.
+- **`hasOnly()` en reglas:** agregar un campo al payload sin actualizar la lista de `hasOnly()` rompe todas las escrituras de la colección. Coordinar cambios payload + rules.
+- **Firestore collections implícitas:** borrar todos los docs de una colección no la elimina; un `addDoc` nuevo la recrea. Sirve para limpiezas manuales sin scripts.
+- **`useAuth.js` en JS, no TS:** legado. Si se reescribe, mejor migrar a TS.
+
+## Refactor pendiente
+
+- **`app/page.tsx` tiene 1500+ líneas.** Concentra el componente `EscanerDocumento` (~400 líneas, candidato a extraer), 40+ `useState`, y 12+ handlers async grandes. División tentativa registrada en `docs/decisiones/` (cuando se prepare).
+- **Branding sin extraer.** Logo, color, nombre, dominio email, localidades, distrito hardcoded en varios archivos. Extracción a `app/lib/branding.ts` y `app/lib/config.ts` es trabajo barato y necesario para soportar el segundo cliente (ver `ADR-001-single-tenant.md`).
+
+## Trabajo en curso o backlog
+
+- **Seguridad** (ver `docs/seguridad/seguridad-sia.md`): hay un crítico (CRIT-1) y varios altos abiertos.
+- **Surfaceo de `contacto_bot`** en la UI principal con filtro propio.
+- **Extracción de branding y constantes a `app/lib/`** preparatorio para multi-cliente.
+- **Refactor de `app/page.tsx`** (no urgente, hacer después de cerrar seguridad).
+- **Migración del nombre del módulo "renaper"** (legacy, hoy es Didit) a algo más correcto.

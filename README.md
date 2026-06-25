@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Afiliaciones SIA
 
-## Getting Started
+Aplicación web para la gestión y control del proceso de afiliación de partidos políticos provinciales en Argentina. Diseñada en origen para San Isidro Avanza (SIA, distrito San Isidro, Buenos Aires), y construida para ser desplegable como instancia independiente para otros partidos vecinales en situación análoga.
 
-First, run the development server:
+La app cubre el ciclo completo: carga de fichas en campo por afiliadores, captura de DNI (cámara, archivo o verificación con Didit), seguimiento del estado ante la Junta Electoral provincial, y módulos de control administrativo y de gestión de usuarios.
+
+## Stack
+
+Next.js 16 (App Router) · React 19 · TypeScript · Firebase (Auth, Firestore, Storage) · Tailwind CSS 4 · Vercel.
+
+Integraciones: Didit (verificación de identidad y extracción de datos del DNI), WhatsApp Cloud API (bot de contacto, en proyecto separado), Nodemailer + Hostinger SMTP (notificaciones por email).
+
+## Cómo correr localmente
 
 ```bash
+npm install
+cp .env.example .env.local   # completar variables (ver APP_CONTEXT.md)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App disponible en `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Despliegue
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Código:** auto-deploy desde `main` vía Vercel.
+- **Reglas de Firestore y Storage:** `firebase deploy --only firestore:rules,storage` (manual, no auto-deploya con Vercel).
 
-## Learn More
+## Documentación
 
-To learn more about Next.js, take a look at the following resources:
+- [`CLAUDE.md`](./CLAUDE.md) — convenciones y gotchas para agentes que trabajen en el código.
+- [`APP_CONTEXT.md`](./APP_CONTEXT.md) — referencia técnica completa (arquitectura, modelo de datos, flujos, APIs, reglas).
+- [`docs/decisiones/`](./docs/decisiones/) — registros de decisiones arquitectónicas (ADRs).
+- [`docs/seguridad/`](./docs/seguridad/) — auditoría de seguridad y hallazgos abiertos.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Modelo de despliegue
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+La app está pensada como **single-tenant por cliente**: un proyecto Firebase y un proyecto Vercel por partido, todos apuntando al mismo repositorio. Esto aísla los datos personales de cada partido por infraestructura, no por software. Ver [`ADR-001-single-tenant.md`](./docs/decisiones/ADR-001-single-tenant.md).
 
-## Deploy on Vercel
+## Licencia
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Privado. Contactar al dueño del repositorio para uso por terceros.
