@@ -144,7 +144,7 @@ service cloud.firestore {
         token is string &&
         (
           request.resource.data.archivoDniPath.matches('dnisPublicos/' + token + '/.*') ||
-          request.resource.data.archivoDniPath.matches('dnis/' + request.resource.data.dni + '-didit-.*')
+          request.resource.data.archivoDniPath.matches('dnis/' + request.resource.data.afiliadorUid + '/' + request.resource.data.dni + '-didit-.*')
         ) &&
         estadoPendiente(request.resource.data) &&
         usuarioAfiliador.rol in ['admin', 'supervisor', 'afiliador'] &&

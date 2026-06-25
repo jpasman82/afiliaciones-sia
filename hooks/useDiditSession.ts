@@ -7,6 +7,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
+import { getBlob, ref } from 'firebase/storage';
+import { storage } from '../firebaseConfig';
 import { LOCALIDADES } from '../app/lib/estados';
 
 export interface UseDiditSessionOptions {
@@ -26,6 +28,12 @@ export interface UseDiditSessionOptions {
   setFormData: Dispatch<SetStateAction<any>>;
   /** Callback opcional cuando se detecta retorno con session pendiente (antes del polling). */
   onRetorno?: () => void;
+  /**
+   * Función para bajar el blob de un archivo de Storage dado su path.
+   * Si no se provee, usa Firebase Storage SDK directamente (requiere auth).
+   * El flujo público inyecta su propia función que llama a un endpoint backend.
+   */
+  bajarPreviewBlob?: (path: string) => Promise<Blob>;
 }
 
 export interface UseDiditSessionResult {
@@ -35,11 +43,12 @@ export interface UseDiditSessionResult {
   diditMensajePendiente: string | null;
   diditAutocompleted: boolean;
   diditCamposAutocompletados: Set<string>;
-  diditFrenteStorageUrl: string | null;
-  diditDorsoStorageUrl: string | null;
   diditFrenteStoragePath: string | null;
-  diditDniImageUrl: string | null;
+  diditDorsoStoragePath: string | null;
   diditDniImagePath: string | null;
+  diditFrentePreviewUrl: string | null;
+  diditDorsoPreviewUrl: string | null;
+  diditDniImagePreviewUrl: string | null;
   iniciarSesion: () => Promise<void>;
   /** Limpia todos los estados Didit y borra el sessionId pendiente del localStorage. */
   reset: () => void;
@@ -52,11 +61,12 @@ export function useDiditSession(opciones: UseDiditSessionOptions): UseDiditSessi
   const [diditMensajePendiente] = useState<string | null>(null);
   const [diditAutocompleted, setDiditAutocompleted] = useState(false);
   const [diditCamposAutocompletados, setDiditCamposAutocompletados] = useState<Set<string>>(new Set());
-  const [diditFrenteStorageUrl, setDiditFrenteStorageUrl] = useState<string | null>(null);
-  const [diditDorsoStorageUrl, setDiditDorsoStorageUrl] = useState<string | null>(null);
   const [diditFrenteStoragePath, setDiditFrenteStoragePath] = useState<string | null>(null);
-  const [diditDniImageUrl, setDiditDniImageUrl] = useState<string | null>(null);
+  const [diditDorsoStoragePath, setDiditDorsoStoragePath] = useState<string | null>(null);
   const [diditDniImagePath, setDiditDniImagePath] = useState<string | null>(null);
+  const [diditFrentePreviewUrl, setDiditFrentePreviewUrl] = useState<string | null>(null);
+  const [diditDorsoPreviewUrl, setDiditDorsoPreviewUrl] = useState<string | null>(null);
+  const [diditDniImagePreviewUrl, setDiditDniImagePreviewUrl] = useState<string | null>(null);
 
   // Ref estable para que el useEffect del polling pueda leer la última versión
   // de las opciones sin invalidar el efecto en cada render.
@@ -64,6 +74,84 @@ export function useDiditSession(opciones: UseDiditSessionOptions): UseDiditSessi
   useEffect(() => {
     opcionesRef.current = opciones;
   });
+
+  // Preview de la imagen combinada del DNI.
+  useEffect(() => {
+    if (!diditDniImagePath) {
+      setDiditDniImagePreviewUrl(null);
+      return;
+    }
+    let revoked = false;
+    let objectUrl: string | null = null;
+    (async () => {
+      try {
+        const blob = opcionesRef.current.bajarPreviewBlob
+          ? await opcionesRef.current.bajarPreviewBlob(diditDniImagePath)
+          : await getBlob(ref(storage, diditDniImagePath));
+        if (revoked) return;
+        objectUrl = URL.createObjectURL(blob);
+        setDiditDniImagePreviewUrl(objectUrl);
+      } catch (err) {
+        console.error('[useDiditSession] error bajando preview DNI:', err);
+      }
+    })();
+    return () => {
+      revoked = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [diditDniImagePath]);
+
+  // Preview del frente del DNI.
+  useEffect(() => {
+    if (!diditFrenteStoragePath) {
+      setDiditFrentePreviewUrl(null);
+      return;
+    }
+    let revoked = false;
+    let objectUrl: string | null = null;
+    (async () => {
+      try {
+        const blob = opcionesRef.current.bajarPreviewBlob
+          ? await opcionesRef.current.bajarPreviewBlob(diditFrenteStoragePath)
+          : await getBlob(ref(storage, diditFrenteStoragePath));
+        if (revoked) return;
+        objectUrl = URL.createObjectURL(blob);
+        setDiditFrentePreviewUrl(objectUrl);
+      } catch (err) {
+        console.error('[useDiditSession] error bajando preview frente:', err);
+      }
+    })();
+    return () => {
+      revoked = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [diditFrenteStoragePath]);
+
+  // Preview del dorso del DNI.
+  useEffect(() => {
+    if (!diditDorsoStoragePath) {
+      setDiditDorsoPreviewUrl(null);
+      return;
+    }
+    let revoked = false;
+    let objectUrl: string | null = null;
+    (async () => {
+      try {
+        const blob = opcionesRef.current.bajarPreviewBlob
+          ? await opcionesRef.current.bajarPreviewBlob(diditDorsoStoragePath)
+          : await getBlob(ref(storage, diditDorsoStoragePath));
+        if (revoked) return;
+        objectUrl = URL.createObjectURL(blob);
+        setDiditDorsoPreviewUrl(objectUrl);
+      } catch (err) {
+        console.error('[useDiditSession] error bajando preview dorso:', err);
+      }
+    })();
+    return () => {
+      revoked = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [diditDorsoStoragePath]);
 
   // Polling de retorno desde Didit. Corre una sola vez al montar el componente.
   useEffect(() => {
@@ -146,10 +234,8 @@ export function useDiditSession(opciones: UseDiditSessionOptions): UseDiditSessi
               setDiditCamposAutocompletados(completados);
               setDiditAutocompleted(completados.size > 0);
 
-              if (raw.frontImageStorageUrl)  setDiditFrenteStorageUrl(String(raw.frontImageStorageUrl));
-              if (raw.backImageStorageUrl)   setDiditDorsoStorageUrl(String(raw.backImageStorageUrl));
               if (raw.frontImageStoragePath) setDiditFrenteStoragePath(String(raw.frontImageStoragePath));
-              if (raw.dniImageStorageUrl)    setDiditDniImageUrl(String(raw.dniImageStorageUrl));
+              if (raw.backImageStoragePath)  setDiditDorsoStoragePath(String(raw.backImageStoragePath));
               if (raw.dniImageStoragePath)   setDiditDniImagePath(String(raw.dniImageStoragePath));
 
               setDiditProcesandoRetorno(false);
@@ -181,11 +267,12 @@ export function useDiditSession(opciones: UseDiditSessionOptions): UseDiditSessi
     setDiditError(null);
     setDiditAutocompleted(false);
     setDiditCamposAutocompletados(new Set());
-    setDiditFrenteStorageUrl(null);
-    setDiditDorsoStorageUrl(null);
     setDiditFrenteStoragePath(null);
-    setDiditDniImageUrl(null);
+    setDiditDorsoStoragePath(null);
     setDiditDniImagePath(null);
+    setDiditFrentePreviewUrl(null);
+    setDiditDorsoPreviewUrl(null);
+    setDiditDniImagePreviewUrl(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem(opcionesRef.current.storageKey);
     }
@@ -223,11 +310,12 @@ export function useDiditSession(opciones: UseDiditSessionOptions): UseDiditSessi
     diditMensajePendiente,
     diditAutocompleted,
     diditCamposAutocompletados,
-    diditFrenteStorageUrl,
-    diditDorsoStorageUrl,
     diditFrenteStoragePath,
-    diditDniImageUrl,
+    diditDorsoStoragePath,
     diditDniImagePath,
+    diditFrentePreviewUrl,
+    diditDorsoPreviewUrl,
+    diditDniImagePreviewUrl,
     iniciarSesion,
     reset,
   };

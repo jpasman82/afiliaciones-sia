@@ -144,6 +144,21 @@ export async function POST(req: NextRequest) {
     };
   }
 
+  // Parsear vendorData que se mandó al crear la sesión.
+  let vendorData: Record<string, unknown> = {};
+  try {
+    const rawVendor = typeof rawPayload.vendor_data === 'string' ? rawPayload.vendor_data : '{}';
+    vendorData = JSON.parse(rawVendor) as Record<string, unknown>;
+  } catch {
+    // vendor_data malformado no es fatal; guardamos vacío.
+  }
+  const afiliadorUid = typeof vendorData.afiliadorUid === 'string' && vendorData.afiliadorUid
+    ? vendorData.afiliadorUid
+    : 'sin-uid';
+  if (afiliadorUid === 'sin-uid') {
+    console.warn('[webhook] vendorData sin afiliadorUid — usando fallback sin-uid');
+  }
+
   // Paso 6b: descargar fotos de Didit, combinarlas verticalmente y subirlas a Storage.
   // Las URLs de Didit son firmadas de S3 y expiran en ~4 h; hay que persistirlas ahora.
   if (status === 'Approved' && adminApp && (datosExtraidos.frontImageUrl || datosExtraidos.backImageUrl)) {
@@ -163,13 +178,12 @@ export async function POST(req: NextRequest) {
         datosExtraidos.backImageUrl  ? descargarBuffer(datosExtraidos.backImageUrl,  'dorso')  : Promise.resolve(null),
       ]);
 
-      // Subir frente y dorso por separado (para referencia).
+      // Subir frente y dorso por separado (para referencia), bajo dnis/{afiliadorUid}/.
       const subirBuffer = async (buf: Buffer, sufijo: string) => {
-        const path = `dnis/${dniSeguro}-didit-${sufijo}-${timestamp}.jpg`;
+        const path = `dnis/${afiliadorUid}/${dniSeguro}-didit-${sufijo}-${timestamp}.jpg`;
         const file = bucket.file(path);
         await file.save(buf, { contentType: 'image/jpeg' });
-        await file.makePublic();
-        return { path, publicUrl: `https://storage.googleapis.com/${bucket.name}/${path}` };
+        return { path };
       };
 
       const [frente, dorso] = await Promise.all([
@@ -177,8 +191,8 @@ export async function POST(req: NextRequest) {
         bufDorso  ? subirBuffer(bufDorso,  'dorso')  : Promise.resolve(null),
       ]);
 
-      if (frente) { datosExtraidos.frontImageStorageUrl = frente.publicUrl; datosExtraidos.frontImageStoragePath = frente.path; }
-      if (dorso)  { datosExtraidos.backImageStorageUrl  = dorso.publicUrl;  datosExtraidos.backImageStoragePath  = dorso.path; }
+      if (frente) { datosExtraidos.frontImageStoragePath = frente.path; }
+      if (dorso)  { datosExtraidos.backImageStoragePath  = dorso.path; }
 
       // Combinar frente + dorso verticalmente (igual que el flujo manual con canvas).
       if (bufFrente && bufDorso) {
@@ -198,34 +212,21 @@ export async function POST(req: NextRequest) {
             { input: dorsoResized,  top: metaFR.height ?? 0, left: 0 },
           ]).jpeg({ quality: 85 }).toBuffer();
 
-          const pathCombinado = `dnis/${dniSeguro}-didit-${timestamp}.jpg`;
+          const pathCombinado = `dnis/${afiliadorUid}/${dniSeguro}-didit-${timestamp}.jpg`;
           const fileCombinado = bucket.file(pathCombinado);
           await fileCombinado.save(combinado, { contentType: 'image/jpeg' });
-          await fileCombinado.makePublic();
-          datosExtraidos.dniImageStorageUrl  = `https://storage.googleapis.com/${bucket.name}/${pathCombinado}`;
           datosExtraidos.dniImageStoragePath = pathCombinado;
         } catch (errCombinar) {
           console.error('[webhook] Error combinando imágenes, se usará solo el frente:', errCombinar);
-          // Fallback: usar la imagen del frente como imagen combinada.
-          if (frente) { datosExtraidos.dniImageStorageUrl = frente.publicUrl; datosExtraidos.dniImageStoragePath = frente.path; }
+          if (frente) { datosExtraidos.dniImageStoragePath = frente.path; }
         }
       } else if (frente) {
         // Solo hay frente disponible.
-        datosExtraidos.dniImageStorageUrl  = frente.publicUrl;
         datosExtraidos.dniImageStoragePath = frente.path;
       }
     } catch (err) {
       console.error('[webhook] Error general al subir imágenes a Storage:', err);
     }
-  }
-
-  // Parsear vendorData que se mandó al crear la sesión.
-  let vendorData: Record<string, unknown> = {};
-  try {
-    const rawVendor = typeof rawPayload.vendor_data === 'string' ? rawPayload.vendor_data : '{}';
-    vendorData = JSON.parse(rawVendor) as Record<string, unknown>;
-  } catch {
-    // vendor_data malformado no es fatal; guardamos vacío.
   }
 
   // localId es el UUID que generamos en iniciar-sesion y que viajó en la callback URL.

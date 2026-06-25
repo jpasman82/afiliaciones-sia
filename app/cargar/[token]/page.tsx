@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { collection, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
@@ -71,6 +71,13 @@ export default function CargaPublicaPage() {
   const [recortePendiente, setRecortePendiente] = useState<RecortePublico | null>(null);
   const [escaneandoCodigo, setEscaneandoCodigo] = useState(false);
 
+  const bajarPreviewBlob = useCallback(async (path: string) => {
+    const url = `/api/link-publico/${token ?? ''}/dni-preview?path=${encodeURIComponent(path)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Preview fetch failed: ${res.status}`);
+    return await res.blob();
+  }, [token]);
+
   const {
     iniciandoSesionDidit,
     diditProcesandoRetorno,
@@ -78,9 +85,9 @@ export default function CargaPublicaPage() {
     diditMensajePendiente,
     diditAutocompleted,
     diditCamposAutocompletados,
-    diditFrenteStorageUrl,
-    diditDorsoStorageUrl,
-    diditDniImageUrl,
+    diditFrentePreviewUrl,
+    diditDorsoPreviewUrl,
+    diditDniImagePreviewUrl,
     diditDniImagePath,
     iniciarSesion: iniciarSesionDidit,
   } = useDiditSession({
@@ -90,6 +97,7 @@ export default function CargaPublicaPage() {
     getStartHeaders: async () => ({ 'Content-Type': 'application/json' }),
     getStartBody: async () => ({}),
     setFormData,
+    bajarPreviewBlob,
   });
 
   useEffect(() => {
@@ -448,10 +456,10 @@ export default function CargaPublicaPage() {
         dni={{
           modo: 'escaner',
           setModo: () => {},
-          frenteOk: !!(fotoFrenteB64 || diditFrenteStorageUrl || diditDniImageUrl),
-          dorsoOk: !!(fotoDorsoB64 || diditDorsoStorageUrl || diditDniImageUrl),
-          fotoFrente: fotoFrenteB64 || diditFrenteStorageUrl || diditDniImageUrl,
-          fotoDorso: fotoDorsoB64 || diditDorsoStorageUrl || diditDniImageUrl,
+          frenteOk: !!(fotoFrenteB64 || diditFrentePreviewUrl || diditDniImagePreviewUrl),
+          dorsoOk: !!(fotoDorsoB64 || diditDorsoPreviewUrl || diditDniImagePreviewUrl),
+          fotoFrente: fotoFrenteB64 || diditFrentePreviewUrl || diditDniImagePreviewUrl,
+          fotoDorso: fotoDorsoB64 || diditDorsoPreviewUrl || diditDniImagePreviewUrl,
           procesandoArchivo,
           onScanFrente: () => frenteInputRef.current?.click(),
           onScanDorso: () => dorsoInputRef.current?.click(),

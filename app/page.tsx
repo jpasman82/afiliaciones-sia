@@ -465,9 +465,9 @@ export default function Home() {
     diditMensajePendiente,
     diditAutocompleted,
     diditCamposAutocompletados,
-    diditFrenteStorageUrl,
-    diditDorsoStorageUrl,
-    diditDniImageUrl,
+    diditFrentePreviewUrl,
+    diditDorsoPreviewUrl,
+    diditDniImagePreviewUrl,
     diditDniImagePath,
     iniciarSesion: iniciarSesionDidit,
     reset: resetDidit,
@@ -1052,12 +1052,10 @@ export default function Home() {
 
     try {
       let pathDni = '';
-      let urlDni: string | null = null;
 
       if (diditDniImagePath) {
         // Imagen combinada frente+dorso ya subida por el webhook de Didit. No re-subir.
         pathDni = diditDniImagePath;
-        urlDni  = diditDniImageUrl;
       } else if (!editandoId || fotoFrenteB64) {
         const timestamp = Date.now();
         const ownerUid = editandoId
@@ -1075,7 +1073,7 @@ export default function Home() {
       }
 
       if (editandoId) {
-        const payload: any = { ...normalizarFichaPayload(formData), ultimaModificacion: serverTimestamp(), ...(pathDni && { archivoDniPath: pathDni, archivoDni: urlDni ?? null }) };
+        const payload: any = { ...normalizarFichaPayload(formData), ultimaModificacion: serverTimestamp(), ...(pathDni && { archivoDniPath: pathDni }) };
         const est = (formData as any).estadoControl || 'pendiente';
         if (isAdmin && ['escaneado', 'cargado_je', 'aprobado', 'error', 'suspendido', 'baja'].includes(est)) {
           payload.editadoPorAdmin = (user as any).displayName || (user as any).email;
@@ -1088,7 +1086,6 @@ export default function Home() {
         const payload = {
           ...normalizarFichaPayload(formData),
           archivoDniPath: pathDni,
-          ...(urlDni ? { archivoDni: urlDni } : {}),
           afiliadorNombre: nombreAfiliador,
           afiliadorEmail: (user as any).email,
           afiliadorUid: (user as any).uid,
@@ -1477,10 +1474,10 @@ export default function Home() {
           dni={{
             modo: modoArchivo,
             setModo: setModoArchivo,
-            frenteOk: !!(fotoFrenteB64 || diditFrenteStorageUrl || diditDniImageUrl),
-            dorsoOk: !!(fotoDorsoB64 || diditDorsoStorageUrl || diditDniImageUrl),
-            fotoFrente: fotoFrenteB64 || diditFrenteStorageUrl || diditDniImageUrl,
-            fotoDorso: fotoDorsoB64 || diditDorsoStorageUrl || diditDniImageUrl,
+            frenteOk: !!(fotoFrenteB64 || diditFrentePreviewUrl || diditDniImagePreviewUrl),
+            dorsoOk: !!(fotoDorsoB64 || diditDorsoPreviewUrl || diditDniImagePreviewUrl),
+            fotoFrente: fotoFrenteB64 || diditFrentePreviewUrl || diditDniImagePreviewUrl,
+            fotoDorso: fotoDorsoB64 || diditDorsoPreviewUrl || diditDniImagePreviewUrl,
             procesandoArchivo: procesandoArchivoDni,
             onScanFrente: () => {
               setEscaneoDniGuiado(false);
