@@ -437,7 +437,11 @@ export default function Home() {
   const [procesandoArchivoDni, setProcesandoArchivoDni] = useState(false);
   
   const [subiendo, setSubiendo] = useState(false);
-  const [confirmacionCarga, setConfirmacionCarga] = useState<{ titulo: string; detalle: string } | null>(null);
+  const [confirmacionCarga, setConfirmacionCarga] = useState<{
+    titulo: string;
+    detalle: string;
+    accionSecundaria?: 'nueva';
+  } | null>(null);
   const [creandoPublicLink, setCreandoPublicLink] = useState(false);
   const [publicLink, setPublicLink] = useState<string | null>(null);
   const [descargandoZip, setDescargandoZip] = useState<string | null>(null);
@@ -1075,7 +1079,10 @@ export default function Home() {
           payload.fechaEdicionAdmin = serverTimestamp();
         }
         await updateDoc(doc(db, 'afiliaciones', editandoId), payload);
-        alert('Datos actualizados');
+        setConfirmacionCarga({
+          titulo: 'Ficha actualizada con éxito',
+          detalle: `${payload.apellidos}, ${payload.nombres} quedó actualizado en Registros.`,
+        });
       } else {
         const nombreAfiliador = userData ? `${(userData as any).apellido || ''} ${(userData as any).nombre || ''}`.trim() : ((user as any).displayName || '');
         const payload = {
@@ -1105,6 +1112,7 @@ export default function Home() {
         setConfirmacionCarga({
           titulo: 'Afiliado cargado con éxito',
           detalle: `${payload.apellidos}, ${payload.nombres} quedó guardado en Registros.`,
+          accionSecundaria: 'nueva',
         });
       }
 
@@ -1429,17 +1437,19 @@ export default function Home() {
             </div>
             <h3 className="text-lg font-bold text-slate-900">{confirmacionCarga.titulo}</h3>
             <p className="text-sm text-slate-500 mt-1.5">{confirmacionCarga.detalle}</p>
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmacionCarga(null);
-                  prepararNueva();
-                }}
-                className="py-3 rounded-xl bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm hover:bg-slate-50 active:bg-slate-100"
-              >
-                Nueva ficha
-              </button>
+            <div className={`mt-5 grid gap-2 ${confirmacionCarga.accionSecundaria === 'nueva' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {confirmacionCarga.accionSecundaria === 'nueva' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmacionCarga(null);
+                    prepararNueva();
+                  }}
+                  className="py-3 rounded-xl bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm hover:bg-slate-50 active:bg-slate-100"
+                >
+                  Nueva ficha
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setConfirmacionCarga(null)}
