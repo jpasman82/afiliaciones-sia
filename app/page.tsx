@@ -38,12 +38,13 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
   const marcoRef = useRef<HTMLDivElement>(null);
   const nativeImgRef = useRef<HTMLImageElement>(null);
   const nativeWrapRef = useRef<HTMLDivElement>(null);
+  const nativeCameraInputRef = useRef<HTMLInputElement>(null);
   const nativeObjectUrlRef = useRef<string | null>(null);
   const [preview, setPreview] = useState<string | null>(imagenInicial || null);
   const [nativeDisplayed, setNativeDisplayed] = useState<{ w: number; h: number } | null>(null);
   const [nativeCrop, setNativeCrop] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const proporcionMarco = tipo === 'ficha' ? 'aspect-[1.66]' : 'aspect-[1.58]';
-  const usarCamaraNativa = tipo === 'dni';
+  const usarCamaraNativa = tipo === 'dni' && !!imagenInicial;
   const ladoDni = titulo.toLowerCase().includes('frente') ? 'frente' : titulo.toLowerCase().includes('dorso') ? 'dorso' : 'dni';
   const ladoDniLabel = ladoDni === 'frente' ? 'frente del DNI' : ladoDni === 'dorso' ? 'dorso del DNI' : 'DNI';
 
@@ -53,9 +54,16 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
     let currentStream: MediaStream;
     const encenderCamara = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } }
-        });
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { exact: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } }
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } }
+          });
+        }
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
@@ -218,10 +226,29 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
     limpiarPreviewNativa();
   };
 
-  const tomarFoto = () => {
+  const tomarFoto = async () => {
     const video = videoRef.current;
     const marco = marcoRef.current;
     if (!video || !marco) return;
+
+    if (tipo === 'dni') {
+      const stream = video.srcObject as MediaStream | null;
+      const track = stream?.getVideoTracks()[0];
+      const ImageCaptureCtor = (window as any).ImageCapture;
+      if (track && ImageCaptureCtor) {
+        try {
+          const imageCapture = new ImageCaptureCtor(track);
+          const blob = await imageCapture.takePhoto();
+          const file = new File([blob], `dni-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+          await tomarFotoNativa(file);
+          return;
+        } catch (error) {
+          console.warn('[DNI] No se pudo tomar foto en alta calidad con ImageCapture.', error);
+        }
+      }
+      nativeCameraInputRef.current?.click();
+      return;
+    }
 
     const canvas = document.createElement('canvas');
     const videoRect = video.getBoundingClientRect();
@@ -353,6 +380,18 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+      <input
+        ref={nativeCameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) tomarFotoNativa(file);
+          e.target.value = '';
+        }}
+      />
       <div className="p-4 bg-black text-white flex justify-between items-center z-10">
         <h3 className="font-bold text-lg">{titulo}</h3>
         <button onClick={onClose} className="text-white font-bold px-3 py-1 bg-red-600 rounded">Cerrar</button>
@@ -378,7 +417,51 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
         </div>
       )}
 
-      {preview && (
+      {preview && tipo === 'dni' ? (
+        <div className="flex-1 flex flex-col bg-black">
+          <div ref={nativeWrapRef} className="flex-1 relative bg-black flex items-center justify-center min-h-0 overflow-hidden p-3">
+            <div className="relative touch-none select-none" style={nativeDisplayed ? { width: nativeDisplayed.w, height: nativeDisplayed.h } : { width: 1, height: 1, opacity: 0 }}>
+              <img
+                ref={nativeImgRef}
+                src={preview}
+                alt="Foto del DNI"
+                draggable={false}
+                onLoad={recalcularRecorteNativo}
+                className="block w-full h-full pointer-events-none"
+              />
+              {nativeDisplayed && (
+                <div
+                  className="absolute border-4 border-emerald-400 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] cursor-move"
+                  style={{ left: nativeCrop.x, top: nativeCrop.y, width: nativeCrop.w, height: nativeCrop.h, touchAction: 'none' }}
+                  onPointerDown={moverRecorteNativo}
+                >
+                  <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded bg-black/45 text-white/80 text-xs font-bold uppercase tracking-wide pointer-events-none">
+                    {ladoDni === 'dni' ? 'DNI' : ladoDni}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="bg-black p-3 md:p-4 shrink-0">
+            <div className="flex gap-2 mb-2">
+              <button onClick={() => ajustarTamanoRecorteNativo(-40)} className="flex-1 py-3 rounded-lg bg-slate-800 text-white font-bold text-sm active:bg-slate-700">
+                Alejar marco
+              </button>
+              <button onClick={() => ajustarTamanoRecorteNativo(40)} className="flex-1 py-3 rounded-lg bg-slate-800 text-white font-bold text-sm active:bg-slate-700">
+                Agrandar marco
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={limpiarPreviewNativa} className="flex-1 py-3 rounded-lg bg-white text-slate-900 font-bold text-sm active:bg-slate-100">
+                Reintentar
+              </button>
+              <button onClick={usarRecorteNativo} className="flex-1 py-3 rounded-lg bg-emerald-600 text-white font-bold text-sm active:bg-emerald-700">
+                Usar recorte
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : preview && (
         <div className="flex-1 flex flex-col bg-black">
           <div className="flex-1 flex items-center justify-center p-4">
             <img src={preview} alt="Vista previa" className="max-w-full max-h-full rounded-xl border-2 border-gray-500 shadow-2xl" />
