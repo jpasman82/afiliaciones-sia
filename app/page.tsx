@@ -319,6 +319,7 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
             <label className="block w-full py-3.5 rounded-lg bg-emerald-600 text-white font-bold text-sm shadow-lg text-center cursor-pointer active:bg-emerald-700">
               Abrir cámara
               <input
+                key={`camara-dni-${ladoDni}`}
                 type="file"
                 accept="image/*"
                 capture="environment"
@@ -431,6 +432,8 @@ export default function Home() {
   const [dniDatosLeidos, setDniDatosLeidos] = useState(false);
   const [escanerBarcodeAbierto, setEscanerBarcodeAbierto] = useState(false);
   const [decodeStatus, setDecodeStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
+  const [barcodeAutocompleted, setBarcodeAutocompleted] = useState(false);
+  const [barcodeCamposAutocompletados, setBarcodeCamposAutocompletados] = useState<Set<string>>(new Set());
   const [fotoFrenteB64, setFotoFrenteB64] = useState<string | null>(null);
   const [fotoDorsoB64, setFotoDorsoB64] = useState<string | null>(null);
   const [recorteDniPendiente, setRecorteDniPendiente] = useState<RecorteDniPendiente | null>(null);
@@ -497,6 +500,21 @@ export default function Home() {
     setFormData,
     onRetorno: () => setTab('nueva'),
   });
+
+  const registrarCamposBarcode = (campos: Record<string, unknown>) => {
+    const completados = new Set(
+      Object.entries(campos)
+        .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+        .map(([key]) => key)
+    );
+    setBarcodeCamposAutocompletados(completados);
+    setBarcodeAutocompleted(completados.size > 0);
+  };
+
+  const limpiarAutocompletadoBarcode = () => {
+    setBarcodeCamposAutocompletados(new Set());
+    setBarcodeAutocompleted(false);
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined" && !window.history.state) {
@@ -928,6 +946,7 @@ export default function Home() {
       setFotoDorsoB64(null);
       setDecodeStatus('idle');
       setDniDatosLeidos(false);
+      limpiarAutocompletadoBarcode();
       setModoArchivo('escaner');
 
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
@@ -1124,6 +1143,7 @@ export default function Home() {
       setEscaneoDniGuiado(false);
       setContinuacionDniPendiente(null);
       setDniDatosLeidos(false);
+      limpiarAutocompletadoBarcode();
       setPublicLink(null);
       resetDidit();
       cambiarTab('registros');
@@ -1176,6 +1196,7 @@ export default function Home() {
     setEscaneoDniGuiado(false);
     setContinuacionDniPendiente(null);
     setDniDatosLeidos(false);
+    limpiarAutocompletadoBarcode();
     setPublicLink(null);
     resetDidit();
     cambiarTab('nueva');
@@ -1370,6 +1391,7 @@ export default function Home() {
                   if (parsed && (parsed.dni || parsed.apellidos)) {
                     const campos = parsedDniToFormFields(parsed);
                     setFormData(prev => ({ ...prev, ...campos }));
+                    registrarCamposBarcode(campos);
                     setDniDatosLeidos(true);
                     setDecodeStatus('success');
                     console.info('[DNI PDF417] auto-decoded', { cara, raw: parsed.raw, warnings: parsed.warnings });
@@ -1469,6 +1491,8 @@ export default function Home() {
           onClose={() => setEscanerBarcodeAbierto(false)}
           onApply={(campos, parsed) => {
             setFormData(prev => ({ ...prev, ...campos }));
+            registrarCamposBarcode(campos);
+            setDniDatosLeidos(true);
             setDecodeStatus('success');
             setEscanerBarcodeAbierto(false);
             console.info('[DNI PDF417] manual decode', { raw: parsed.raw, warnings: parsed.warnings });
@@ -1524,6 +1548,7 @@ export default function Home() {
               setEscaneoDniGuiado(false);
               setContinuacionDniPendiente(null);
               setDniDatosLeidos(false);
+              limpiarAutocompletadoBarcode();
               setDecodeStatus('idle');
               setRecorteDniPendiente(null);
               setCamaraActiva('frente');
@@ -1532,6 +1557,7 @@ export default function Home() {
               setEscaneoDniGuiado(false);
               setContinuacionDniPendiente(null);
               setDniDatosLeidos(false);
+              limpiarAutocompletadoBarcode();
               setDecodeStatus('idle');
               setRecorteDniPendiente(null);
               setCamaraActiva('dorso');
@@ -1541,6 +1567,7 @@ export default function Home() {
               setModoArchivo('escaner');
               setDecodeStatus('idle');
               setDniDatosLeidos(false);
+              limpiarAutocompletadoBarcode();
               setContinuacionDniPendiente(null);
               setRecorteDniPendiente(null);
               setEscaneoDniGuiado(true);
@@ -1552,8 +1579,8 @@ export default function Home() {
           diditLoading={diditProcesandoRetorno}
           diditError={diditError}
           diditMensajePendiente={diditMensajePendiente}
-          diditAutocompleted={diditAutocompleted}
-          diditCamposAutocompletados={diditCamposAutocompletados}
+          diditAutocompleted={diditAutocompleted || barcodeAutocompleted}
+          diditCamposAutocompletados={new Set([...diditCamposAutocompletados, ...barcodeCamposAutocompletados])}
           onIniciarSesionDidit={!editandoId ? iniciarSesionDidit : undefined}
           iniciandoSesionDidit={iniciandoSesionDidit}
         />

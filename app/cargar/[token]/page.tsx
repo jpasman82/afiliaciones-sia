@@ -69,6 +69,8 @@ export default function CargaPublicaPage() {
   const dniDatosLeidosRef = useRef(false);
   const [recortePendiente, setRecortePendiente] = useState<RecortePublico | null>(null);
   const [escaneandoCodigo, setEscaneandoCodigo] = useState(false);
+  const [barcodeAutocompleted, setBarcodeAutocompleted] = useState(false);
+  const [barcodeCamposAutocompletados, setBarcodeCamposAutocompletados] = useState<Set<string>>(new Set());
 
   const bajarPreviewBlob = useCallback(async (path: string) => {
     const url = `/api/link-publico/${token ?? ''}/dni-preview?path=${encodeURIComponent(path)}`;
@@ -98,6 +100,21 @@ export default function CargaPublicaPage() {
     setFormData,
     bajarPreviewBlob,
   });
+
+  const registrarCamposBarcode = (campos: Record<string, unknown>) => {
+    const completados = new Set(
+      Object.entries(campos)
+        .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+        .map(([key]) => key)
+    );
+    setBarcodeCamposAutocompletados(completados);
+    setBarcodeAutocompleted(completados.size > 0);
+  };
+
+  const limpiarAutocompletadoBarcode = () => {
+    setBarcodeCamposAutocompletados(new Set());
+    setBarcodeAutocompleted(false);
+  };
 
   useEffect(() => {
     const validar = async () => {
@@ -215,7 +232,9 @@ export default function CargaPublicaPage() {
     try {
       const parsed = await decodeDniBarcode(dataUrl);
       if (parsed && (parsed.dni || parsed.apellidos)) {
-        setFormData(prev => ({ ...prev, ...parsedDniToFormFields(parsed) }));
+        const campos = parsedDniToFormFields(parsed);
+        setFormData(prev => ({ ...prev, ...campos }));
+        registrarCamposBarcode(campos);
         dniDatosLeidosRef.current = true;
         setDecodeStatus('success');
       } else {
@@ -229,6 +248,11 @@ export default function CargaPublicaPage() {
   const cargarCara = async (file: File, cara: 'frente' | 'dorso') => {
     setProcesandoArchivo(true);
     try {
+      if (cara === 'frente') {
+        dniDatosLeidosRef.current = false;
+        setDecodeStatus('idle');
+        limpiarAutocompletadoBarcode();
+      }
       const dataUrl = await prepararImagenArchivo(file);
       setRecortePendiente({ cara, imagen: dataUrl });
     } catch (e: any) {
@@ -255,6 +279,9 @@ export default function CargaPublicaPage() {
   const cargarArchivoUnico = async (file: File) => {
     setProcesandoArchivo(true);
     try {
+      dniDatosLeidosRef.current = false;
+      setDecodeStatus('idle');
+      limpiarAutocompletadoBarcode();
       let paginas: string[];
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
         paginas = await renderizarPdf(file);
@@ -412,6 +439,7 @@ export default function CargaPublicaPage() {
           onClose={() => setEscaneandoCodigo(false)}
           onApply={(campos) => {
             setFormData(prev => ({ ...prev, ...campos }));
+            registrarCamposBarcode(campos);
             dniDatosLeidosRef.current = true;
             setDecodeStatus('success');
             setEscaneandoCodigo(false);
@@ -419,6 +447,7 @@ export default function CargaPublicaPage() {
         />
       )}
       <input
+        key="camara-publica-frente"
         ref={frenteInputRef}
         type="file"
         accept=".jpg,.jpeg,.png,image/jpeg,image/png"
@@ -431,6 +460,7 @@ export default function CargaPublicaPage() {
         }}
       />
       <input
+        key="camara-publica-dorso"
         ref={dorsoInputRef}
         type="file"
         accept=".jpg,.jpeg,.png,image/jpeg,image/png"
@@ -446,7 +476,12 @@ export default function CargaPublicaPage() {
         formData={formData}
         onChange={handleChange}
         onSubmit={guardarFicha}
-        onCancel={() => setFormData({ ...fichaInicial })}
+        onCancel={() => {
+          setFormData({ ...fichaInicial });
+          dniDatosLeidosRef.current = false;
+          setDecodeStatus('idle');
+          limpiarAutocompletadoBarcode();
+        }}
         editando={false}
         subiendo={subiendo}
         hideBackButton
@@ -469,8 +504,8 @@ export default function CargaPublicaPage() {
         diditLoading={diditProcesandoRetorno}
         diditError={diditError}
         diditMensajePendiente={diditMensajePendiente}
-        diditAutocompleted={diditAutocompleted}
-        diditCamposAutocompletados={diditCamposAutocompletados}
+        diditAutocompleted={diditAutocompleted || barcodeAutocompleted}
+        diditCamposAutocompletados={new Set([...diditCamposAutocompletados, ...barcodeCamposAutocompletados])}
         onIniciarSesionDidit={iniciarSesionDidit}
         iniciandoSesionDidit={iniciandoSesionDidit}
       />
