@@ -43,7 +43,7 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
   const [nativeDisplayed, setNativeDisplayed] = useState<{ w: number; h: number } | null>(null);
   const [nativeCrop, setNativeCrop] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const proporcionMarco = tipo === 'ficha' ? 'aspect-[1.66]' : 'aspect-[1.58]';
-  const usarCamaraNativa = tipo === 'dni';
+  const usarCamaraNativa = tipo === 'dni' && !!imagenInicial;
   const ladoDni = titulo.toLowerCase().includes('frente') ? 'frente' : titulo.toLowerCase().includes('dorso') ? 'dorso' : 'dni';
   const ladoDniLabel = ladoDni === 'frente' ? 'frente del DNI' : ladoDni === 'dorso' ? 'dorso del DNI' : 'DNI';
 
@@ -53,9 +53,16 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
     let currentStream: MediaStream;
     const encenderCamara = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } }
-        });
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { exact: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } }
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } }
+          });
+        }
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
