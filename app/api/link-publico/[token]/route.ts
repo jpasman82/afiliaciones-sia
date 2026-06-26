@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     return NextResponse.json({ error: 'Link no encontrado' }, { status: 404 });
   }
   const link = linkSnap.data()!;
-  if (link.usado) {
+  if (link.usado || link.revocado) {
     return NextResponse.json({ error: 'Link ya usado' }, { status: 410 });
   }
   if (link.venceEn.toDate() < new Date()) {
@@ -41,7 +41,6 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
   const u = userSnap.data()!;
   return NextResponse.json({
     afiliadorUid: link.afiliadorUid,
-    afiliadorEmail: u.email,
     afiliadorNombre: `${u.apellido || ''} ${u.nombre || ''}`.trim(),
   });
 }

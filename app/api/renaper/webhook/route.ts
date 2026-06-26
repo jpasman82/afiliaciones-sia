@@ -7,6 +7,9 @@ import { adminDb, adminApp } from '@/app/lib/firebaseAdmin';
 import { verificarFirmaDidit, verificarTimestamp } from '@/app/lib/diditWebhook';
 
 const WEBHOOK_SECRET = process.env.DIDIT_WEBHOOK_SECRET ?? '';
+const DIDIT_IMAGE_HOSTS = new Set([
+  'service-didit-verification-production-a1c5f9b8.s3.amazonaws.com',
+]);
 
 function mapearSexo(gender: string | undefined): 'Masculino' | 'Femenino' | '' {
   if (!gender) return '';
@@ -61,6 +64,15 @@ function parsearAddressLibre(address: string | undefined): { calle: string; nume
   const localidad = (partes[2] || '').split(/[-,]/)[0].trim();
   const { calle, numero } = separarCalleNumero(direccion);
   return { calle, numero, localidad };
+}
+
+function esUrlImagenDiditPermitida(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && DIDIT_IMAGE_HOSTS.has(parsed.hostname);
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -168,6 +180,10 @@ export async function POST(req: NextRequest) {
       const dniSeguro = String(datosExtraidos.dni || 'sin-dni').replace(/\D/g, '') || 'sin-dni';
 
       const descargarBuffer = async (url: string, sufijo: string): Promise<Buffer | null> => {
+        if (!esUrlImagenDiditPermitida(url)) {
+          console.error(`[webhook] URL de imagen Didit no permitida para ${sufijo}`);
+          return null;
+        }
         const res = await fetch(url);
         if (!res.ok) { console.error(`[webhook] HTTP ${res.status} al descargar ${sufijo}`); return null; }
         return Buffer.from(await res.arrayBuffer());

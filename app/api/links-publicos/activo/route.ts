@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
   const activeDoc = snapshot.docs.find((d) => {
     const data = d.data();
-    return data.usado === false && data.venceEn.toDate() > now;
+    return data.usado === false && data.revocado !== true && data.venceEn.toDate() > now;
   });
 
   if (!activeDoc) {

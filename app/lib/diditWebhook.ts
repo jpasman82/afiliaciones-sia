@@ -23,8 +23,6 @@ export function verificarFirmaDidit(
   }
 }
 
-// X-Timestamp se asume Unix epoch en segundos.
-// TODO: verificar unidad real del header X-Timestamp de Didit.
 export function verificarTimestamp(
   headers: Headers,
   toleranciaMs = 300_000,
@@ -32,7 +30,11 @@ export function verificarTimestamp(
   const ts = headers.get('x-timestamp');
   if (!ts) return false;
 
-  const tsMs = Number(ts) * 1000;
+  const tsNum = Number(ts);
+  if (!Number.isFinite(tsNum)) return false;
+
+  // Acepta epoch en segundos o milisegundos sin ampliar la ventana anti-replay.
+  const tsMs = tsNum < 1_000_000_000_000 ? tsNum * 1000 : tsNum;
   if (isNaN(tsMs)) return false;
 
   return Math.abs(Date.now() - tsMs) <= toleranciaMs;

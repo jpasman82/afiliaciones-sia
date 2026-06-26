@@ -94,7 +94,7 @@ Notas:
 - `EMAIL_PASS` es la contraseña de Hostinger del buzón, no del panel.
 - `FIREBASE_ADMIN_PRIVATE_KEY` debe ir con los `\n` literales (Vercel los convierte).
 - `DIDIT_WEBHOOK_SECRET` se usa para verificar la firma HMAC del webhook.
-- **NO debe existir `NEXT_PUBLIC_API_SECRET_TOKEN`** (variable legada de un endpoint dead code; ver lista de seguridad MED-1).
+- **NO deben existir `API_SECRET_TOKEN` ni `NEXT_PUBLIC_API_SECRET_TOKEN`**. Eran variables legadas de un endpoint eliminado (MED-1).
 
 ## Estructura del proyecto
 
@@ -106,9 +106,8 @@ app/
   cargar/[token]/page.tsx           ← página pública para el flujo de link
   api/
     _auth.ts                        ← helper de verificación de ID token via Identity Toolkit
-    notificar/route.ts              ← (dead code, candidato a borrar)
+    afiliaciones/[id]/eliminar/route.ts ← borrado server-side de fichas y archivos
     notificar-nuevo-usuario/route.ts
-    notificar-usuario-aprobado/route.ts
     links-publicos/activo/route.ts  ← devuelve el link activo del afiliador
     link-publico/[token]/
       route.ts                      ← GET datos del link (afiliador, vencimiento)
@@ -305,6 +304,7 @@ afiliadorEmail: string
 creadoEn: timestamp
 venceEn: timestamp                  ← creadoEn + 24h
 usado: boolean
+revocado: boolean                   ← opcional, true si se generó un reemplazo
 ```
 
 El `token` es de 32 caracteres hex (`crypto.randomUUID()` sin guiones, 128 bits).
@@ -452,8 +452,8 @@ En este repo solo vive `app/api/whatsapp/webhook/route.ts`, que:
 
 | Endpoint | Auth | Propósito |
 |---|---|---|
+| `POST /api/afiliaciones/[id]/eliminar` | Firebase ID token | Borra ficha, DNI/ficha física y `dniIndex`; admin siempre, supervisor/afiliador solo si está pendiente |
 | `POST /api/notificar-nuevo-usuario` | Firebase ID token | Notifica al admin que se registró un usuario nuevo |
-| `POST /api/notificar-usuario-aprobado` | Firebase ID token (admin/supervisor) | Notifica al usuario que fue aprobado |
 | `GET /api/links-publicos/activo` | Firebase ID token | Devuelve el link público activo del afiliador (si existe) |
 | `GET /api/link-publico/[token]` | Ninguna | Devuelve info del link (afiliador, vencimiento) |
 | `POST /api/link-publico/[token]/iniciar-sesion-didit` | Ninguna (valida token) | Inicia sesión Didit asociada al link |
@@ -462,7 +462,6 @@ En este repo solo vive `app/api/whatsapp/webhook/route.ts`, que:
 | `GET /api/renaper/estado?session_id=…` | Firebase ID token | Polling de estado (flujo interno) |
 | `POST /api/renaper/webhook` | HMAC firmado por Didit | Webhook de finalización de sesión |
 | `GET/POST /api/whatsapp/webhook` | Verify token + HMAC | Webhook de WhatsApp Cloud API |
-| `POST /api/notificar` | Bearer `API_SECRET_TOKEN` | **Dead code, candidato a borrar** (ver MED-1) |
 
 ## Reglas de seguridad
 
@@ -477,7 +476,7 @@ En este repo solo vive `app/api/whatsapp/webhook/route.ts`, que:
   - Edición: dueño en estados tempranos, admin siempre, supervisor para fichas pendientes.
   - Borrado: admin y supervisor.
 
-- **`linksCargaPublica`:** creación solo autenticada. Lectura pública si `usado == false && venceEn > now`. Actualización (marcar usado) en la misma transacción que crear la ficha.
+- **`linksCargaPublica`:** creación solo autenticada. Lectura pública si `usado == false && revocado != true && venceEn > now`. Actualización pública solo para marcar usado en la misma transacción que crear la ficha; revocación autenticada por el dueño.
 
 - **`sesionesDidit`:** creación y actualización solo desde Admin SDK (server-side).
 

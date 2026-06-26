@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useDiditSession } from '../hooks/useDiditSession';
 import { auth, db, storage } from '../firebaseConfig';
 import { collection, serverTimestamp, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, orderBy, arrayUnion, writeBatch, Timestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getBlob, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, getBlob } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
 import { RecordsView } from './components/records/RecordsView';
@@ -437,6 +437,7 @@ export default function Home() {
   const [procesandoArchivoDni, setProcesandoArchivoDni] = useState(false);
   
   const [subiendo, setSubiendo] = useState(false);
+  const [confirmacionCarga, setConfirmacionCarga] = useState<{ titulo: string; detalle: string } | null>(null);
   const [creandoPublicLink, setCreandoPublicLink] = useState(false);
   const [publicLink, setPublicLink] = useState<string | null>(null);
   const [descargandoZip, setDescargandoZip] = useState<string | null>(null);
@@ -827,31 +828,15 @@ export default function Home() {
 
   const eliminarFicha = async (ficha: any) => {
     try {
-      // Borrar archivos de Storage (best-effort: si falla, seguimos con Firestore)
-      const pathsABorrar = [ficha.archivoDniPath, ficha.archivoFichaPath].filter(Boolean);
-      for (const path of pathsABorrar) {
-        try {
-          await deleteObject(ref(storage, path));
-        } catch (e: any) {
-          if (e?.code !== 'storage/object-not-found') {
-            console.warn('No se pudo borrar archivo de Storage:', path, e?.message);
-          }
-        }
+      const idToken = await (user as any).getIdToken();
+      const res = await fetch(`/api/afiliaciones/${ficha.id}/eliminar`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'No se pudo eliminar la ficha.');
       }
-
-      const batch = writeBatch(db);
-      batch.delete(doc(db, 'afiliaciones', ficha.id));
-
-      const dniNormalizado = String(ficha.dni || '').replace(/\D/g, '');
-      if (dniNormalizado) {
-        const indiceRef = doc(db, 'dniIndex', dniNormalizado);
-        const indiceSnap = await getDoc(indiceRef);
-        if (indiceSnap.exists() && indiceSnap.data()?.fichaId === ficha.id) {
-          batch.delete(indiceRef);
-        }
-      }
-
-      await batch.commit();
       setFichaSeleccionada(null);
       cambiarTab('registros');
     } catch (error: any) {
@@ -970,17 +955,27 @@ export default function Home() {
     }
     setCreandoPublicLink(true);
     try {
+      const tokenActual = publicLink ? publicLink.split('/cargar/')[1]?.split(/[?#]/)[0] : null;
+      if (tokenActual) {
+        await updateDoc(doc(db, 'linksCargaPublica', tokenActual), {
+          revocado: true,
+          revocadoEn: serverTimestamp(),
+        });
+      }
+
       const idToken = await (user as any).getIdToken();
-      const checkRes = await fetch('/api/links-publicos/activo', {
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
-      if (checkRes.ok) {
-        const { activo, token: existingToken } = await checkRes.json();
-        if (activo && existingToken) {
-          const url = `${window.location.origin}/cargar/${existingToken}`;
-          setPublicLink(url);
-          try { await navigator.clipboard?.writeText(url); } catch {}
-          return;
+      if (!tokenActual) {
+        const checkRes = await fetch('/api/links-publicos/activo', {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (checkRes.ok) {
+          const { activo, token: existingToken } = await checkRes.json();
+          if (activo && existingToken) {
+            const url = `${window.location.origin}/cargar/${existingToken}`;
+            setPublicLink(url);
+            try { await navigator.clipboard?.writeText(url); } catch {}
+            return;
+          }
         }
       }
 
@@ -1107,7 +1102,10 @@ export default function Home() {
         });
         batch.set(fichaRef, payload);
         await batch.commit();
-        alert('Registro exitoso');
+        setConfirmacionCarga({
+          titulo: 'Afiliado cargado con éxito',
+          detalle: `${payload.apellidos}, ${payload.nombres} quedó guardado en Registros.`,
+        });
       }
 
       setEditandoId(null);
@@ -1415,6 +1413,39 @@ export default function Home() {
                 className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm active:bg-emerald-700"
               >
                 Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmacionCarga && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/45 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.6} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-slate-900">{confirmacionCarga.titulo}</h3>
+            <p className="text-sm text-slate-500 mt-1.5">{confirmacionCarga.detalle}</p>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmacionCarga(null);
+                  prepararNueva();
+                }}
+                className="py-3 rounded-xl bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm hover:bg-slate-50 active:bg-slate-100"
+              >
+                Nueva ficha
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmacionCarga(null)}
+                className="py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 active:bg-emerald-800"
+              >
+                Ver registros
               </button>
             </div>
           </div>

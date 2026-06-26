@@ -20,11 +20,16 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ token: 
     return NextResponse.json({ error: 'Token inválido' }, { status: 400 });
   }
 
-  // Acá no validamos usado/vencido: el usuario ya está mid-flow y eso lo validó
-  // /iniciar-sesion-didit al arrancar. Sólo confirmamos que el link existe.
   const linkSnap = await adminDb.collection('linksCargaPublica').doc(token).get();
   if (!linkSnap.exists) {
     return NextResponse.json({ error: 'Link no encontrado' }, { status: 404 });
+  }
+  const link = linkSnap.data()!;
+  if (link.usado || link.revocado) {
+    return NextResponse.json({ error: 'Link cerrado' }, { status: 410 });
+  }
+  if (link.venceEn?.toDate && link.venceEn.toDate() < new Date()) {
+    return NextResponse.json({ error: 'Link vencido' }, { status: 410 });
   }
 
   const { searchParams } = new URL(request.url);

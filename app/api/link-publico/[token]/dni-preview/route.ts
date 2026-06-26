@@ -13,6 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   const linkSnap = await adminDb.collection('linksCargaPublica').doc(token).get();
   if (!linkSnap.exists) return new Response('Not Found', { status: 404 });
   const link = linkSnap.data()!;
+  if (link.usado || link.revocado) return new Response('Gone', { status: 410 });
   if ((link.venceEn?.toMillis?.() ?? 0) < Date.now()) return new Response('Gone', { status: 410 });
 
   const afiliadorUid = link.afiliadorUid as string;

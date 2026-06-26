@@ -120,6 +120,7 @@ service cloud.firestore {
     function linkPublicoUsadoValido(token, docId) {
       let link = getAfter(/databases/$(database)/documents/linksCargaPublica/$(token)).data;
       return link.usado == true &&
+        link.revocado != true &&
         link.fichaId == docId &&
         link.dni == request.resource.data.dni &&
         link.venceEn > request.time &&
@@ -157,6 +158,7 @@ service cloud.firestore {
     function usoLinkPublicoValido(token) {
       let ficha = getAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)).data;
       return resource.data.usado == false &&
+        resource.data.revocado != true &&
         resource.data.venceEn > request.time &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usado', 'usadoEn', 'fichaId', 'dni']) &&
         request.resource.data.usado == true &&
@@ -166,6 +168,18 @@ service cloud.firestore {
         ficha.linkToken == token &&
         ficha.dni == request.resource.data.dni &&
         ficha.afiliadorUid == resource.data.afiliadorUid;
+    }
+
+    function revocacionLinkPublicoValida() {
+      return request.auth != null &&
+        resource.data.afiliadorUid == request.auth.uid &&
+        resource.data.usado == false &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revocado', 'revocadoEn']) &&
+        request.resource.data.revocado == true &&
+        request.resource.data.afiliadorUid == resource.data.afiliadorUid &&
+        request.resource.data.creadoEn == resource.data.creadoEn &&
+        request.resource.data.venceEn == resource.data.venceEn &&
+        request.resource.data.usado == resource.data.usado;
     }
 
     function eliminacionIndiceDniValida(dni) {
@@ -235,7 +249,9 @@ service cloud.firestore {
     }
 
     match /linksCargaPublica/{token} {
-      allow get: if resource.data.usado == false && resource.data.venceEn > request.time;
+      allow get: if resource.data.usado == false &&
+        resource.data.revocado != true &&
+        resource.data.venceEn > request.time;
       allow list: if false;
       allow create: if request.auth != null &&
         rolActivo(request.auth.uid) &&
@@ -243,7 +259,7 @@ service cloud.firestore {
         request.resource.data.afiliadorUid == request.auth.uid &&
         request.resource.data.usado == false &&
         request.resource.data.venceEn > request.time;
-      allow update: if usoLinkPublicoValido(token);
+      allow update: if usoLinkPublicoValido(token) || revocacionLinkPublicoValida();
       allow delete: if false;
     }
 

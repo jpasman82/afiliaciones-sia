@@ -29,28 +29,32 @@ service firebase.storage {
       );
       allow list: if false;
       allow create: if firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.usado == false &&
+        firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.revocado != true &&
         firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.venceEn > request.time &&
         request.resource.size < 5 * 1024 * 1024 &&
         request.resource.contentType == 'image/jpeg';
       allow update: if false;
-      allow delete: if esAdmin();
+      allow delete: if false;
     }
 
     match /dnis/{ownerUid}/{fileName} {
       allow get: if request.auth != null &&
         (request.auth.uid == ownerUid || esAdminOSupervisor());
       allow list: if false;
-      allow create, update: if request.auth != null &&
-        ((request.auth.uid == ownerUid && rolActivo()) || esAdminOSupervisor());
-      allow delete: if request.auth != null &&
-        (request.auth.uid == ownerUid || esAdminOSupervisor());
+      allow create: if request.auth != null &&
+        ((request.auth.uid == ownerUid && rolActivo()) || esAdminOSupervisor()) &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType == 'image/jpeg';
+      allow update, delete: if false;
     }
 
     match /fichas/{docId}/{fileName} {
       allow get: if esAdminOSupervisor();
       allow list: if false;
-      allow create, update: if esAdmin();
-      allow delete: if esAdmin();
+      allow create: if esAdmin() &&
+        request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType == 'image/jpeg';
+      allow update, delete: if false;
     }
 
     // Legacy: archivos subidos antes de incluir uid/docId en el path.

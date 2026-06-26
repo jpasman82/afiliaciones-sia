@@ -8,7 +8,11 @@
 
 ## 🔴 CRÍTICO
 
-### CRIT-1 — Las fotos de DNI del flujo Didit quedan **públicas en internet**
+### CRIT-1 — Las fotos de DNI del flujo Didit quedan **públicas en internet** ✅ Resuelto el 26/06/2026
+
+**Estado:** cerrado. El código ya no usa `makePublic()`, los paths de Didit usan `dnis/{afiliadorUid}/...`, y el saneamiento de datos se ejecutó contra producción el 26/06/2026.
+
+**Validación:** se procesaron 47 blobs bajo `dnis/`; verificación posterior: `withTokens: 0`, `publicAcl: 0`.
 
 **Archivo:** `app/api/renaper/webhook/route.ts` (líneas 171 y 204).
 
@@ -20,12 +24,12 @@ await file.makePublic();
 
 **Impacto:** Cualquiera con la URL puede bajar la foto del DNI (nombre, dirección, rostro, número de trámite, a veces firma). El path es predecible: `dnis/{dni}-didit-{timestamp}.jpg`. Conociendo un DNI y la fecha, la enumeración por timestamp es factible. Además: probable incumplimiento de Ley 25.326 (AAIP).
 
-**Fix:**
+**Fix aplicado:**
 
 1. Borrar las llamadas a `file.makePublic()`.
 2. Cambiar el path a `dnis/{afiliadorUid}/{dni}-didit-{timestamp}.jpg`. Sacar `afiliadorUid` de `vendorData.afiliadorUid`. Eso matchea la regla de Storage `dnis/{ownerUid}/{fileName}` y el dueño puede leer con SDK + `getBlob`.
 3. No guardar URL pública en `dniImageStorageUrl` / `archivoDni`. Guardar solo el `path`. `FichaDetalle.tsx` ya usa `getBlob(ref(storage, path))`, funciona out-of-the-box.
-4. **Script de saneamiento (una sola vez):**
+4. **Script de saneamiento (una sola vez, ejecutado el 26/06/2026):**
    - Iterar `afiliaciones` con `archivoDni` que empiece por `https://storage.googleapis.com/`.
    - Para cada blob: `file.acl.delete({entity: 'allUsers'})`.
    - Mover el archivo a `dnis/{afiliadorUid}/...` y actualizar el doc con el nuevo `archivoDniPath`, borrar `archivoDni`.
@@ -75,63 +79,61 @@ Un afiliador autenticado puede iniciar Didit "a nombre de" otro afiliador. La se
 
 ## 🟡 MEDIOS
 
-### MED-1 — `/api/notificar` es código muerto pero sigue expuesto
+### MED-1 — `/api/notificar` es código muerto pero sigue expuesto ✅ Resuelto el 26/06/2026
 
 **Archivo:** `app/api/notificar/route.ts`.
 
 **Problema:** Nadie lo llama (grep confirmó). Si `NEXT_PUBLIC_API_SECRET_TOKEN` quedó en el bundle del cliente (la doc lo menciona), cualquiera con el token manda emails desde la cuenta SIA.
 
-**Fix:** borrar `app/api/notificar/route.ts` y la variable `NEXT_PUBLIC_API_SECRET_TOKEN` de Vercel + `.env.local`. Eliminar la línea en `APP_CONTEXT.md` y `CLAUDE.md`.
+**Fix aplicado:** se borró `app/api/notificar/route.ts`, se quitó `API_SECRET_TOKEN` de `.env.local` y se actualizó `APP_CONTEXT.md`. Revisar Vercel y borrar `API_SECRET_TOKEN` / `NEXT_PUBLIC_API_SECRET_TOKEN` si existieran.
 
 ---
 
-### MED-2 — `/api/notificar-usuario-aprobado` sin uso ni validación
+### MED-2 — `/api/notificar-usuario-aprobado` sin uso ni validación ✅ Resuelto el 26/06/2026
 
 **Archivo:** `app/api/notificar-usuario-aprobado/route.ts`.
 
 **Problema:** Ningún componente lo llama. Si se llamara, `to: email` viene del body sin validar contra `usuarios/{uid}`. Admin/super podría mandar el template a cualquier email.
 
-**Fix:** o lo cableás desde el cambio de rol (faltaba el call) **validando que `email` corresponda a un doc real en `usuarios`**, o lo borrás.
+**Fix aplicado:** se borró el endpoint no usado para reducir superficie. Si más adelante se reintroduce la notificación de aprobación, debe validarse contra `usuarios/{uid}`.
 
 ---
 
-### MED-3 — Datos de Didit siguen consultables después de consumir el link
+### MED-3 — Datos de Didit siguen consultables después de consumir el link ✅ Resuelto el 26/06/2026
 
 **Archivo:** `app/api/link-publico/[token]/estado-didit/route.ts`.
 
 **Problema:** No chequea si `linksCargaPublica/{token}.usado == true`. Token + session_id permiten seguir leyendo `datosExtraidos` del DNI semanas después. Ambos quedan en history del afiliando.
 
-**Fix:**
-- Después de crear la ficha, borrar `datosExtraidos` (o todo el doc) de `sesionesDidit` cuyo `vendorData.linkToken` matchee.
-- O agregar `if (linkSnap.data().usado) return new Response('Gone', { status: 410 })` al inicio del handler.
+**Fix aplicado:** `/api/link-publico/[token]/estado-didit` devuelve 410 si el link está usado, revocado o vencido.
 
 ---
 
-### MED-4 — SSRF teórico en el webhook Didit
+### MED-4 — SSRF teórico en el webhook Didit ✅ Resuelto el 26/06/2026
 
 **Archivo:** `app/api/renaper/webhook/route.ts` líneas 155–164.
 
 **Problema:** `await fetch(idv.front_image)` sin validar el host. El payload está firmado, así que solo Didit (o Didit comprometido) puede inyectar URLs. Riesgo bajo en práctica, pero un fetch a metadata interna o IP privada podría escalarse.
 
-**Fix:** validar que la URL empiece con `https://` y que el host esté en una whitelist conocida de Didit (verificar en su doc qué dominios usan para `idv.front_image` / `back_image`).
+**Fix aplicado:** antes de descargar `front_image` / `back_image`, el webhook exige `https:` y hostname en whitelist. La whitelist se definió con el host observado en webhooks reales de producción: `service-didit-verification-production-a1c5f9b8.s3.amazonaws.com`.
 
 ---
 
-### MED-5 — TODO sin resolver en validación del webhook Didit
+### MED-5 — TODO sin resolver en validación del webhook Didit ✅ Resuelto el 26/06/2026
 
 **Archivo:** `app/lib/diditWebhook.ts` línea 27.
 
 ```ts
-// TODO: verificar unidad real del header X-Timestamp de Didit.
+// Implementado: acepta epoch en segundos o milisegundos por magnitud.
 ```
 
 **Problema:** Si la unidad es ms en vez de segundos (o viceversa), el chequeo de tolerancia (5 min) no funciona y un replay con body firmado viejo se acepta.
 
-**Fix:** confirmar contra docs de Didit qué unidad usan, ajustar el cálculo, sacar el TODO. Cubrir con un test manual: tomar un webhook real, manipular el `X-Timestamp` a una hora atrás, confirmar que se rechaza.
+**Fix aplicado:** `verificarTimestamp()` acepta epoch en segundos o milisegundos por magnitud y mantiene la tolerancia de 5 minutos. Se quitó el TODO sin ampliar la ventana anti-replay.
 
 ---
 
-### MED-6 — Regenerar link público deja huérfano el anterior (24h)
+### MED-6 — Regenerar link público deja huérfano el anterior (24h) ✅ Resuelto el 26/06/2026
 
 **Archivos:** `app/components/ficha/FichaForm.tsx` (botón "Generar otro" línea 494) y `app/page.tsx` (handler `onCrearPublicLink`).
 
@@ -140,7 +142,7 @@ Un afiliador autenticado puede iniciar Didit "a nombre de" otro afiliador. La se
 1. El afiliando puede tener el link viejo y completar la afiliación con él durante las 24h. Posible doble carga si el afiliador asume que solo vale el último.
 2. Se acumulan docs huérfanos en Firestore.
 
-**Fix:** antes de crear el link nuevo, marcar el anterior como `revocado: true` (o `usado: true` con `motivo: 'regenerado'`).
+**Fix aplicado:** antes de crear un reemplazo, el cliente marca el link actual como `revocado: true, revocadoEn`. Reglas y endpoints públicos rechazan links revocados.
 
 Pasos:
 
@@ -152,11 +154,13 @@ Pasos:
 
 ## 🟢 BAJOS / informativos
 
-### LOW-1 — Email del afiliador expuesto en endpoint público del link
+### LOW-1 — Email del afiliador expuesto en endpoint público del link ✅ Resuelto el 26/06/2026
 
 **Archivo:** `app/api/link-publico/[token]/route.ts`.
 
 Cualquiera con el token ve `afiliadorEmail`. Si solo mostrás el nombre en la página pública, sacalo del JSON de respuesta.
+
+**Fix aplicado:** el endpoint público ya no devuelve `afiliadorEmail`; el flujo público conserva solo `afiliadorUid` y nombre visible.
 
 ---
 
@@ -168,7 +172,6 @@ Ningún endpoint tiene throttling: spam de mails, polling de `/estado`, upload a
 
 ### LOW-3 — Comparaciones no constant-time
 
-- `app/api/notificar/route.ts` línea 8.
 - WhatsApp `verify_token` línea 28.
 
 Bajo riesgo. Usar `crypto.timingSafeEqual()` por buena práctica.
@@ -212,9 +215,9 @@ Para contexto — varias cosas ya están muy sólidas y NO requieren acción:
 
 Cada etapa es independiente, ejecutable por un agente sin contexto de la anterior.
 
-### Etapa 1 — Hoy (1 PR)
+### Etapa 1 — Hoy (1 PR) ✅ Completada
 
-- **CRIT-1**: parchar `makePublic()`, cambiar paths a per-owner, correr script de saneamiento sobre datos existentes.
+- **CRIT-1**: parchar `makePublic()`, cambiar paths a per-owner, correr script de saneamiento sobre datos existentes. Ejecutado y validado el 26/06/2026.
 
 ### Etapa 2 — Esta semana (1 PR)
 
@@ -224,13 +227,13 @@ Cada etapa es independiente, ejecutable por un agente sin contexto de la anterio
 
 ### Etapa 3 — Antes de escalar el flow público (1 PR)
 
-- **MED-3**: cerrar `/estado-didit` post-uso.
-- **MED-6**: revocar link viejo al regenerar.
-- **MED-1**: borrar `/api/notificar` + variable pública.
-- **MED-2**: decidir borrar o cablear `/notificar-usuario-aprobado` con validación.
+- **MED-3**: cerrar `/estado-didit` post-uso. ✅ Resuelto el 26/06/2026.
+- **MED-6**: revocar link viejo al regenerar. ✅ Resuelto el 26/06/2026.
+- **MED-1**: borrar `/api/notificar` + variable pública. ✅ Resuelto el 26/06/2026.
+- **MED-2**: decidir borrar o cablear `/notificar-usuario-aprobado` con validación. ✅ Resuelto el 26/06/2026.
 
 ### Etapa 4 — Backlog (cuando se pueda)
 
-- **MED-4**: whitelist de hosts en webhook.
-- **MED-5**: resolver TODO del timestamp.
+- **MED-4**: whitelist de hosts en webhook. ✅ Resuelto el 26/06/2026.
+- **MED-5**: resolver TODO del timestamp. ✅ Resuelto el 26/06/2026.
 - **LOW-1 a LOW-6**: hardening.

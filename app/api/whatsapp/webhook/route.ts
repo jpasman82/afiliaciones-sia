@@ -38,9 +38,9 @@ export async function POST(req: NextRequest) {
   if (!verificarFirma(rawBody, signature)) {
     return new Response('Forbidden', { status: 403 });
   }
-  const body = JSON.parse(rawBody);
 
   try {
+    const body = JSON.parse(rawBody);
     const entry = body.entry?.[0]?.changes?.[0]?.value;
     const message = entry?.messages?.[0];
 
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     console.error('webhook error', err);
+    return new Response('Bad Request', { status: 400 });
   }
 
   // Respuesta rápida a Meta

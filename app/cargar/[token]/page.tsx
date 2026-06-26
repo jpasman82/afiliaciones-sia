@@ -16,7 +16,6 @@ const DNI_PUBLIC_JPEG_QUALITY = 0.87;
 
 type LinkPublico = {
   afiliadorUid: string;
-  afiliadorEmail: string;
   afiliadorNombre?: string;
 };
 
@@ -345,7 +344,7 @@ export default function CargaPublicaPage() {
         dni,
         archivoDniPath: ruta,
         afiliadorUid: link.afiliadorUid,
-        afiliadorEmail: link.afiliadorEmail || '',
+        afiliadorEmail: '',
         afiliadorNombre: link.afiliadorNombre || '',
         origen: 'link_publico',
         linkToken: token,

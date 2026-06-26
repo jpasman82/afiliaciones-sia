@@ -28,7 +28,7 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ token: st
     return NextResponse.json({ error: 'Link no encontrado' }, { status: 404 });
   }
   const link = linkSnap.data()!;
-  if (link.usado) {
+  if (link.usado || link.revocado) {
     return NextResponse.json({ error: 'Link ya usado' }, { status: 410 });
   }
   if (link.venceEn?.toDate && link.venceEn.toDate() < new Date()) {
