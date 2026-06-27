@@ -88,34 +88,8 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
 
   const tomarFotoNativa = async (file: File) => {
     limpiarPreviewNativa();
-    if (!('createImageBitmap' in window)) {
-      nativeObjectUrlRef.current = URL.createObjectURL(file);
-      setPreview(nativeObjectUrlRef.current);
-      return;
-    }
-
-    let bitmap: ImageBitmap | null = null;
-    try {
-      bitmap = await createImageBitmap(file);
-      const maxSide = 2200;
-      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('No se pudo preparar la foto del DNI.');
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      setPreview(canvas.toDataURL('image/jpeg', 0.9));
-      canvas.width = 0;
-      canvas.height = 0;
-    } catch {
-      nativeObjectUrlRef.current = URL.createObjectURL(file);
-      setPreview(nativeObjectUrlRef.current);
-    } finally {
-      bitmap?.close();
-    }
+    nativeObjectUrlRef.current = URL.createObjectURL(file);
+    setPreview(nativeObjectUrlRef.current);
   };
 
   const recalcularRecorteNativo = () => {
