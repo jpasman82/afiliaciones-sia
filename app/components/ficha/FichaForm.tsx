@@ -34,10 +34,10 @@ const PROFESIONES = [
   'Otro',
 ];
 
-export function FormSection({ n, title, sub, children }:
-  { n: string; title: string; sub?: string; children: React.ReactNode }) {
+export function FormSection({ n, title, sub, children, anchorId }:
+  { n: string; title: string; sub?: string; children: React.ReactNode; anchorId?: string }) {
   return (
-    <section className="grid md:grid-cols-[220px_1fr] gap-4 md:gap-8 py-6 border-b border-slate-100 last:border-0">
+    <section id={anchorId} className="grid md:grid-cols-[220px_1fr] gap-4 md:gap-8 py-6 border-b border-slate-100 last:border-0 scroll-mt-24">
       <div className="md:pt-1">
         <div className="flex items-center gap-2">
           <span className="w-6 h-6 rounded-full bg-brand-50 text-brand-700 text-xs font-bold flex items-center justify-center shrink-0">{n}</span>
@@ -132,7 +132,7 @@ export function FichaForm({
           {decodeStatus && decodeStatus !== 'idle' && <DecodeStatusIndicator status={decodeStatus} />}
         </FormSection>
 
-        <FormSection n="2" title="Datos personales" sub="Identidad del afiliado">
+        <FormSection n="2" title="Datos personales" sub="Identidad del afiliado" anchorId="datos-precargados">
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Apellidos" required><Input name="apellidos" required value={formData.apellidos} onChange={onChange} placeholder="Pérez" className={af('apellidos')} /></Field>
             <Field label="Nombres" required><Input name="nombres" required value={formData.nombres} onChange={onChange} placeholder="Juan Carlos" className={af('nombres')} /></Field>

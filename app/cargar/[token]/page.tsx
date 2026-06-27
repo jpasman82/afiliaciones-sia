@@ -116,6 +116,15 @@ export default function CargaPublicaPage() {
     setBarcodeAutocompleted(false);
   };
 
+  const desplazarADatosPrecargados = () => {
+    window.setTimeout(() => {
+      document.getElementById('datos-precargados')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 250);
+  };
+
   useEffect(() => {
     const validar = async () => {
       if (!token) return;
@@ -274,6 +283,9 @@ export default function CargaPublicaPage() {
       setRecortePendiente(null);
     }
     await intentarLeerDni(dataUrl, recorte.cara);
+    if (recorte.cara === 'dorso') {
+      desplazarADatosPrecargados();
+    }
   };
 
   const cargarArchivoUnico = async (file: File) => {
