@@ -64,6 +64,11 @@ service cloud.firestore {
         request.resource.data.email == resource.data.email;
     }
 
+    function campoStrOpcional(data, campo, maxLen) {
+      return !(campo in data) ||
+        (data[campo] is string && data[campo].size() <= maxLen);
+    }
+
     function fichaCamposValidos(data) {
       return data.dni is string &&
         data.dni.size() >= 7 && data.dni.size() <= 9 &&
@@ -74,7 +79,38 @@ service cloud.firestore {
         data.localidad in ['Acassuso', 'Beccar', 'Boulogne', 'Martínez', 'San Isidro', 'Villa Adelina'] &&
         data.tipoDocumento in ['DNI', 'LE', 'LC'] &&
         data.sexo in ['Masculino', 'Femenino', ''] &&
-        (data.mail == '' || data.mail.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'));
+        (data.mail == '' || data.mail.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')) &&
+        campoStrOpcional(data, 'profesion', 100) &&
+        campoStrOpcional(data, 'lugarNacimiento', 100) &&
+        campoStrOpcional(data, 'calle', 100) &&
+        campoStrOpcional(data, 'estadoCivil', 100) &&
+        campoStrOpcional(data, 'nacionalidad', 100) &&
+        campoStrOpcional(data, 'celular', 30) &&
+        campoStrOpcional(data, 'numero', 10) &&
+        campoStrOpcional(data, 'piso', 10) &&
+        campoStrOpcional(data, 'dpto', 10) &&
+        campoStrOpcional(data, 'clase', 10);
+    }
+
+    function fichaCamposValidosParcial(data) {
+      return campoStrOpcional(data, 'dni', 9) &&
+        campoStrOpcional(data, 'nombres', 100) &&
+        campoStrOpcional(data, 'apellidos', 100) &&
+        campoStrOpcional(data, 'observaciones', 500) &&
+        campoStrOpcional(data, 'profesion', 100) &&
+        campoStrOpcional(data, 'lugarNacimiento', 100) &&
+        campoStrOpcional(data, 'calle', 100) &&
+        campoStrOpcional(data, 'estadoCivil', 100) &&
+        campoStrOpcional(data, 'nacionalidad', 100) &&
+        campoStrOpcional(data, 'celular', 30) &&
+        campoStrOpcional(data, 'numero', 10) &&
+        campoStrOpcional(data, 'piso', 10) &&
+        campoStrOpcional(data, 'dpto', 10) &&
+        campoStrOpcional(data, 'clase', 10) &&
+        (!('localidad' in data) || data.localidad == '' || data.localidad in ['Acassuso', 'Beccar', 'Boulogne', 'Martínez', 'San Isidro', 'Villa Adelina']) &&
+        (!('tipoDocumento' in data) || data.tipoDocumento in ['DNI', 'LE', 'LC']) &&
+        (!('sexo' in data) || data.sexo in ['Masculino', 'Femenino', '']) &&
+        (!('mail' in data) || data.mail == '' || data.mail.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'));
     }
 
     function camposCreacionFicha() {
@@ -83,7 +119,7 @@ service cloud.firestore {
         'fechaNacimiento', 'lugarNacimiento', 'nacionalidad', 'profesion',
         'estadoCivil', 'celular', 'mail', 'distrito', 'calle', 'numero',
         'piso', 'dpto', 'localidad', 'observaciones', 'estadoControl',
-        'archivoDni', 'archivoDniPath', 'afiliadorNombre', 'afiliadorEmail',
+        'archivoDniPath', 'afiliadorNombre', 'afiliadorEmail',
         'afiliadorUid', 'fecha', 'origen', 'linkToken'
       ];
     }
@@ -94,7 +130,7 @@ service cloud.firestore {
         'fechaNacimiento', 'lugarNacimiento', 'nacionalidad', 'profesion',
         'estadoCivil', 'celular', 'mail', 'distrito', 'calle', 'numero',
         'piso', 'dpto', 'localidad', 'observaciones', 'estadoControl',
-        'archivoDni', 'archivoDniPath', 'ultimaModificacion'
+        'archivoDniPath', 'ultimaModificacion'
       ];
     }
 
@@ -213,6 +249,7 @@ service cloud.firestore {
         conservaEstadoPendiente() &&
         conservaPropiedadFicha() &&
         archivoDniPathValidoEnUpdate() &&
+        fichaCamposValidosParcial(request.resource.data) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(camposEditablesFichaPendiente());
     }
 
