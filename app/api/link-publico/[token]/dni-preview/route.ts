@@ -16,10 +16,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   if (link.usado || link.revocado) return new Response('Gone', { status: 410 });
   if ((link.venceEn?.toMillis?.() ?? 0) < Date.now()) return new Response('Gone', { status: 410 });
 
-  const afiliadorUid = link.afiliadorUid as string;
-  const pathPermitido =
-    path.startsWith(`dnis/${afiliadorUid}/`) ||
-    path.startsWith(`dnisPublicos/${token}/`);
+  // Paths permitidos: subidas propias de este token, o los paths exactos de la
+  // sesión Didit asociada a este link. No se permite el namespace completo del
+  // afiliador (evita enumerar DNIs de otras cargas del mismo afiliador).
+  let pathPermitido = path.startsWith(`dnisPublicos/${token}/`);
+
+  if (!pathPermitido) {
+    const sesionesSnap = await adminDb
+      .collection('sesionesDidit')
+      .where('vendorData.linkToken', '==', token)
+      .limit(10)
+      .get();
+    const pathsSesion = new Set<string>();
+    sesionesSnap.forEach((doc) => {
+      const datos = (doc.data()?.datosExtraidos ?? {}) as Record<string, unknown>;
+      for (const p of [datos.dniImageStoragePath, datos.frontImageStoragePath, datos.backImageStoragePath]) {
+        if (typeof p === 'string' && p) pathsSesion.add(p);
+      }
+    });
+    pathPermitido = pathsSesion.has(path);
+  }
+
   if (!pathPermitido) return new Response('Forbidden', { status: 403 });
 
   try {
