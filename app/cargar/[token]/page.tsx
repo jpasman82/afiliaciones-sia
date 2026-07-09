@@ -99,6 +99,7 @@ export default function CargaPublicaPage() {
     getStartBody: async () => ({}),
     setFormData,
     bajarPreviewBlob,
+    onAutocompletado: desplazarADatosPrecargados,
   });
 
   const registrarCamposBarcode = (campos: Record<string, unknown>) => {
@@ -116,14 +117,14 @@ export default function CargaPublicaPage() {
     setBarcodeAutocompleted(false);
   };
 
-  const desplazarADatosPrecargados = () => {
+  function desplazarADatosPrecargados() {
     window.setTimeout(() => {
       document.getElementById('datos-precargados')?.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });
     }, 250);
-  };
+  }
 
   useEffect(() => {
     const validar = async () => {
@@ -455,6 +456,7 @@ export default function CargaPublicaPage() {
             dniDatosLeidosRef.current = true;
             setDecodeStatus('success');
             setEscaneandoCodigo(false);
+            desplazarADatosPrecargados();
           }}
         />
       )}

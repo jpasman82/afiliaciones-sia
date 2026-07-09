@@ -473,6 +473,7 @@ export default function Home() {
     },
     setFormData,
     onRetorno: () => setTab('nueva'),
+    onAutocompletado: desplazarADatosPrecargados,
   });
 
   const registrarCamposBarcode = (campos: Record<string, unknown>) => {
@@ -490,14 +491,14 @@ export default function Home() {
     setBarcodeAutocompleted(false);
   };
 
-  const desplazarADatosPrecargados = () => {
+  function desplazarADatosPrecargados() {
     window.setTimeout(() => {
       document.getElementById('datos-precargados')?.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });
     }, 250);
-  };
+  }
 
   useEffect(() => {
     if (typeof window !== "undefined" && !window.history.state) {
@@ -1479,6 +1480,7 @@ export default function Home() {
             setDniDatosLeidos(true);
             setDecodeStatus('success');
             setEscanerBarcodeAbierto(false);
+            desplazarADatosPrecargados();
             console.info('[DNI PDF417] manual decode', { raw: parsed.raw, warnings: parsed.warnings });
           }}
         />

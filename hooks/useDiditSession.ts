@@ -28,6 +28,8 @@ export interface UseDiditSessionOptions {
   setFormData: Dispatch<SetStateAction<any>>;
   /** Callback opcional cuando se detecta retorno con session pendiente (antes del polling). */
   onRetorno?: () => void;
+  /** Callback opcional cuando Didit devuelve datos y se autocompleta el formulario. */
+  onAutocompletado?: () => void;
   /**
    * Función para bajar el blob de un archivo de Storage dado su path.
    * Si no se provee, usa Firebase Storage SDK directamente (requiere auth).
@@ -233,6 +235,7 @@ export function useDiditSession(opciones: UseDiditSessionOptions): UseDiditSessi
               opcionesRef.current.setFormData((prev: any) => ({ ...prev, ...campos }));
               setDiditCamposAutocompletados(completados);
               setDiditAutocompleted(completados.size > 0);
+              if (completados.size > 0) opcionesRef.current.onAutocompletado?.();
 
               if (raw.frontImageStoragePath) setDiditFrenteStoragePath(String(raw.frontImageStoragePath));
               if (raw.backImageStoragePath)  setDiditDorsoStoragePath(String(raw.backImageStoragePath));
