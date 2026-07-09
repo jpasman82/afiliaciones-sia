@@ -6,6 +6,7 @@
 import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/app/lib/firebaseAdmin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { crearSesionDidit } from '@/app/lib/diditClient';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +36,14 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ token: st
     return NextResponse.json({ error: 'Link vencido' }, { status: 410 });
   }
 
+  // Cap anti-abuso: máximo de sesiones Didit por link. Cubre reintentos legítimos
+  // (cámara fallida, foto borrosa) sin permitir vaciar la cuota de Didit durante las 24h.
+  const MAX_SESIONES_DIDIT = 10;
+  const sesionesUsadas = typeof link.sesionesDiditCount === 'number' ? link.sesionesDiditCount : 0;
+  if (sesionesUsadas >= MAX_SESIONES_DIDIT) {
+    return NextResponse.json({ error: 'Límite de verificaciones alcanzado para este link' }, { status: 429 });
+  }
+
   // Obtener nombre del afiliador del documento usuarios (igual que el GET del link).
   const userSnap = await adminDb.collection('usuarios').doc(link.afiliadorUid).get();
   if (!userSnap.exists) {
@@ -59,6 +68,9 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ token: st
 
     const callback = `${APP_URL}/cargar/${token}?didit_session=${localId}`;
     const sesion = await crearSesionDidit({ vendorData, callback });
+
+    // Incrementar el contador solo tras crear la sesión con éxito.
+    await linkSnap.ref.update({ sesionesDiditCount: FieldValue.increment(1) });
 
     return NextResponse.json({ sessionId: localId, url: sesion.url });
   } catch (err) {
