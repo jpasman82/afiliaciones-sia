@@ -646,7 +646,18 @@ export default function Home() {
 
   const actualizarRol = async (uid: string, nuevoRol: string) => {
     try {
+      const usuarioActual = usuariosSistema.find(u => u.id === uid);
+      const rolAnterior = usuarioActual?.rol || '';
       await updateDoc(doc(db, 'usuarios', uid), { rol: nuevoRol });
+      if (rolAnterior !== nuevoRol) {
+        (user as any)?.getIdToken?.().then((idToken: string) => {
+          fetch('/api/notificar-cambio-rol', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+            body: JSON.stringify({ uid, rolAnterior, nuevoRol }),
+          });
+        }).catch(() => {});
+      }
     } catch (e) {
       alert('Error de red');
     }
@@ -1075,6 +1086,8 @@ export default function Home() {
       }
 
       if (editandoId) {
+        const fichaAntes = registros.find(r => r.id === editandoId);
+        const estadoAnterior = fichaAntes?.estadoControl || 'pendiente';
         const payload: any = { ...normalizarFichaPayload(formData), ultimaModificacion: serverTimestamp(), ...(pathDni && { archivoDniPath: pathDni }) };
         const est = (formData as any).estadoControl || 'pendiente';
         if (isAdmin && ['escaneado', 'cargado_je', 'aprobado', 'error', 'suspendido', 'baja'].includes(est)) {
@@ -1082,6 +1095,19 @@ export default function Home() {
           payload.fechaEdicionAdmin = serverTimestamp();
         }
         await updateDoc(doc(db, 'afiliaciones', editandoId), payload);
+        if (estadoAnterior !== est) {
+          (user as any)?.getIdToken?.().then((idToken: string) => {
+            fetch('/api/notificar-cambio-estado-ficha', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+              body: JSON.stringify({
+                fichaId: editandoId,
+                estadoAnterior,
+                estadoNuevo: est,
+              }),
+            });
+          }).catch(() => {});
+        }
         setConfirmacionCarga({
           titulo: 'Ficha actualizada con éxito',
           detalle: `${payload.apellidos}, ${payload.nombres} quedó actualizado en Registros.`,
@@ -1256,6 +1282,20 @@ export default function Home() {
       }
 
       await updateDoc(doc(db, 'afiliaciones', id), payload);
+      if (estadoAnterior !== estado) {
+        (user as any)?.getIdToken?.().then((idToken: string) => {
+          fetch('/api/notificar-cambio-estado-ficha', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+            body: JSON.stringify({
+              fichaId: id,
+              estadoAnterior,
+              estadoNuevo: estado,
+              comentario,
+            }),
+          });
+        }).catch(() => {});
+      }
     } catch {
       alert('Error al actualizar estado.');
     }

@@ -11,12 +11,15 @@ function estadoPendiente(data: FirebaseFirestore.DocumentData) {
   return !data.estadoControl || data.estadoControl === 'pendiente';
 }
 
-function pathBorrable(path: unknown): path is string {
-  return typeof path === 'string' && (
-    path.startsWith('dnis/') ||
-    path.startsWith('dnisPublicos/') ||
-    path.startsWith('fichas/')
-  );
+function esArchivoDniBorrable(path: unknown, ficha: FirebaseFirestore.DocumentData): path is string {
+  if (typeof path !== 'string' || !path) return false;
+  if (path.startsWith(`dnis/${ficha.afiliadorUid}/`)) return true;
+  if (ficha.linkToken && path.startsWith(`dnisPublicos/${ficha.linkToken}/`)) return true;
+  return false;
+}
+
+function esArchivoFichaBorrable(path: unknown, fichaId: string): path is string {
+  return typeof path === 'string' && path.startsWith(`fichas/${fichaId}/`);
 }
 
 export async function POST(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -49,7 +52,13 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   }
 
   const bucket = getStorage(adminApp).bucket();
-  const paths = [ficha.archivoDniPath, ficha.archivoFichaPath].filter(pathBorrable);
+  const paths: string[] = [];
+  if (esArchivoDniBorrable(ficha.archivoDniPath, ficha)) {
+    paths.push(ficha.archivoDniPath);
+  }
+  if (esArchivoFichaBorrable(ficha.archivoFichaPath, id)) {
+    paths.push(ficha.archivoFichaPath);
+  }
 
   for (const path of paths) {
     try {

@@ -114,6 +114,8 @@ service cloud.firestore {
         !('linkToken' in request.resource.data) &&
         estadoPendiente(request.resource.data) &&
         fichaCamposValidos(request.resource.data) &&
+        (request.resource.data.get('archivoDniPath', '') == '' ||
+         request.resource.data.get('archivoDniPath', '').matches('dnis/' + request.auth.uid + '/.*')) &&
         indiceDniValido(docId);
     }
 
@@ -199,11 +201,18 @@ service cloud.firestore {
         request.resource.data.fecha == resource.data.fecha;
     }
 
+    function archivoDniPathValidoEnUpdate() {
+      return request.resource.data.get('archivoDniPath', '') == resource.data.get('archivoDniPath', '') ||
+        request.resource.data.get('archivoDniPath', '') == '' ||
+        request.resource.data.get('archivoDniPath', '').matches('dnis/' + resource.data.afiliadorUid + '/.*');
+    }
+
     function actualizacionFichaPendienteValida() {
       return (resource.data.afiliadorUid == request.auth.uid || esSupervisor(request.auth.uid)) &&
         estadoPendiente(resource.data) &&
         conservaEstadoPendiente() &&
         conservaPropiedadFicha() &&
+        archivoDniPathValidoEnUpdate() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(camposEditablesFichaPendiente());
     }
 
