@@ -29,7 +29,7 @@ service firebase.storage {
       );
       allow list: if false;
       allow create: if firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.usado == false &&
-        firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.revocado != true &&
+        firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.get('revocado', false) != true &&
         firestore.get(/databases/(default)/documents/linksCargaPublica/$(token)).data.venceEn > request.time &&
         request.resource.size < 5 * 1024 * 1024 &&
         request.resource.contentType == 'image/jpeg';

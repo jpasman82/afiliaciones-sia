@@ -154,7 +154,7 @@ service cloud.firestore {
     function linkPublicoUsadoValido(token, docId) {
       let link = getAfter(/databases/$(database)/documents/linksCargaPublica/$(token)).data;
       return link.usado == true &&
-        link.revocado != true &&
+        link.get('revocado', false) != true &&
         link.fichaId == docId &&
         link.dni == request.resource.data.dni &&
         link.venceEn > request.time &&
@@ -192,7 +192,7 @@ service cloud.firestore {
     function usoLinkPublicoValido(token) {
       let ficha = getAfter(/databases/$(database)/documents/afiliaciones/$(request.resource.data.fichaId)).data;
       return resource.data.usado == false &&
-        resource.data.revocado != true &&
+        resource.data.get('revocado', false) != true &&
         resource.data.venceEn > request.time &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usado', 'usadoEn', 'fichaId', 'dni']) &&
         request.resource.data.usado == true &&
@@ -293,7 +293,7 @@ service cloud.firestore {
 
     match /linksCargaPublica/{token} {
       allow get: if resource.data.usado == false &&
-        resource.data.revocado != true &&
+        resource.data.get('revocado', false) != true &&
         resource.data.venceEn > request.time;
       allow list: if false;
       allow create: if request.auth != null &&
