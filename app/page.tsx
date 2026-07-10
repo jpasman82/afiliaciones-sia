@@ -1058,9 +1058,11 @@ export default function Home() {
     // Documento incompleto: con una sola cara la subida se saltearía en silencio.
     // Ficha sin ningún documento sí es válida (firestore.rules permite archivoDniPath == '').
     if (!diditDniImagePath && !!fotoFrenteB64 !== !!fotoDorsoB64) {
-      alert(fotoFrenteB64
-        ? 'Falta el dorso del DNI. Cargalo antes de guardar.'
-        : 'Falta el frente del DNI. Cargalo antes de guardar.');
+      setConfirmacionCarga({
+        tipo: 'aviso',
+        titulo: fotoFrenteB64 ? 'Falta el dorso del DNI' : 'Falta el frente del DNI',
+        detalle: `Cargá ${fotoFrenteB64 ? 'el dorso' : 'el frente'} para completar el documento antes de guardar la ficha.`,
+      });
       return;
     }
     if (editandoId) {
