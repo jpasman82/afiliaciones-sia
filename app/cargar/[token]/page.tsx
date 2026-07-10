@@ -305,7 +305,7 @@ export default function CargaPublicaPage() {
         alert('Subí una imagen JPG/PNG o un PDF del DNI.');
         return;
       }
-      if (!paginas.length) throw new Error('El archivo no tiene paginas para procesar.');
+      if (!paginas.length) throw new Error('El archivo no tiene páginas para procesar.');
       const frente = paginas[0];
       const dorso = paginas[1] || paginas[0];
       setRecortePendiente({ cara: 'frente', imagen: frente, siguienteImagen: dorso });

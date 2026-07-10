@@ -14,25 +14,30 @@ export async function GET(request: NextRequest) {
   const auth = await requireRole(request, ROLES_PERMITIDOS);
   if (!auth.ok) return auth.response;
 
-  const { searchParams } = new URL(request.url);
-  const sessionId = searchParams.get('session_id');
-  if (!sessionId) {
-    return NextResponse.json({ error: 'Falta session_id' }, { status: 400 });
-  }
+  try {
+    const { searchParams } = new URL(request.url);
+    const sessionId = searchParams.get('session_id');
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Falta session_id' }, { status: 400 });
+    }
 
-  // Buscar por localId (UUID generado en iniciar-sesion, no el session_id de Didit).
-  const q = await adminDb.collection('sesionesDidit').where('localId', '==', sessionId).limit(1).get();
-  if (!q.empty && q.docs[0].data()?.vendorData?.afiliadorUid !== auth.user.uid) {
-    return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 });
-  }
-  if (q.empty || q.docs[0].data()?.procesadoEn == null) {
-    return NextResponse.json({ status: 'pendiente', datos: null });
-  }
+    // Buscar por localId (UUID generado en iniciar-sesion, no el session_id de Didit).
+    const q = await adminDb.collection('sesionesDidit').where('localId', '==', sessionId).limit(1).get();
+    if (!q.empty && q.docs[0].data()?.vendorData?.afiliadorUid !== auth.user.uid) {
+      return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 });
+    }
+    if (q.empty || q.docs[0].data()?.procesadoEn == null) {
+      return NextResponse.json({ status: 'pendiente', datos: null });
+    }
 
-  const data = q.docs[0].data();
-  return NextResponse.json({
-    status:  'completado',
-    datos:   data.datosExtraidos as Record<string, string>,
-    diditStatus: data.status as string,
-  });
+    const data = q.docs[0].data();
+    return NextResponse.json({
+      status:  'completado',
+      datos:   data.datosExtraidos as Record<string, string>,
+      diditStatus: data.status as string,
+    });
+  } catch (err) {
+    console.error('[renaper/estado] Error:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+  }
 }
