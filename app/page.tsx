@@ -1055,6 +1055,14 @@ export default function Home() {
       alert('Ingresá un DNI válido antes de guardar.');
       return;
     }
+    // Documento incompleto: con una sola cara la subida se saltearía en silencio.
+    // Ficha sin ningún documento sí es válida (firestore.rules permite archivoDniPath == '').
+    if (!diditDniImagePath && !!fotoFrenteB64 !== !!fotoDorsoB64) {
+      alert(fotoFrenteB64
+        ? 'Falta el dorso del DNI. Cargalo antes de guardar.'
+        : 'Falta el frente del DNI. Cargalo antes de guardar.');
+      return;
+    }
     if (editandoId) {
       const fichaActual = registros.find(r => r.id === editandoId);
       if (!puedeEditarFicha(fichaActual || formData)) {
@@ -1656,6 +1664,7 @@ export default function Home() {
           afiliadores={afiliadores}
           search={busquedaControl}
           actualizarControl={actualizarControl}
+          subiendoControl={subiendoControl}
           onOpenFicha={(id) => {
             setFichaSeleccionada(registros.find(r => r.id === id) || null);
             cambiarTab('detalle');

@@ -20,18 +20,19 @@ interface ControlProps {
   fichas: Ficha[];
   search: string;
   afiliadores: { uid: string; nombre: string }[];
-  actualizarControl: (id: string, estado: string, extras?: Record<string, any>) => void;
+  actualizarControl: (id: string, estado: string, extras?: Record<string, any>) => void | Promise<void>;
   onSubirFichaFisica: (id: string) => void;
   onOpenFicha: (id: string) => void;
+  subiendoControl?: boolean;
 }
 
-export function ControlView({ fichas, search, afiliadores, actualizarControl, onSubirFichaFisica, onOpenFicha }: ControlProps) {
+export function ControlView({ fichas, search, afiliadores, actualizarControl, onSubirFichaFisica, onOpenFicha, subiendoControl }: ControlProps) {
   const [sel, setSel] = useState<string | null>(null);
   const [filtro, setFiltro] = useState('todas');
   const [filtroAfil, setFiltroAfil] = useState('todas');
 
   const ficha = sel ? fichas.find(f => f.id === sel) : null;
-  if (ficha) return <ControlDetalle ficha={ficha} onBack={() => setSel(null)} actualizarControl={actualizarControl} onSubirFichaFisica={onSubirFichaFisica} onOpenFicha={onOpenFicha} />;
+  if (ficha) return <ControlDetalle ficha={ficha} onBack={() => setSel(null)} actualizarControl={actualizarControl} onSubirFichaFisica={onSubirFichaFisica} onOpenFicha={onOpenFicha} subiendoControl={subiendoControl} />;
 
   const lista = fichas.filter(f => {
     const e = f.estadoControl || 'pendiente';
@@ -90,14 +91,26 @@ export function ControlView({ fichas, search, afiliadores, actualizarControl, on
 }
 
 // ----------------------------------------------------------------------------
-function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, onOpenFicha }:
-  { ficha: Ficha; onBack: () => void } & Pick<ControlProps, 'actualizarControl' | 'onSubirFichaFisica' | 'onOpenFicha'>) {
+function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, onOpenFicha, subiendoControl }:
+  { ficha: Ficha; onBack: () => void } & Pick<ControlProps, 'actualizarControl' | 'onSubirFichaFisica' | 'onOpenFicha' | 'subiendoControl'>) {
   const estado = ficha.estadoControl || 'pendiente';
   const [errorTxt, setErrorTxt] = useState(ficha.errorJE || '');
   const [accion, setAccion] = useState<null | 'error' | 'suspender' | 'baja' | 'reactivar'>(null);
   const [motivo, setMotivo] = useState('');
+  const [accionando, setAccionando] = useState<string | null>(null);
+  const ocupado = accionando !== null || !!subiendoControl;
   const esInactivo = estado === 'suspendido' || estado === 'baja';
   const historial = normalizarHistorial(ficha);
+
+  const ejecutarControl = async (nuevoEstado: string, extras?: Record<string, any>) => {
+    if (ocupado) return;
+    setAccionando(nuevoEstado);
+    try {
+      await actualizarControl(ficha.id, nuevoEstado, extras);
+    } finally {
+      setAccionando(null);
+    }
+  };
 
   return (
     <div className="max-w-3xl mx-auto" data-screen-label="Control · Detalle">
@@ -140,21 +153,21 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
           </div>
         )}
         <div className="flex flex-wrap gap-2.5">
-          {estado === 'pendiente' && <Button icon="camera" onClick={() => onSubirFichaFisica(ficha.id)}>Cargar ficha física</Button>}
-          {estado === 'escaneado' && <Button icon="upload" onClick={() => actualizarControl(ficha.id, 'cargado_je')}>Marcar cargada en JE</Button>}
+          {estado === 'pendiente' && <Button icon="camera" disabled={ocupado} onClick={() => onSubirFichaFisica(ficha.id)}>{subiendoControl ? 'Subiendo ficha…' : 'Cargar ficha física'}</Button>}
+          {estado === 'escaneado' && <Button icon="upload" disabled={ocupado} onClick={() => ejecutarControl('cargado_je')}>{accionando === 'cargado_je' ? 'Marcando…' : 'Marcar cargada en JE'}</Button>}
           {estado === 'cargado_je' && (
             <>
-              <Button variant="success" icon="check" onClick={() => actualizarControl(ficha.id, 'aprobado')}>Aprobar afiliación</Button>
-              <Button variant="secondary" icon="alert" onClick={() => setAccion(accion === 'error' ? null : 'error')}>Registrar error</Button>
+              <Button variant="success" icon="check" disabled={ocupado} onClick={() => ejecutarControl('aprobado')}>{accionando === 'aprobado' ? 'Aprobando…' : 'Aprobar afiliación'}</Button>
+              <Button variant="secondary" icon="alert" disabled={ocupado} onClick={() => setAccion(accion === 'error' ? null : 'error')}>Registrar error</Button>
             </>
           )}
-          {estado === 'error' && <Button icon="refresh" onClick={() => actualizarControl(ficha.id, 'cargado_je')}>Reintentar carga en JE</Button>}
+          {estado === 'error' && <Button icon="refresh" disabled={ocupado} onClick={() => ejecutarControl('cargado_je')}>{accionando === 'cargado_je' ? 'Marcando…' : 'Reintentar carga en JE'}</Button>}
           {estado === 'aprobado' && <span className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700"><Icon name="check" className="w-5 h-5" strokeWidth={2.5} /> Afiliación completada y aprobada.</span>}
-          {esInactivo && <Button icon="refresh" onClick={() => setAccion(accion === 'reactivar' ? null : 'reactivar')}>Reactivar afiliado</Button>}
+          {esInactivo && <Button icon="refresh" disabled={ocupado} onClick={() => setAccion(accion === 'reactivar' ? null : 'reactivar')}>Reactivar afiliado</Button>}
           {!esInactivo && (
             <div className="flex gap-2.5 ml-auto">
-              <Button variant="ghost" className="text-orange-600 hover:bg-orange-50" onClick={() => setAccion(accion === 'suspender' ? null : 'suspender')}>Suspender</Button>
-              <Button variant="ghost" className="text-rose-600 hover:bg-rose-50" onClick={() => setAccion(accion === 'baja' ? null : 'baja')}>Dar de baja</Button>
+              <Button variant="ghost" className="text-orange-600 hover:bg-orange-50" disabled={ocupado} onClick={() => setAccion(accion === 'suspender' ? null : 'suspender')}>Suspender</Button>
+              <Button variant="ghost" className="text-rose-600 hover:bg-rose-50" disabled={ocupado} onClick={() => setAccion(accion === 'baja' ? null : 'baja')}>Dar de baja</Button>
             </div>
           )}
         </div>
@@ -163,8 +176,8 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
           <div className="mt-4 p-4 rounded-lg bg-slate-50 ring-1 ring-slate-200">
             <Field label="Descripción del error de JE"><Textarea rows={2} value={errorTxt} onChange={e => setErrorTxt(e.target.value)} placeholder="Ej: DNI ilegible, datos incompletos…" /></Field>
             <div className="flex gap-2 mt-3">
-              <Button variant="danger" size="sm" onClick={() => { actualizarControl(ficha.id, 'error', { errorJE: errorTxt.trim() }); setAccion(null); }}>Guardar error</Button>
-              <Button variant="ghost" size="sm" onClick={() => setAccion(null)}>Cancelar</Button>
+              <Button variant="danger" size="sm" disabled={ocupado} onClick={async () => { await ejecutarControl('error', { errorJE: errorTxt.trim() }); setAccion(null); }}>{accionando === 'error' ? 'Guardando…' : 'Guardar error'}</Button>
+              <Button variant="ghost" size="sm" disabled={ocupado} onClick={() => setAccion(null)}>Cancelar</Button>
             </div>
           </div>
         )}
@@ -172,11 +185,11 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
           <div className="mt-4 p-4 rounded-lg bg-slate-50 ring-1 ring-slate-200">
             <Field label={`Motivo de ${accion === 'suspender' ? 'la suspensión' : 'la baja'} (opcional)`}><Textarea rows={2} value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Motivo…" /></Field>
             <div className="flex gap-2 mt-3">
-              <Button variant={accion === 'suspender' ? 'primary' : 'danger'} size="sm"
-                onClick={() => { actualizarControl(ficha.id, accion === 'suspender' ? 'suspendido' : 'baja', { estadoAnterior: estado, suspendidoComentario: motivo.trim() || null }); setAccion(null); setMotivo(''); }}>
-                Confirmar {accion === 'suspender' ? 'suspensión' : 'baja'}
+              <Button variant={accion === 'suspender' ? 'primary' : 'danger'} size="sm" disabled={ocupado}
+                onClick={async () => { await ejecutarControl(accion === 'suspender' ? 'suspendido' : 'baja', { estadoAnterior: estado, suspendidoComentario: motivo.trim() || null }); setAccion(null); setMotivo(''); }}>
+                {accionando ? 'Guardando…' : `Confirmar ${accion === 'suspender' ? 'suspensión' : 'baja'}`}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setAccion(null)}>Cancelar</Button>
+              <Button variant="ghost" size="sm" disabled={ocupado} onClick={() => setAccion(null)}>Cancelar</Button>
             </div>
           </div>
         )}
@@ -186,11 +199,11 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
               <Textarea rows={2} value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Motivo o aclaración…" />
             </Field>
             <div className="flex gap-2 mt-3">
-              <Button size="sm"
-                onClick={() => { actualizarControl(ficha.id, ficha.estadoAnterior || 'pendiente', { reactivacionComentario: motivo.trim() || null }); setAccion(null); setMotivo(''); }}>
-                Confirmar reactivación
+              <Button size="sm" disabled={ocupado}
+                onClick={async () => { await ejecutarControl(ficha.estadoAnterior || 'pendiente', { reactivacionComentario: motivo.trim() || null }); setAccion(null); setMotivo(''); }}>
+                {accionando ? 'Guardando…' : 'Confirmar reactivación'}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => { setAccion(null); setMotivo(''); }}>Cancelar</Button>
+              <Button variant="ghost" size="sm" disabled={ocupado} onClick={() => { setAccion(null); setMotivo(''); }}>Cancelar</Button>
             </div>
           </div>
         )}

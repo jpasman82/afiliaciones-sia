@@ -314,7 +314,7 @@ El `token` es de 32 caracteres hex (`crypto.randomUUID()` sin guiones, 128 bits)
 Sesiones de verificación con Didit.
 
 ```
-sessionId: string                   ← UUID propio, por el que buscan los endpoints de estado  
+localId: string                   ← UUID propio, por el que buscan los endpoints de estado  
 diditSessionId: string              ← id de Didit
 status: string                      ← 'In Progress' | 'Approved' | 'Declined' | ...
 vendorData: { afiliadorUid, afiliadorNombre, linkToken?, ... }
@@ -323,7 +323,7 @@ datosExtraidos: {                   ← cuando status == 'Approved'
   domicilio: { calle, numero, piso, dpto, localidad },
   dniImageStoragePath, frontImageStoragePath, backImageStoragePath
 }
-procesada: timestamp                  ← seteado solo en estados finales (Approved, Declined)
+procesadoEn: timestamp                  ← seteado solo en estados finales (Approved, Declined)
 creadoEn, ultimaActualizacion
 ```
 
@@ -413,7 +413,7 @@ Didit es un proveedor de verificación de identidad. Se usa en dos lugares:
 
 ### Gotchas conocidos de Didit
 
-- **Idempotencia:** marcar la sesión como `procesada: true` solo en estados finales (`Approved`, `Declined`). Si se marca antes, webhooks posteriores se descartan y se pierde data.
+- **Idempotencia:** marcar la sesión como `procesadoEn: true` solo en estados finales (`Approved`, `Declined`). Si se marca antes, webhooks posteriores se descartan y se pierde data.
 - **`parsed_address` viene vacío** en DNIs argentinos. Hay que parsear el campo `address` libre (formato `calle número - localidad`). Helper: `parsearAddressLibre()` que splittea por ` - `.
 - **Redirect-back inestable.** Después de completar el flow, Didit a veces no redirige a la app. Workaround: localStorage + polling. Bug reportado, sin ETA.
 
@@ -524,8 +524,7 @@ O usar Firebase Console (Reglas → publicar).
 
 ## Gotchas adicionales
 
-- - **Encoding:** hubo mojibake en literales de UI (cabeceras de CSV, mensajes de alert), corregido en julio 2026. Los nombres de campo de Firestore están limpios. Si aparece texto con caracteres rotos, es un literal de UI, no un campo de datos.
-- **`hasOnly()` en reglas:** agregar un campo al payload sin actualizar la lista de `hasOnly()` rompe todas las escrituras de la colección. Coordinar cambios payload + rules.
+- **Encoding:** hubo mojibake en literales de UI (cabeceras de CSV, mensajes de alert), corregido en julio 2026. Los nombres de campo de Firestore están limpios. Si aparece texto con caracteres rotos, es un literal de UI, no un campo de datos.
 - **Firestore collections implícitas:** borrar todos los docs de una colección no la elimina; un `addDoc` nuevo la recrea. Sirve para limpiezas manuales sin scripts.
 - **`useAuth.js` en JS, no TS:** legado. Si se reescribe, mejor migrar a TS.
 

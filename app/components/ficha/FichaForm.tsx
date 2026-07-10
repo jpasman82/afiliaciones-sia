@@ -411,9 +411,15 @@ function DniUploader({
 
       {/* Estados de archivo --------------------------------------------- */}
       {dni.procesandoArchivo && <p className="text-xs text-slate-500 font-medium mt-3">Procesando archivo del DNI…</p>}
-      {(dni.frenteOk || dni.dorsoOk) && (
+      {dni.frenteOk && dni.dorsoOk && (
         <p className="text-xs text-emerald-600 font-medium mt-3 flex items-center gap-1.5">
           <Icon name="check" className="w-4 h-4" strokeWidth={2.5} /> Documento adjuntado
+        </p>
+      )}
+      {dni.frenteOk !== dni.dorsoOk && (
+        <p className="text-xs text-amber-700 font-medium mt-3 flex items-start gap-1.5">
+          <span className="text-base leading-none mt-px">⚠</span>
+          <span>Falta {dni.frenteOk ? 'el dorso' : 'el frente'} del DNI para completar el documento.</span>
         </p>
       )}
       {dni.onScanBarcode && (dni.frenteOk || dni.dorsoOk) && (
