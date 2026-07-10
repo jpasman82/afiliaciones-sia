@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const afiliadorUid = auth.user.uid;
 
   if (!adminDb) {
-    return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
+    return NextResponse.json({ error: 'Servicio no disponible' }, { status: 503 });
   }
 
   const usuarioSnap = await adminDb.collection('usuarios').doc(afiliadorUid).get();

@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { getStorage } from 'firebase-admin/storage';
 import { adminDb, adminApp } from '@/app/lib/firebaseAdmin';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   if (!adminDb || !adminApp) return new Response('Service Unavailable', { status: 503 });
 

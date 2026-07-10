@@ -302,7 +302,7 @@ export default function CargaPublicaPage() {
         const img = await prepararImagenArchivo(file);
         paginas = [img];
       } else {
-        alert('Subi una imagen JPG/PNG o un PDF del DNI.');
+        alert('Subí una imagen JPG/PNG o un PDF del DNI.');
         return;
       }
       if (!paginas.length) throw new Error('El archivo no tiene paginas para procesar.');

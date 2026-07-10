@@ -61,7 +61,7 @@ const EscanerDocumento = ({ onClose, onCapture, titulo, tipo = 'dni', imagenInic
         }
         currentStream = stream;
       } catch (err) {
-        alert("No se pudo acceder a la cÃ¡mara.");
+        alert("No se pudo acceder a la cámara.");
         onClose();
       }
     };
@@ -753,8 +753,8 @@ export default function Home() {
 
     const cabeceras = [
       "Estado", "Tipo Doc", "NRO Documento", "Apellidos", "Nombres", "Sexo", "Clase", 
-      "Fecha Nacimiento", "Lugar Nacimiento", "Nacionalidad", "ProfesiÃ³n", "Estado Civil",
-      "Celular", "Mail", "Distrito", "Localidad", "Calle", "NÃºmero", "Piso", "Dpto", 
+      "Fecha Nacimiento", "Lugar Nacimiento", "Nacionalidad", "Profesión", "Estado Civil",
+      "Celular", "Mail", "Distrito", "Localidad", "Calle", "Número", "Piso", "Dpto",
       "Observaciones", "Cargado Por", "Link DNI", "Link Ficha"
     ];
 
@@ -969,7 +969,7 @@ export default function Home() {
 
   const generarLinkCargaPublica = async () => {
     if (!user || role === 'pendiente') {
-      alert('Tu usuario todavia no esta habilitado para generar links.');
+      alert('Tu usuario todavía no está habilitado para generar links.');
       return;
     }
     setCreandoPublicLink(true);
@@ -1018,7 +1018,7 @@ export default function Home() {
       const detalles = error?.code === 'permission-denied'
         ? `\n\nDatos para revisar:\nUID: ${(user as any)?.uid || '-'}\nRol app: ${role || '-'}\nEmail: ${((userData as any)?.email || (user as any)?.email || '-')}`
         : '';
-      alert(`No se pudo generar el link: ${error?.message || 'intenta nuevamente.'}${detalles}`);
+      alert(`No se pudo generar el link: ${error?.message || 'intentá nuevamente.'}${detalles}`);
     } finally {
       setCreandoPublicLink(false);
     }
@@ -1338,7 +1338,7 @@ export default function Home() {
       });
     } catch (error: any) {
       console.error("Detalle del error:", error);
-      alert(`Error al subir: ${error.message || 'RevisÃ¡ la consola para mÃ¡s detalles.'}`);
+      alert(`Error al subir: ${error.message || 'Revisá la consola para más detalles.'}`);
     } finally {
       setSubiendoControl(false);
     }

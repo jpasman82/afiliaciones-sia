@@ -5,7 +5,9 @@
 
 export type EstadoControl =
   | 'pendiente' | 'escaneado' | 'cargado_je' | 'aprobado'
-  | 'error' | 'suspendido' | 'baja' | 'firmado' | 'validado_renaper';
+  | 'error' | 'suspendido' | 'baja' | 'firmado'
+  // Nombre legacy: la validación la hace Didit, no RENAPER. No renombrar: es un valor persistido en Firestore.
+  | 'validado_renaper';
 
 export type Rol = 'pendiente' | 'afiliador' | 'supervisor' | 'admin';
 

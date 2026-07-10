@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       await sendMenu(from);
     }
   } catch (err) {
-    console.error('webhook error', err);
+    console.error('[whatsapp/webhook] webhook error', err);
     return new Response('Bad Request', { status: 400 });
   }
 
@@ -100,6 +100,6 @@ async function sendMenu(to: string) {
   });
 
   if (!res.ok) {
-    console.error('Error enviando menú:', res.status, await res.text());
+    console.error('[whatsapp/webhook] Error enviando menú:', res.status, await res.text());
   }
 }
