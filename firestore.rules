@@ -20,10 +20,6 @@ service cloud.firestore {
       return rol == 'admin' || rol == 'supervisor' || rol == 'afiliador';
     }
 
-    function emailUsuario(uid) {
-      return get(/databases/$(database)/documents/usuarios/$(uid)).data.email;
-    }
-
     function estadoPendiente(data) {
       return !('estadoControl' in data) || data.estadoControl == 'pendiente';
     }
@@ -328,5 +324,10 @@ service cloud.firestore {
         ((esSupervisor(request.auth.uid) || resource.data.afiliadorUid == request.auth.uid) && estadoPendiente(resource.data))
       );
     }
+
+    // Las colecciones sin bloque match explícito (p. ej. sesionesDidit) quedan en
+    // deny-by-default: solo se acceden vía Admin SDK server-side, que saltea estas reglas.
+    // NO agregar reglas laxas acá para "arreglar" un acceso: si el cliente necesita leer
+    // algo de esas colecciones, exponerlo por un endpoint server-side.
   }
 }
