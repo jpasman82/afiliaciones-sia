@@ -271,8 +271,9 @@ service cloud.firestore {
     }
 
     match /dniIndex/{dni} {
-      // Cualquier usuario activo puede chequear un DNI puntual, pero no listar toda la coleccion.
-      allow get: if request.auth != null && rolActivo(request.auth.uid);
+      // El chequeo de unicidad para afiliadores pasa por /api/dni/existe (devuelve solo booleano).
+      // La lectura directa del índice (que expone afiliadorUid/fichaId) queda para admin/supervisor.
+      allow get: if request.auth != null && esAdminOSupervisor(request.auth.uid);
       allow list: if request.auth != null && esAdminOSupervisor(request.auth.uid);
       allow create: if (
         request.auth != null &&
