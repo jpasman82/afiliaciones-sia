@@ -68,18 +68,21 @@ export function ControlView({ fichas, search, afiliadores, actualizarControl, on
         <Card><EmptyState icon="shield" title="Sin fichas en este estado" sub="Cambiá el filtro para ver otras." /></Card>
       ) : (
         <div className="space-y-2.5">
-          {lista.map(f => (
+          {lista.map(f => {
+            const fechaCarga = formatearFechaCorta(f.fecha);
+            return (
             <button key={f.id} onClick={() => setSel(f.id)}
               className="w-full text-left bg-white rounded-xl ring-1 ring-slate-200 shadow-card p-3.5 flex items-center gap-3 hover:ring-brand-200 hover:bg-brand-50/30 active:scale-[0.995] transition">
               <Avatar nombre={f.nombres} apellido={f.apellidos} />
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-slate-800 truncate">{f.apellidos}, {f.nombres}</div>
-                <div className="text-xs text-slate-500 tnum truncate">{f.tipoDocumento || 'DNI'} {f.dni} · {f.localidad} · <span className="text-slate-400">{f.afiliadorNombre || f.afiliadorEmail}</span></div>
+                <div className="text-xs text-slate-500 tnum truncate">{f.tipoDocumento || 'DNI'} {f.dni} · {f.localidad} · <span className="text-slate-400">{f.afiliadorNombre || f.afiliadorEmail}</span>{fechaCarga && <span className="text-slate-400"> · Cargada {fechaCarga}</span>}</div>
               </div>
               <StatusBadge estado={f.estadoControl || 'pendiente'} size="sm" />
               <Icon name="chevronR" className="w-4 h-4 text-slate-300 shrink-0" strokeWidth={2.5} />
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -108,7 +111,7 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
             <Avatar nombre={ficha.nombres} apellido={ficha.apellidos} size="lg" />
             <div>
               <h1 className="text-lg md:text-xl font-bold text-slate-900 leading-tight">{ficha.apellidos}, {ficha.nombres}</h1>
-              <p className="text-xs text-slate-500 tnum mt-0.5">{ficha.tipoDocumento || 'DNI'} {ficha.dni} · Clase {ficha.clase || '—'} · {ficha.localidad}</p>
+              <p className="text-xs text-slate-500 tnum mt-0.5">{ficha.tipoDocumento || 'DNI'} {ficha.dni} · Clase {ficha.clase || '—'} · {ficha.localidad}{formatearFechaCorta(ficha.fecha) && <span> · Cargada {formatearFechaCorta(ficha.fecha)}</span>}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -196,7 +199,7 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
       <Card className="p-5">
         <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">Historial</h3>
         <ol className="space-y-3.5">
-          {historial.length > 0 ? historial.map((item, idx) => (
+          {historial.map((item, idx) => (
             <HistItem
               key={`${item.fecha || item.label}-${idx}`}
               dot={item.dot}
@@ -205,16 +208,7 @@ function ControlDetalle({ ficha, onBack, actualizarControl, onSubirFichaFisica, 
               fecha={item.fecha}
               detalle={item.detalle}
             />
-          )) : (
-            <>
-          <HistItem dot="bg-emerald-500" label="Cargada digitalmente" por={ficha.afiliadorNombre || ficha.afiliadorEmail} />
-          {['escaneado', 'cargado_je', 'aprobado', 'error'].includes(estado) && <HistItem dot="bg-violet-500" label="Ficha física escaneada" por={ficha.escaneadoPor} />}
-          {['cargado_je', 'aprobado', 'error'].includes(estado) && <HistItem dot="bg-amber-500" label="Cargada en JE" por={ficha.cargadoJEPor} />}
-          {estado === 'aprobado' && <HistItem dot="bg-emerald-500" label="Aprobada por JE" />}
-          {estado === 'error' && <HistItem dot="bg-rose-500" label="Error de JE" detalle={ficha.errorJE} />}
-          {esInactivo && <HistItem dot="bg-orange-500" label={estado === 'suspendido' ? 'Suspendido' : 'Dado de baja'} por={ficha.suspendidoPor} detalle={ficha.suspendidoComentario || undefined} />}
-            </>
-          )}
+          ))}
         </ol>
       </Card>
     </div>
@@ -232,26 +226,68 @@ type HistorialUI = {
 function normalizarHistorial(ficha: Ficha): HistorialUI[] {
   const historial = Array.isArray(ficha.historialControl) ? ficha.historialControl : [];
 
-  return historial
-    .slice()
-    .sort((a: any, b: any) => fechaMillis(b.fecha) - fechaMillis(a.fecha))
-    .map((item: any) => {
-      const estado = item.estadoNuevo || item.estado || item.accion;
-      const anterior = item.estadoAnterior;
-      const label = item.accion === 'reactivacion'
-        ? `Reactivado a ${labelEstado(estado)}`
-        : anterior
-          ? `${labelEstado(anterior)} -> ${labelEstado(estado)}`
-          : labelEstado(estado);
+  const items: HistorialUI[] = historial.length > 0
+    ? historial
+        .slice()
+        .sort((a: any, b: any) => fechaMillis(b.fecha) - fechaMillis(a.fecha))
+        .map((item: any) => {
+          const estado = item.estadoNuevo || item.estado || item.accion;
+          const anterior = item.estadoAnterior;
+          const label = item.accion === 'reactivacion'
+            ? `Reactivado a ${labelEstado(estado)}`
+            : anterior
+              ? `${labelEstado(anterior)} -> ${labelEstado(estado)}`
+              : labelEstado(estado);
 
-      return {
-        dot: dotEstado(estado, item.accion),
-        label,
-        por: item.por,
-        fecha: formatearFechaHistorial(item.fecha),
-        detalle: item.comentario || undefined,
-      };
+          return {
+            dot: dotEstado(estado, item.accion),
+            label,
+            por: item.por,
+            fecha: formatearFechaHistorial(item.fecha),
+            detalle: item.comentario || undefined,
+          };
+        })
+    : historialDesdeCampos(ficha);
+
+  // La carga inicial no está en historialControl (solo registra transiciones de control).
+  items.push({
+    dot: 'bg-emerald-500',
+    label: 'Cargada digitalmente',
+    por: ficha.afiliadorNombre || ficha.afiliadorEmail,
+    fecha: formatearFechaHistorial(ficha.fecha),
+  });
+
+  return items;
+}
+
+// Fichas anteriores a historialControl: se reconstruye desde los timestamps por estado.
+function historialDesdeCampos(ficha: Ficha): HistorialUI[] {
+  const estado = ficha.estadoControl || 'pendiente';
+  const items: HistorialUI[] = [];
+
+  if (estado === 'suspendido' || estado === 'baja') {
+    items.push({
+      dot: 'bg-orange-500',
+      label: estado === 'suspendido' ? 'Suspendido' : 'Dado de baja',
+      por: ficha.suspendidoPor,
+      fecha: formatearFechaHistorial(estado === 'baja' ? (ficha.fechaBaja || ficha.fechaSuspension) : ficha.fechaSuspension),
+      detalle: ficha.suspendidoComentario || undefined,
     });
+  }
+  if (estado === 'error') {
+    items.push({ dot: 'bg-rose-500', label: 'Error de JE', por: ficha.errorPor, fecha: formatearFechaHistorial(ficha.fechaErrorJE || ficha.fechaError), detalle: ficha.errorJE });
+  }
+  if (estado === 'aprobado') {
+    items.push({ dot: 'bg-emerald-500', label: 'Aprobada por JE', por: ficha.aprobadoPor, fecha: formatearFechaHistorial(ficha.fechaAprobacion) });
+  }
+  if (['cargado_je', 'aprobado', 'error'].includes(estado)) {
+    items.push({ dot: 'bg-amber-500', label: 'Cargada en JE', por: ficha.cargadoJEPor, fecha: formatearFechaHistorial(ficha.fechaCargaJE || ficha.fechaCargadoJE) });
+  }
+  if (['escaneado', 'cargado_je', 'aprobado', 'error'].includes(estado)) {
+    items.push({ dot: 'bg-violet-500', label: 'Ficha física escaneada', por: ficha.escaneadoPor, fecha: formatearFechaHistorial(ficha.fechaEscaneado) });
+  }
+
+  return items;
 }
 
 function labelEstado(estado?: string) {
@@ -284,6 +320,12 @@ function formatearFechaHistorial(fecha: any) {
   } catch {
     return undefined;
   }
+}
+
+function formatearFechaCorta(fecha: any) {
+  const ms = fechaMillis(fecha);
+  if (!ms) return '';
+  return new Date(ms).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function fechaMillis(fecha: any) {
