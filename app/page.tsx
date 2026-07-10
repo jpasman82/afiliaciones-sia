@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useDiditSession } from '../hooks/useDiditSession';
 import { auth, db, storage } from '../firebaseConfig';
-import { collection, serverTimestamp, query, where, onSnapshot, doc, getDoc, setDoc, updateDoc, orderBy, arrayUnion, writeBatch, Timestamp } from 'firebase/firestore';
+import { collection, serverTimestamp, query, where, onSnapshot, doc, setDoc, updateDoc, orderBy, arrayUnion, writeBatch, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getBlob } from 'firebase/storage';
 import JSZip from 'jszip';
 import { AppShell } from './components/shell/AppShell';
@@ -1124,10 +1124,18 @@ export default function Home() {
         };
         const fichaRef = doc(collection(db, 'afiliaciones'));
         const indiceRef = doc(db, 'dniIndex', payload.dni);
-        const indiceExistente = await getDoc(indiceRef);
-        if (indiceExistente.exists()) {
-          alert('No se puede guardar: ese DNI ya fue cargado en el sistema.');
-          return;
+        const idTokenDni = await (user as any).getIdToken();
+        const existeRes = await fetch('/api/dni/existe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idTokenDni}` },
+          body: JSON.stringify({ dni: payload.dni }),
+        });
+        if (existeRes.ok) {
+          const { existe } = await existeRes.json();
+          if (existe) {
+            alert('No se puede guardar: ese DNI ya fue cargado en el sistema.');
+            return;
+          }
         }
         const batch = writeBatch(db);
         batch.set(indiceRef, {
