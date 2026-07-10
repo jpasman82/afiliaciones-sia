@@ -270,7 +270,7 @@ afiliadorNombre: string
 afiliadorEmail: string
 afiliadorUid: string
 fecha: timestamp                    ← creación
-ultimaModificacion: timestamp       ← (campo con encoding heredado, ver "Gotchas")
+ultimaModificacion: timestamp
 origen: 'manual' | 'link_publico' | 'contacto_bot'
 linkToken: string                   ← presente si origen == 'link_publico'
 ```
@@ -314,7 +314,7 @@ El `token` es de 32 caracteres hex (`crypto.randomUUID()` sin guiones, 128 bits)
 Sesiones de verificación con Didit.
 
 ```
-sessionId: string                   ← localId que generamos nosotros (UUID v4)
+sessionId: string                   ← UUID propio, por el que buscan los endpoints de estado  
 diditSessionId: string              ← id de Didit
 status: string                      ← 'In Progress' | 'Approved' | 'Declined' | ...
 vendorData: { afiliadorUid, afiliadorNombre, linkToken?, ... }
@@ -323,7 +323,7 @@ datosExtraidos: {                   ← cuando status == 'Approved'
   domicilio: { calle, numero, piso, dpto, localidad },
   dniImageStoragePath, frontImageStoragePath, backImageStoragePath
 }
-procesada: boolean                  ← solo true en estados finales
+procesada: timestamp                  ← seteado solo en estados finales (Approved, Declined)
 creadoEn, ultimaActualizacion
 ```
 
@@ -524,7 +524,7 @@ O usar Firebase Console (Reglas → publicar).
 
 ## Gotchas adicionales
 
-- **Encoding heredado:** algunos campos tienen caracteres mal codificados en su nombre (ej. `ultimaModificaciÃ³n`). Si se toca código que los lee, conservar el encoding mojado para no romper datos existentes. Idealmente, migrar con script + actualizar todas las lecturas en el mismo PR.
+- - **Encoding:** hubo mojibake en literales de UI (cabeceras de CSV, mensajes de alert), corregido en julio 2026. Los nombres de campo de Firestore están limpios. Si aparece texto con caracteres rotos, es un literal de UI, no un campo de datos.
 - **`hasOnly()` en reglas:** agregar un campo al payload sin actualizar la lista de `hasOnly()` rompe todas las escrituras de la colección. Coordinar cambios payload + rules.
 - **Firestore collections implícitas:** borrar todos los docs de una colección no la elimina; un `addDoc` nuevo la recrea. Sirve para limpiezas manuales sin scripts.
 - **`useAuth.js` en JS, no TS:** legado. Si se reescribe, mejor migrar a TS.
