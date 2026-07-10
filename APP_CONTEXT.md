@@ -321,7 +321,7 @@ vendorData: { afiliadorUid, afiliadorNombre, linkToken?, ... }
 datosExtraidos: {                   ← cuando status == 'Approved'
   dni, apellidos, nombres, sexo, fechaNacimiento, nacionalidad, lugarNacimiento,
   domicilio: { calle, numero, piso, dpto, localidad },
-  dniImageStorageUrl, frontImageStorageUrl, backImageStorageUrl
+  dniImageStoragePath, frontImageStoragePath, backImageStoragePath
 }
 procesada: boolean                  ← solo true en estados finales
 creadoEn, ultimaActualizacion

@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { adminDb } from '@/app/lib/firebaseAdmin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN!;
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID!;
@@ -46,7 +48,17 @@ export async function POST(req: NextRequest) {
 
     if (message) {
       const from = message.from;
-      console.log(`Mensaje recibido (id: ${message.id || 'sin id'})`);
+
+      // Dedup: Meta reintenta el webhook si no recibe 200 a tiempo.
+      // Si ya procesamos este message.id, no reenviamos el menú.
+      if (adminDb && message.id) {
+        const procesadoRef = adminDb.collection('whatsappMensajesProcesados').doc(message.id);
+        const yaProcesado = await procesadoRef.get();
+        if (yaProcesado.exists) {
+          return NextResponse.json({ ok: true });
+        }
+        await procesadoRef.set({ procesadoEn: FieldValue.serverTimestamp() });
+      }
 
       // Por ahora, cualquier mensaje dispara el menú
       await sendMenu(from);
