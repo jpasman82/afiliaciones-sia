@@ -11,11 +11,22 @@ import { StatusBadge } from '../ui/Badges';
 import { Avatar, Card } from '../ui/Primitives';
 
 export function FichaDetalle({ ficha, role, onBack, onEdit, onDelete }:
-  { ficha: Ficha; role: Rol; onBack: () => void; onEdit: (f: Ficha) => void; onDelete?: () => void }) {
+  { ficha: Ficha; role: Rol; onBack: () => void; onEdit: (f: Ficha) => void; onDelete?: () => void | Promise<void> }) {
   const estado = ficha.estadoControl || 'pendiente';
   const puedeEditar = role === 'admin' || estado === 'pendiente';
   const puedeEliminar = !!onDelete && (role === 'admin' || estado === 'pendiente');
   const [confirmarBorrar, setConfirmarBorrar] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
+
+  const handleEliminar = async () => {
+    if (eliminando) return;
+    setEliminando(true);
+    try {
+      await onDelete?.();
+    } finally {
+      setEliminando(false);
+    }
+  };
 
   return (
     <div className="max-w-3xl mx-auto" data-screen-label="Detalle de ficha">
@@ -31,7 +42,7 @@ export function FichaDetalle({ ficha, role, onBack, onEdit, onDelete }:
               <p className="text-sm font-semibold text-rose-900">¿Eliminar esta ficha?</p>
               <p className="text-sm text-rose-700 mt-1">Esta acción es irreversible. Se eliminará el registro de <span className="font-semibold">{ficha.apellidos}, {ficha.nombres}</span> (DNI {ficha.dni}) de forma permanente.</p>
               <div className="flex gap-2 mt-3">
-                <Button variant="danger" size="sm" icon="trash" onClick={onDelete}>Sí, eliminar</Button>
+                <Button variant="danger" size="sm" icon="trash" onClick={handleEliminar} disabled={eliminando}>{eliminando ? 'Eliminando…' : 'Sí, eliminar'}</Button>
                 <Button variant="secondary" size="sm" onClick={() => setConfirmarBorrar(false)}>Cancelar</Button>
               </div>
             </div>

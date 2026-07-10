@@ -418,6 +418,7 @@ export default function Home() {
     titulo: string;
     detalle: string;
     accionSecundaria?: 'nueva';
+    tipo?: 'exito' | 'aviso';
   } | null>(null);
   const [creandoPublicLink, setCreandoPublicLink] = useState(false);
   const [publicLink, setPublicLink] = useState<string | null>(null);
@@ -1133,7 +1134,7 @@ export default function Home() {
         if (existeRes.ok) {
           const { existe } = await existeRes.json();
           if (existe) {
-            alert('No se puede guardar: ese DNI ya fue cargado en el sistema.');
+            setConfirmacionCarga({ tipo: 'aviso', titulo: 'DNI ya cargado', detalle: 'Ese DNI ya figura en el sistema. No se puede cargar dos veces a la misma persona.' });
             return;
           }
         }
@@ -1169,7 +1170,7 @@ export default function Home() {
     } catch (error: any) {
       console.error('Error al guardar ficha:', error);
       if (error?.code === 'already-exists' || error?.message?.toLowerCase?.().includes('already exists')) {
-        alert('No se puede guardar: ese DNI ya fue cargado en el sistema.');
+        setConfirmacionCarga({ tipo: 'aviso', titulo: 'DNI ya cargado', detalle: 'Ese DNI ya figura en el sistema. No se puede cargar dos veces a la misma persona.' });
         return;
       }
       if (error?.code === 'permission-denied') {
@@ -1485,34 +1486,54 @@ export default function Home() {
       {confirmacionCarga && (
         <div className="fixed inset-0 z-[120] bg-slate-950/45 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-200">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.6} aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-              </svg>
-            </div>
+            {confirmacionCarga.tipo === 'aviso' ? (
+              <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.4} aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                </svg>
+              </div>
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.6} aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+              </div>
+            )}
             <h3 className="text-lg font-bold text-slate-900">{confirmacionCarga.titulo}</h3>
             <p className="text-sm text-slate-500 mt-1.5">{confirmacionCarga.detalle}</p>
-            <div className={`mt-5 grid gap-2 ${confirmacionCarga.accionSecundaria === 'nueva' ? 'grid-cols-2' : 'grid-cols-1'}`}>
-              {confirmacionCarga.accionSecundaria === 'nueva' && (
+            {confirmacionCarga.tipo === 'aviso' ? (
+              <div className="mt-5">
                 <button
                   type="button"
-                  onClick={() => {
-                    setConfirmacionCarga(null);
-                    prepararNueva();
-                  }}
-                  className="py-3 rounded-xl bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm hover:bg-slate-50 active:bg-slate-100"
+                  onClick={() => setConfirmacionCarga(null)}
+                  className="w-full py-3 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-slate-800 active:bg-slate-950"
                 >
-                  Nueva ficha
+                  Entendido
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setConfirmacionCarga(null)}
-                className="py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 active:bg-emerald-800"
-              >
-                Ver registros
-              </button>
-            </div>
+              </div>
+            ) : (
+              <div className={`mt-5 grid gap-2 ${confirmacionCarga.accionSecundaria === 'nueva' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {confirmacionCarga.accionSecundaria === 'nueva' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmacionCarga(null);
+                      prepararNueva();
+                    }}
+                    className="py-3 rounded-xl bg-white text-slate-700 ring-1 ring-slate-300 font-semibold text-sm hover:bg-slate-50 active:bg-slate-100"
+                  >
+                    Nueva ficha
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setConfirmacionCarga(null)}
+                  className="py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 active:bg-emerald-800"
+                >
+                  Ver registros
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
