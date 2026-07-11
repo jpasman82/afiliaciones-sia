@@ -198,6 +198,12 @@ export function useDiditSession(opciones: UseDiditSessionOptions): UseDiditSessi
         });
 
         if (!res.ok) {
+          // 401 sin haber enviado token: Firebase Auth todavía no restauró la
+          // sesión tras el redirect (carrera al montar). No es una sesión
+          // inválida: seguir esperando, como toleraba el código previo.
+          if (res.status === 401 && !('Authorization' in headers)) {
+            return 'seguir';
+          }
           if ([400, 401, 403, 404, 410].includes(res.status)) {
             setDiditError('La sesión de escaneo ya no es válida. Iniciá un escaneo nuevo o cargá los datos manualmente.');
             return 'cortar';
