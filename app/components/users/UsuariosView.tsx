@@ -17,7 +17,7 @@ interface Props {
   role: Rol;
   usuarios: Usuario[];
   actualizarRol: (uid: string, rol: Rol) => void;
-  guardarNombre: (uid: string, datos: { nombre: string; apellido: string }) => void;
+  guardarNombre: (uid: string, datos: { nombre: string; apellido: string }) => void | Promise<void>;
 }
 
 export function UsuariosView({ role, usuarios, actualizarRol, guardarNombre }: Props) {
@@ -29,7 +29,16 @@ export function UsuariosView({ role, usuarios, actualizarRol, guardarNombre }: P
   const pendientes = usuarios.filter(u => u.rol === 'pendiente');
 
   const startEdit = (u: Usuario) => { setEditId(u.id); setForm({ nombre: u.nombre, apellido: u.apellido }); };
-  const saveEdit = (u: Usuario) => { guardarNombre(u.id, { nombre: form.nombre.trim(), apellido: form.apellido.trim() }); setEditId(null); };
+  const saveEdit = async (u: Usuario) => {
+    try {
+      await guardarNombre(u.id, { nombre: form.nombre.trim(), apellido: form.apellido.trim() });
+      setEditId(null);
+    } catch (error) {
+      // No cerrar la edición: que el usuario pueda reintentar.
+      console.error('[usuarios] Error al guardar nombre:', error);
+      alert('No se pudo guardar el nombre. Intentá de nuevo.');
+    }
+  };
 
   return (
     <div data-screen-label="Usuarios">

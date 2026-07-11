@@ -23,15 +23,22 @@ export function useAuth() {
         unsubDoc = onSnapshot(docRef, async (docSnap) => {
           if (!docSnap.exists() && !creando) {
             creando = true;
-            await setDoc(docRef, {
-              email: currentUser.email,
-              nombre: '',
-              apellido: '',
-              rol: 'pendiente',
-              perfilCompleto: false,
-              fechaRegistro: new Date()
-            });
-            // La notificación se envía desde el formulario de perfil tras completar nombre y apellido
+            try {
+              await setDoc(docRef, {
+                email: currentUser.email,
+                nombre: '',
+                apellido: '',
+                rol: 'pendiente',
+                perfilCompleto: false,
+                fechaRegistro: new Date()
+              });
+              // La notificación se envía desde el formulario de perfil tras completar nombre y apellido
+            } catch (error) {
+              // Sin esto, loading queda true para siempre ("Iniciando SIA..." infinito).
+              console.error('[useAuth] Error al crear el perfil:', error);
+              setLoading(false);
+              alert('No se pudo crear tu perfil. Recargá la página e intentá de nuevo.');
+            }
           } else if (docSnap.exists()) {
             const data = docSnap.data();
             setRole(data.rol);
@@ -61,6 +68,11 @@ export function useAuth() {
       await signInWithPopup(auth, provider);
     } catch (error) {
       setLoading(false);
+      // Popup cerrado o reemplazado por el usuario: acción deliberada, no avisar.
+      if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
+        console.error('[useAuth] Error al iniciar sesión:', error);
+        alert('No se pudo iniciar sesión con Google. Intentá de nuevo.');
+      }
     }
   };
 

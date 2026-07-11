@@ -368,6 +368,9 @@ function ArchivoButton({ label, path, url }: { label: string; path?: string; url
     }
     if (!path) return;
 
+    // Abrir la ventana dentro del gesto del usuario: después del await los
+    // popup blockers (Safari/iOS) bloquean window.open en silencio.
+    const ventana = window.open('', '_blank');
     setCargando(true);
     try {
       const blob = await getBlob(ref(storage, path));
@@ -376,7 +379,12 @@ function ArchivoButton({ label, path, url }: { label: string; path?: string; url
         if (prev) URL.revokeObjectURL(prev);
         return objectUrl;
       });
-      window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      if (ventana) ventana.location.href = objectUrl;
+      else window.open(objectUrl, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('[control] Error al abrir archivo:', error);
+      if (ventana) ventana.close();
+      alert('No se pudo abrir el archivo. Puede haber sido eliminado o no tenés permisos para verlo.');
     } finally {
       setCargando(false);
     }

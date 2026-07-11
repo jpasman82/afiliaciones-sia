@@ -20,9 +20,10 @@ interface Props {
   onOpenDetalle: (id: string) => void;
   onExportCSV?: () => void;
   onDescargarZip?: () => void;
+  descargandoZip?: boolean;
 }
 
-export function RecordsView({ role, registros, afiliadores, search, onOpenDetalle, onExportCSV, onDescargarZip }: Props) {
+export function RecordsView({ role, registros, afiliadores, search, onOpenDetalle, onExportCSV, onDescargarZip, descargandoZip }: Props) {
   const isSup = role === 'admin' || role === 'supervisor';
   const [filtroAfil, setFiltroAfil] = useState('todas');
   const [filtroEstado, setFiltroEstado] = useState('todas');
@@ -47,7 +48,7 @@ export function RecordsView({ role, registros, afiliadores, search, onOpenDetall
       <PageHeader title="Registros" sub={isSup ? 'Todas las fichas de afiliación' : 'Tus fichas cargadas'}
         actions={<>
           {onExportCSV && <Button variant="secondary" icon="download" className="hidden sm:inline-flex" onClick={onExportCSV}>CSV</Button>}
-          {onDescargarZip && <Button variant="secondary" icon="inbox" className="hidden sm:inline-flex" onClick={onDescargarZip}>ZIP</Button>}
+          {onDescargarZip && <Button variant="secondary" icon="inbox" className="hidden sm:inline-flex" disabled={descargandoZip} onClick={onDescargarZip}>{descargandoZip ? 'Generando…' : 'ZIP'}</Button>}
         </>} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">

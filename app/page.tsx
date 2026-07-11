@@ -396,6 +396,7 @@ export default function Home() {
   
   const [registros, setRegistros] = useState<any[]>([]);
   const [usuariosSistema, setUsuariosSistema] = useState<any[]>([]);
+  const [errorCargaListado, setErrorCargaListado] = useState<string | null>(null);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [fichaSeleccionada, setFichaSeleccionada] = useState<any>(null);
   
@@ -427,8 +428,6 @@ export default function Home() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroAfiliador, setFiltroAfiliador] = useState('todas');
 
-  const [editandoUsuarioId, setEditandoUsuarioId] = useState<string | null>(null);
-  const [formEditUsuario, setFormEditUsuario] = useState({ nombre: '', apellido: '' });
   const [formPerfil, setFormPerfil] = useState({ nombre: '', apellido: '' });
   const [guardandoPerfil, setGuardandoPerfil] = useState(false);
 
@@ -529,13 +528,27 @@ export default function Home() {
     const q = isAdminOrSupervisor
       ? query(collection(db, 'afiliaciones'), orderBy('fecha', 'desc'))
       : query(collection(db, 'afiliaciones'), where('afiliadorUid', '==', (user as any).uid));
-    return onSnapshot(q, (snapshot) => setRegistros(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    return onSnapshot(
+      q,
+      (snapshot) => setRegistros(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
+      (error) => {
+        console.error('[registros] Error al suscribirse a afiliaciones:', error);
+        setErrorCargaListado('No se pudieron cargar las fichas. Recargá la página; si sigue pasando avisale al administrador.');
+      }
+    );
   }, [user, isAdminOrSupervisor, role]);
 
   useEffect(() => {
     if (!isAdminOrSupervisor) return;
     const q = query(collection(db, 'usuarios'), orderBy('fechaRegistro', 'desc'));
-    return onSnapshot(q, (snapshot) => setUsuariosSistema(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    return onSnapshot(
+      q,
+      (snapshot) => setUsuariosSistema(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
+      (error) => {
+        console.error('[usuarios] Error al suscribirse a usuarios:', error);
+        setErrorCargaListado('No se pudo cargar la lista de usuarios. Recargá la página; si sigue pasando avisale al administrador.');
+      }
+    );
   }, [isAdminOrSupervisor]);
 
   const estadoControlCfg: Record<string, { label: string; cls: string }> = {
@@ -628,13 +641,15 @@ export default function Home() {
               apellido: apellido.trim(),
               perfilCompleto: true,
             });
-            (user as any).getIdToken().then((idToken: string) => {
+            (user as any).getIdToken().then((idToken: string) =>
               fetch('/api/notificar-nuevo-usuario', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ email: (user as any).email, nombre: `${nombre.trim()} ${apellido.trim()}` }),
-              });
-            }).catch(() => {});
+              })
+            ).then((res: Response) => {
+              if (!res.ok) console.error(`[notificar-nuevo-usuario] HTTP ${res.status}`);
+            }).catch((error: unknown) => console.error('[notificar-nuevo-usuario] Error:', error));
           } catch {
             alert('Error al guardar. Intentá de nuevo.');
           } finally {
@@ -651,29 +666,18 @@ export default function Home() {
       const rolAnterior = usuarioActual?.rol || '';
       await updateDoc(doc(db, 'usuarios', uid), { rol: nuevoRol });
       if (rolAnterior !== nuevoRol) {
-        (user as any)?.getIdToken?.().then((idToken: string) => {
+        (user as any)?.getIdToken?.().then((idToken: string) =>
           fetch('/api/notificar-cambio-rol', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
             body: JSON.stringify({ uid, rolAnterior, nuevoRol }),
-          });
-        }).catch(() => {});
+          })
+        ).then((res: Response) => {
+          if (!res.ok) console.error(`[notificar-cambio-rol] HTTP ${res.status}`);
+        }).catch((error: unknown) => console.error('[notificar-cambio-rol] Error:', error));
       }
     } catch (e) {
       alert('Error de red');
-    }
-  };
-
-  const guardarNombreUsuario = async () => {
-    if (!editandoUsuarioId) return;
-    try {
-      await updateDoc(doc(db, 'usuarios', editandoUsuarioId), {
-        nombre: formEditUsuario.nombre.trim(),
-        apellido: formEditUsuario.apellido.trim()
-      });
-      setEditandoUsuarioId(null);
-    } catch {
-      alert('Error al guardar');
     }
   };
 
@@ -699,6 +703,7 @@ export default function Home() {
   };
 
   const descargarZip = async (tipo: 'dni' | 'ficha') => {
+    if (descargandoZip) return;
     if (!isAdmin) {
       alert('Solo un administrador puede descargar archivos.');
       return;
@@ -710,34 +715,47 @@ export default function Home() {
       return;
     }
     setDescargandoZip(tipo);
-    const zip = new JSZip();
-    const CONCURRENCIA = 10;
-    for (let i = 0; i < conArchivo.length; i += CONCURRENCIA) {
-      const lote = conArchivo.slice(i, i + CONCURRENCIA);
-      await Promise.all(lote.map(async (reg) => {
-        try {
-          const targetPath = tipo === 'dni' ? reg.archivoDniPath : reg.archivoFichaPath;
-          const targetUrl = tipo === 'dni' ? reg.archivoDni : reg.archivoFicha;
-          const blob = targetPath
-            ? await getBlob(ref(storage, targetPath))
-            : await (await fetch(targetUrl)).blob();
-          const ext = blob.type === 'application/pdf' ? 'pdf' : 'jpg';
-          const sufijo = tipo === 'dni' ? 'DNI' : 'FICHA';
-          const nombre = `${reg.apellidos}_${reg.nombres}_${reg.dni}_${sufijo}.${ext}`.replace(/\s+/g, '_');
-          zip.file(nombre, blob);
-        } catch {}
-      }));
+    let fallidos = 0;
+    try {
+      const zip = new JSZip();
+      const CONCURRENCIA = 10;
+      for (let i = 0; i < conArchivo.length; i += CONCURRENCIA) {
+        const lote = conArchivo.slice(i, i + CONCURRENCIA);
+        await Promise.all(lote.map(async (reg) => {
+          try {
+            const targetPath = tipo === 'dni' ? reg.archivoDniPath : reg.archivoFichaPath;
+            const targetUrl = tipo === 'dni' ? reg.archivoDni : reg.archivoFicha;
+            const blob = targetPath
+              ? await getBlob(ref(storage, targetPath))
+              : await (await fetch(targetUrl)).blob();
+            const ext = blob.type === 'application/pdf' ? 'pdf' : 'jpg';
+            const sufijo = tipo === 'dni' ? 'DNI' : 'FICHA';
+            const nombre = `${reg.apellidos}_${reg.nombres}_${reg.dni}_${sufijo}.${ext}`.replace(/\s+/g, '_');
+            zip.file(nombre, blob);
+          } catch (error) {
+            fallidos++;
+            console.error('[zip] Error al descargar archivo:', reg.id, error);
+          }
+        }));
+      }
+      const contenido = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(contenido);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${tipo === 'dni' ? 'DNIs' : 'Fichas'}_SIA_${new Date().toLocaleDateString('es-AR').replace(/\//g, '-')}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      if (fallidos > 0) {
+        alert(`El ZIP se generó pero faltan ${fallidos} archivo${fallidos !== 1 ? 's' : ''} que no pudieron descargarse.`);
+      }
+    } catch (error) {
+      console.error('[zip] Error al generar ZIP:', error);
+      alert('No se pudo generar el ZIP. Intentá de nuevo.');
+    } finally {
+      setDescargandoZip(null);
     }
-    const contenido = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(contenido);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${tipo === 'dni' ? 'DNIs' : 'Fichas'}_SIA_${new Date().toLocaleDateString('es-AR').replace(/\//g, '-')}.zip`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    setDescargandoZip(null);
   };
 
   const exportarCSV = () => {
@@ -802,9 +820,10 @@ export default function Home() {
 
   const procesarDNIUnicoImagen = async (): Promise<Blob> => {
     const getImgObj = (b64: string): Promise<HTMLImageElement> => {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('No se pudo procesar la imagen del DNI. Volvé a cargarla.'));
         img.src = b64;
       });
     };
@@ -1107,7 +1126,7 @@ export default function Home() {
         }
         await updateDoc(doc(db, 'afiliaciones', editandoId), payload);
         if (estadoAnterior !== est) {
-          (user as any)?.getIdToken?.().then((idToken: string) => {
+          (user as any)?.getIdToken?.().then((idToken: string) =>
             fetch('/api/notificar-cambio-estado-ficha', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
@@ -1116,8 +1135,10 @@ export default function Home() {
                 estadoAnterior,
                 estadoNuevo: est,
               }),
-            });
-          }).catch(() => {});
+            })
+          ).then((res: Response) => {
+            if (!res.ok) console.error(`[notificar-cambio-estado-ficha] HTTP ${res.status}`);
+          }).catch((error: unknown) => console.error('[notificar-cambio-estado-ficha] Error:', error));
         }
         setConfirmacionCarga({
           titulo: 'Ficha actualizada con éxito',
@@ -1302,7 +1323,7 @@ export default function Home() {
 
       await updateDoc(doc(db, 'afiliaciones', id), payload);
       if (estadoAnterior !== estado) {
-        (user as any)?.getIdToken?.().then((idToken: string) => {
+        (user as any)?.getIdToken?.().then((idToken: string) =>
           fetch('/api/notificar-cambio-estado-ficha', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
@@ -1312,8 +1333,10 @@ export default function Home() {
               estadoNuevo: estado,
               comentario,
             }),
-          });
-        }).catch(() => {});
+          })
+        ).then((res: Response) => {
+          if (!res.ok) console.error(`[notificar-cambio-estado-ficha] HTTP ${res.status}`);
+        }).catch((error: unknown) => console.error('[notificar-cambio-estado-ficha] Error:', error));
       }
     } catch {
       alert('Error al actualizar estado.');
@@ -1565,6 +1588,12 @@ export default function Home() {
         />
       )}
 
+      {errorCargaListado && (
+        <div className="mb-4 rounded-xl bg-red-50 ring-1 ring-red-200 px-4 py-3 text-sm text-red-700 font-medium">
+          {errorCargaListado}
+        </div>
+      )}
+
       {tab === 'registros' && (
         <RecordsView
           role={roleActual}
@@ -1577,6 +1606,7 @@ export default function Home() {
           }}
           onExportCSV={isAdmin ? exportarCSV : undefined}
           onDescargarZip={isAdmin ? () => descargarZip('dni') : undefined}
+          descargandoZip={!!descargandoZip}
         />
       )}
 

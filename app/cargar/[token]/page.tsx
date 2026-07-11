@@ -128,7 +128,11 @@ export default function CargaPublicaPage() {
 
   useEffect(() => {
     const validar = async () => {
-      if (!token) return;
+      if (!token) {
+        setError('Link inválido.');
+        setValidando(false);
+        return;
+      }
       setValidando(true);
       setError('');
       try {
@@ -317,9 +321,10 @@ export default function CargaPublicaPage() {
   };
 
   const procesarDNIUnicoImagen = async (): Promise<Blob> => {
-    const getImgObj = (b64: string): Promise<HTMLImageElement> => new Promise((resolve) => {
+    const getImgObj = (b64: string): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('No se pudo procesar la imagen del DNI. Volvé a cargarla.'));
       img.src = b64;
     });
     const imgF = await getImgObj(fotoFrenteB64!);
